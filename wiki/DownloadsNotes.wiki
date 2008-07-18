@@ -1,0 +1,13 @@
+#summary Downloads added
+
+= Introduction =
+
+Added the included "Install Output" product included with the source, to the downloads section. This is to establish where the project it currently theoretically at. 
+
+
+= Details =
+
+Included and uploaded the two windows exec.s from the source package. These are versions 1.2 and 1.25. These are assumed to be the height of current development of the software. These are however _untested_ and provided without warranty of any kind. 
+For all intents and purposes these should probably be considered deprecated as well. 
+
+Files can be found in the *download* section. 
