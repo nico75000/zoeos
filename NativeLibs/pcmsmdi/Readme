@@ -1,3 +1,9 @@
 This can be compiled with the vcpp buildsystem from the command line using nmake
 
 Set the 3 variables at the top of the make file to match your own system and type nmake
+
+You will likely have to run a batch file included with vcpp to set up your environment variables correctly.
+
+Mine is in
+
+C:\Program Files\Microsoft Visual Studio 9.0\Common7\Tools
