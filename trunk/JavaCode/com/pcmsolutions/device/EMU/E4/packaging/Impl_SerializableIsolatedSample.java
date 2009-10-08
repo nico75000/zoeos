@@ -59,7 +59,7 @@ class Impl_SerializableIsolatedSample implements IsolatedSample, Serializable {
         return AudioSystem.getAudioFileFormat(localFile).getType();
     }
 
-    public void assert() throws IsolatedSampleUnavailableException {
+    public void ZoeAssert() throws IsolatedSampleUnavailableException {
         if (!isROMSample()) {
             if ((localFile != null && localFile.exists()))
                 return;

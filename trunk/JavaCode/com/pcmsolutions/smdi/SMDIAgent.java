@@ -472,7 +472,7 @@ public class SMDIAgent {
                 throw new IllegalArgumentException("SCSI device not a SMDI target!");
         }
 
-        private void assert() throws TargetNotSMDIException {
+        private void ZoeAssert() throws TargetNotSMDIException {
             if (!isSMDI())
                 throw new TargetNotSMDIException();
         }
@@ -481,7 +481,7 @@ public class SMDIAgent {
             if (sampleNum == 0)
                 throw new SmdiOutOfRangeException("sample 0");
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
 
                 int retval = SMDIM_ERROR;
 
@@ -515,7 +515,7 @@ public class SMDIAgent {
             if (sampleNum == 0)
                 throw new SmdiOutOfRangeException("sample 0");
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 int retval = SMDIM_ERROR;
                 try {
                     retval = smdiSendFile(HA_ID, SCSI_ID, sampleNum, fileName, sampleName, true);
@@ -533,7 +533,7 @@ public class SMDIAgent {
             if (sampleNum == 0)
                 throw new SmdiOutOfRangeException("Illegal sample index 0");
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 int retval = SMDIM_ERROR;
                 try {
                     retval = smdiRecvFile(HA_ID, SCSI_ID, sampleNum, fileName, false);
@@ -562,7 +562,7 @@ public class SMDIAgent {
             if (sampleNum == 0)
                 throw new SmdiOutOfRangeException("sample 0");
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 int retval = SMDIM_ERROR;
                 try {
                     retval = smdiRecvFile(HA_ID, SCSI_ID, sampleNum, fileName, true);
@@ -578,7 +578,7 @@ public class SMDIAgent {
 
         public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiOutOfRangeException, SmdiNoSampleException, SmdiGeneralException, TargetNotSMDIException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 Impl_SmdiSampleHeader hdr = new Impl_SmdiSampleHeader();
 
                 int retval = SMDIM_ERROR;
@@ -606,7 +606,7 @@ public class SMDIAgent {
 
         public SmdiSampleHeader getSampleHeader(String fileName) throws SmdiFileOpenException, SmdiUnknownFileFormatException, SmdiGeneralException, TargetNotSMDIException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 Impl_SmdiSampleHeader hdr = new Impl_SmdiSampleHeader();
                 int retval = SMDIM_ERROR;
                 try {
@@ -660,7 +660,7 @@ public class SMDIAgent {
             this.st = st;
         }
 
-        private void assert() throws SmdiTargetCouplingInvalidException {
+        private void ZoeAssert() throws SmdiTargetCouplingInvalidException {
             try {
                 if (coupling.equals(deviceCouplings[st.getHA_Id() * MAX_ID + st.getSCSI_Id()]))
                     return;
@@ -672,42 +672,42 @@ public class SMDIAgent {
 
         public void sendSync(String fileName, int sampleNum, String sampleName) throws SmdiTargetCouplingInvalidException, SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 st.sendSync(fileName, sampleNum, sampleName);
             }
         }
 
         public void sendAsync(String fileName, int sampleNum, String sampleName) throws SmdiTargetCouplingInvalidException, SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 st.sendAsync(fileName, sampleNum, sampleName);
             }
         }
 
         public void recvSync(String fileName, int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiFileOpenException, SmdiNoSampleException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 st.recvSync(fileName, sampleNum);
             }
         }
 
         public void recvAsync(String fileName, int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 st.recvAsync(fileName, sampleNum);
             }
         }
 
         public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiOutOfRangeException, SmdiNoSampleException, SmdiGeneralException, TargetNotSMDIException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 return st.getSampleHeader(sampleNum);
             }
         }
 
         public SmdiSampleHeader getSampleHeader(String fileName) throws SmdiTargetCouplingInvalidException, SmdiFileOpenException, SmdiUnknownFileFormatException, SmdiGeneralException, TargetNotSMDIException {
             synchronized (SMDIAgent.class) {
-                assert();
+                ZoeAssert();
                 return st.getSampleHeader(fileName);
             }
         }

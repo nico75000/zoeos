@@ -700,7 +700,7 @@ class Impl_SampleContext implements SampleContext, RemoteObjectStates, Serializa
                         return aFormat;
                     }
 
-                    public void assert() throws IsolatedSampleUnavailableException {
+                    public void ZoeAssert() throws IsolatedSampleUnavailableException {
                         if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
                             return;
                         if (localFile == null)
@@ -778,7 +778,7 @@ class Impl_SampleContext implements SampleContext, RemoteObjectStates, Serializa
                         return aFormat;
                     }
 
-                    public void assert() throws IsolatedSampleUnavailableException {
+                    public void ZoeAssert() throws IsolatedSampleUnavailableException {
                         if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
                             return;
                         if (localFile == null)
@@ -850,7 +850,7 @@ class Impl_SampleContext implements SampleContext, RemoteObjectStates, Serializa
                         return aFormat;
                     }
 
-                    public void assert() throws IsolatedSampleUnavailableException {
+                    public void ZoeAssert() throws IsolatedSampleUnavailableException {
                         if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
                             return;
                         if (localFile == null)
