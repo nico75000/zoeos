@@ -19,7 +19,7 @@ import com.pcmsolutions.comms.MidiSystemFacade;
 import com.pcmsolutions.device.EMU.E4.gui.GeneralTableCellRenderer;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.gui.desktop.*;
-import com.pcmsolutions.gui.license.ZLicenseManagerDialog;
+//import com.pcmsolutions.gui.license.ZLicenseManagerDialog;
 import com.pcmsolutions.gui.midi.ZMidiManagerDialog;
 import com.pcmsolutions.gui.smdi.ZSmdiManagerDialog;
 import com.pcmsolutions.smdi.SMDIAgent;
@@ -56,7 +56,7 @@ public class ZoeosFrame extends ZJFrame {
     private ZDeviceManagerDialog deviceManager;
     private ZMidiManagerDialog midiManager;
     private ZSmdiManagerDialog smdiManager;
-    private ZLicenseManagerDialog licenseManager;
+    //private ZLicenseManagerDialog licenseManager;
     private TipOfTheDayDialog tipOfTheDay;
 
     private static final String DOCK_PROFILE_KEY = "Zoeos_Layouts";
@@ -75,7 +75,7 @@ public class ZoeosFrame extends ZJFrame {
     private javax.swing.JMenuItem jmiSMDIManager;
     private javax.swing.JMenuItem jmiTaskManager;
 
-    private javax.swing.JMenuItem jmiLicenseManager;
+//    private javax.swing.JMenuItem jmiLicenseManager;
 
     private javax.swing.JMenuItem jmiTipOfTheDay;
     private javax.swing.JMenuItem jmiProductTour;
@@ -156,7 +156,7 @@ public class ZoeosFrame extends ZJFrame {
             deviceManager = new ZDeviceManagerDialog(this, false);
             midiManager = new ZMidiManagerDialog(this, false);
             assertSmdiManager();
-            licenseManager = new ZLicenseManagerDialog(this, false);
+            //licenseManager = new ZLicenseManagerDialog(this, false);
             tipOfTheDay = new TipOfTheDayDialog();
         } catch (Exception e) {
             JOptionPane.showMessageDialog(null, "Could not initialize main ZoeOS window. Exiting.", "Fatal Error", JOptionPane.ERROR_MESSAGE);
@@ -284,7 +284,7 @@ public class ZoeosFrame extends ZJFrame {
     public void showLicenseManager() {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
-                licenseManager.show();
+                //licenseManager.show();
             }
         });
     }
@@ -292,7 +292,7 @@ public class ZoeosFrame extends ZJFrame {
     public void hideLicenseManager() {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
-                licenseManager.hide();
+//                licenseManager.hide();
             }
         });
     }
@@ -541,7 +541,7 @@ public class ZoeosFrame extends ZJFrame {
     private void createHelpMenu() {
         jmHelp = new JMenu();
 
-        jmiLicenseManager = new JMenuItem();
+//        jmiLicenseManager = new JMenuItem();
         jmiHelp = new JMenuItem();
         jmiTipOfTheDay = new JMenuItem();
         jmiProductTour = new JMenuItem();
@@ -613,15 +613,15 @@ public class ZoeosFrame extends ZJFrame {
         });
         jmHelp.add(jmiReportBug);
 
-        jmiLicenseManager.setText("Manage License Keys");
+/*        jmiLicenseManager.setText("Manage License Keys");
         jmiLicenseManager.setMnemonic(KeyEvent.VK_L);
         jmiLicenseManager.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
-                licenseManager.show();
+               // licenseManager.show();
                 //JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
             }
         });
-        jmHelp.add(jmiLicenseManager);
+        jmHelp.add(jmiLicenseManager);*/
 
         jmHelp.addSeparator();
 
