@@ -26,7 +26,7 @@ public interface IsolatedSample extends ZDisposable {
 
     public AudioFileFormat.Type getFormatType() throws IOException, UnsupportedAudioFileException;
 
-    public void assert() throws IsolatedSampleUnavailableException;
+    public void ZoeAssert() throws IsolatedSampleUnavailableException;
 
     public void setLocalFile(File f, boolean moveExisting);
 }

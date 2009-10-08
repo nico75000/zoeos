@@ -356,7 +356,7 @@ public class PackageFactory {
                     try {
                         // write it by asserting
                         z.updateProgressElementTitle(po, "Writing sample " + ZUtilities.quote(samples[i].getName()));
-                        samples[i].assert();
+                        samples[i].ZoeAssert();
                         // now make File location in IsolatedSample relative to package File (without moving the sample)
                         samples[i].setLocalFile(new File(smplDir.getName(), isFileName), false);
                     } catch (IsolatedSampleUnavailableException e) {

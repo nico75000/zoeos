@@ -965,9 +965,10 @@ class PresetObject extends Parameterized implements Nameable, ZDisposable, Isola
     }
 
     public int compareTo(Object o) {
-        if (o instanceof PresetObject)
-            return preset.compareTo(((PresetObject) o).preset);
-        return preset.compareTo(o);
+        //GJP
+//        if (o instanceof PresetObject)
+          return preset.compareTo(((PresetObject) o).preset);
+  //      return preset.compareTo(o);
     }
 }
 

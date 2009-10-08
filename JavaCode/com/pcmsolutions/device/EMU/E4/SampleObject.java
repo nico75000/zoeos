@@ -104,9 +104,10 @@ class SampleObject implements Nameable, ZDisposable, Comparable, Serializable {
     }
 
     public int compareTo(Object o) {
-        if (o instanceof SampleObject)
-            return sample.compareTo(((SampleObject) o).sample);
-        return sample.compareTo(o);
+        //GJP
+        //if (o instanceof SampleObject)
+        return sample.compareTo(((SampleObject) o).sample);
+        //return sample.compareTo(o);//
     }
 
     public void zDispose() {

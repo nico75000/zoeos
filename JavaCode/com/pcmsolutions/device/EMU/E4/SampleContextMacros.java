@@ -117,7 +117,7 @@ public class SampleContextMacros {
                             return AudioSystem.getAudioFileFormat(files[f_i]).getType();
                         }
 
-                        public void assert() throws IsolatedSampleUnavailableException {
+                        public void ZoeAssert() throws IsolatedSampleUnavailableException {
                             if (!files[f_i].exists())
                                 throw new IsolatedSampleUnavailableException("File doesn't exist");
                         }

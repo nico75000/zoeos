@@ -136,7 +136,7 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
                                     is = ips.getIsolatedSample(i);
                                 else
                                     is = ips.getIsolatedSample(i);
-                                is.assert();
+                                is.ZoeAssert();
                             } catch (IsolatedSampleUnavailableException e) {
                                 e.printStackTrace();
                             } finally {
@@ -258,7 +258,7 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
                     try {
                         IsolatedSample is;
                         is = ss.getIsolatedSample(i);
-                        is.assert();
+                        is.ZoeAssert();
                         fl.add(is.getLocalFile());
                     } catch (IsolatedSampleUnavailableException e) {
                         return null;

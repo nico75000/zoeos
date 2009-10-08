@@ -294,7 +294,7 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         }
 
         public void copySample(IsolatedSample is, Integer[] destSamples, String[] destNames) throws SampleMediator.SampleMediationException, IsolatedSampleUnavailableException {
-            is.assert();
+            is.ZoeAssert();
             for (int i = 0; i < destSamples.length; i++)
                 sendSample(destSamples[i], is.getLocalFile(), destNames[i]);
         }
