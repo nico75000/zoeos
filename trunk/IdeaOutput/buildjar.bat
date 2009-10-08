@@ -1,0 +1,1 @@
+jar cmf0 mainClass.MF zoeos.jar com zoeosFrameIcon.gif hat-icon.gif media
