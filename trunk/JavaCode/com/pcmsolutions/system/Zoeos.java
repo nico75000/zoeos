@@ -28,7 +28,6 @@ import java.util.prefs.Preferences;
 
 //import sunex.javakernel.common.SecurityPreferences;
 
-
 /**
  *
  * @author  pmeehan
@@ -65,8 +64,8 @@ public class Zoeos implements ZDisposable, TitleProvider {
     private static synchronized void setDemo(boolean isDemo) {
         if (isDemo) {
             if (demoThread == null) {
-                demoThread = new DemoThread();
-                demoThread.start();
+//                demoThread = new DemoThread();
+  //              demoThread.start();
             }
         } else {
             if (demoThread != null) {
@@ -74,13 +73,13 @@ public class Zoeos implements ZDisposable, TitleProvider {
                 demoThread = null;
             }
         }
-        Zoeos.isDemo = isDemo;
+        Zoeos.isDemo = false;
         makeVersionStr();
     }
 
-    public static boolean isDemo() {
-        return isDemo;
-    }
+//    public static boolean isDemo() {
+  //      return isDemo;
+    //}
 
     private static DemoThread demoThread;
     private static long nagInterval = 100000;//10000000;
@@ -93,7 +92,7 @@ public class Zoeos implements ZDisposable, TitleProvider {
         private volatile boolean run = true;
 
         public void run() {
-            while (run) {
+/*            while (run) {
                 double r = Math.random();
                 if (r < 0.1)
                     r = 0.1;  // not too closed to each other
@@ -112,7 +111,7 @@ public class Zoeos implements ZDisposable, TitleProvider {
                     }
                 } catch (InterruptedException e) {
                 }
-            }
+            }*/
         }
 
         public void kill() {
@@ -193,7 +192,7 @@ public class Zoeos implements ZDisposable, TitleProvider {
 
         LicenseKeyManager.addLicenseKeyListener(new LicenseKeyManager.LicenseKeyListener() {
             public void licenseKeysChanged() {
-                if (LicenseKeyManager.getLoadForType(LicenseKeyManager.zoeosProduct, LicenseKeyManager.fullType, version) == 0) {
+/*                if (LicenseKeyManager.getLoadForType(LicenseKeyManager.zoeosProduct, LicenseKeyManager.fullType, version) == 0) {
                     if (!isDemo()) {
                         setDemo(true);
                         new FlashMsg(ZoeosFrame.getInstance(), 3000, 300, FlashMsg.colorInfo, "DEMO PRODUCT ACTIVE");
@@ -203,7 +202,7 @@ public class Zoeos implements ZDisposable, TitleProvider {
                         setDemo(false);
                         new FlashMsg(ZoeosFrame.getInstance(), 3000, 300, FlashMsg.colorInfo, "FULL PRODUCT ACTIVE");
                     }
-                }
+                }*/
             }
         });
 
@@ -560,13 +559,13 @@ public class Zoeos implements ZDisposable, TitleProvider {
                             if (d != null) {
                                 ZExternalDevice dup = getDuplicate(d.getDeviceIdentityMessage());
                                 if (dup == null) {
-                                    if (!isDemo() && d instanceof LicensedEntity && !checkLicensed((LicensedEntity) d)) {
+/*                                    if (!isDemo() && d instanceof LicensedEntity && !checkLicensed((LicensedEntity) d)) {
                                         unlicensed.add(d);
                                         continue;
-                                    } else if (isDemo() && /*SecurityPreferences.expired()*/false) {
+                                    } else if (isDemo() && false) {
                                         unlicensed.add(d);
                                         continue;
-                                    }
+                                    }*/
 
                                     devices.put(d, d.getDeviceIdentityMessage());
                                     //serializeDeviceMarshalling.setSelected(sun.getBoolean(Zoeos.PREF_serializeDeviceMarshalling, true));
