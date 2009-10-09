@@ -621,7 +621,7 @@ public class ZoeosFrame extends ZJFrame {
                 //JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
             }
         });
-        jmHelp.add(jmiLicenseManager);
+//        jmHelp.add(jmiLicenseManager);
 
         jmHelp.addSeparator();
 
