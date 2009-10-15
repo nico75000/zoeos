@@ -1,9 +1,18 @@
-This can be compiled with the vcpp buildsystem from the command line using nmake
+To compile under windows make use the Makefile.vcc make file and use nmake to compile it.
 
-Set the 3 variables at the top of the make file to match your own system and type nmake
+nmake is part of visual studio. There is a free version available called Visual Studio Express.
+
+Set the 3 variables at the top of the windows make file to match your own system and type nmake
 
 You will likely have to run a batch file included with vcpp to set up your environment variables correctly.
 
 Mine is in
 
 C:\Program Files\Microsoft Visual Studio 9.0\Common7\Tools
+
+To compile on linux or mac use the Makefile.linux. In the make file Modify CPPFLAGS to match your java installation and
+in SMDIAgent.c comment out #define _windows_.
+
+Type make -f Makefile.linux to build the shared library
+
+
