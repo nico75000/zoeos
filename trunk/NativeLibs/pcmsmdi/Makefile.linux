@@ -1,0 +1,20 @@
+CPPFLAGS=-I../OpenSMDI -I/usr/local/jdk1.6.0_13/include/ -I/usr/local/jdk1.6.0_13/include/linux -fPIC -Wall -c
+LINKER=-shared -Wl,-soname,pcmsmdi.so 
+
+CC=gcc
+
+ifeq ($(CFG),)
+CFG=debug
+endif
+
+ifeq ($(CFG),debug)
+DEBUG=-g3 -ggdb -fno-inline
+else
+OPT= -O3
+endif
+
+pcmsmdi.so: pcmsmdi.o
+	$(CC) $(DEBUG) $(LINKER) SMDIAgent.o -o pcmsmdi.so
+
+pcmsmdi.o:
+	$(CC) $(DEBUG) $(CPPFLAGS) SMDIAgent.c 
