@@ -1,10 +1,16 @@
-#include "windows.h"
+// #define _windows_
+
+#ifdef _windows_
+include "windows.h"
+#endif
+
 #include "com_pcmsolutions_smdi_SMDIAgent.h"
 #include "stdio.h"
 #include "smdidynamic.h"
 
-HINSTANCE hSmdiDll;
 BOOL SMDI_Initialized = FALSE;
+#ifdef _windows_
+HINSTANCE hSmdiDll;
 
 BOOL WINAPI DllMain(HANDLE hModule, 
                       DWORD  ul_reason_for_call, 
@@ -56,8 +62,6 @@ BOOL WINAPI DllMain(HANDLE hModule,
     return TRUE;
 }
 
-
-/*
 (unsigned long (*SMDI_GetVersion) (void))
 (unsigned char (* SMDI_Init) (void))
 (void (*SMDI_GetDeviceInfo) ( unsigned char, unsigned char, SCSI_DevInfo* ))
@@ -81,8 +85,8 @@ BOOL WINAPI DllMain(HANDLE hModule,
 (unsigned long (*SMDI_SendFile) ( SMDI_FileTransfer * ))
 (unsigned long (*SMDI_ReceiveFile) ( SMDI_FileTransfer * ))
 (unsigned long (*SMDI_MasterIdentify) ( unsigned char, unsigned char ))
-*/
 
+#endif
 
 JNIEXPORT jint JNICALL Java_com_pcmsolutions_smdi_SMDIAgent_smdiGetVersion
   (JNIEnv * env, jobject obj)
