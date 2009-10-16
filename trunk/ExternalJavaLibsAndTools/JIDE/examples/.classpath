@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+    <classpathentry kind="src" path="B1. Layouts"/>
+    <classpathentry kind="src" path="B2. IconsFactory"/>
+    <classpathentry kind="src" path="B3. Borders"/>
+    <classpathentry kind="src" path="B4. JideButton"/>
+    <classpathentry kind="src" path="B5. JideSplitPane"/>
+    <classpathentry kind="src" path="B6. JideTabbedPane"/>
+    <classpathentry kind="src" path="C1. DocumentPane"/>
+    <classpathentry kind="src" path="C2. StatusBar"/>
+    <classpathentry kind="src" path="C3. CollapsiblePane"/>
+    <classpathentry kind="src" path="C4. FloorTabbedPane"/>
+    <classpathentry kind="src" path="D1. DockingFramework"/>
+    <classpathentry kind="src" path="G1. PropertyPane"/>
+    <classpathentry kind="src" path="G2. SortableTable"/>
+    <classpathentry kind="src" path="G3. ComboBoxes"/>
+    <classpathentry kind="src" path="G4. DateComboBoxes"/>
+    <classpathentry kind="src" path="G5. ColorComboBoxes"/>
+    <classpathentry kind="src" path="W1. Wizard"/>
+    <classpathentry kind="src" path="W2. OptionsDialog"/>
+    <classpathentry kind="src" path="W3. TipsOfTheDay"/>
+    <classpathentry kind="src" path="W4. ButtonPanel"/>
+    <classpathentry kind="src" path="W5. BannerPanel"/>
+    <classpathentry kind="lib" path="/lib/jide-components.jar"/>
+    <classpathentry kind="lib" path="/lib/jide-dock.jar"/>
+    <classpathentry kind="lib" path="/lib/jide-grids.jar"/>
+    <classpathentry kind="lib" path="/lib/jide-dialogs.jar"/>
+    <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+    <classpathentry kind="lib" path="C:/Code/Dock/lib/jide-common.jar"/>
+    <classpathentry kind="output" path="classes"/>
+</classpath>
