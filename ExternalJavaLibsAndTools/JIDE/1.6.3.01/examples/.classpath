@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="A1. SampleWord"/>
+	<classpathentry kind="src" path="A2. SampleVsnet"/>
+	<classpathentry kind="src" path="A3. SwingSet2"/>
+	<classpathentry kind="src" path="B1. Layouts"/>
+	<classpathentry kind="src" path="B2. IconsFactory"/>
+	<classpathentry kind="src" path="B3. Borders"/>
+	<classpathentry kind="src" path="B4. JideButton"/>
+	<classpathentry kind="src" path="B5. JideSplitPane"/>
+	<classpathentry kind="src" path="B6. JideTabbedPane"/>
+	<classpathentry kind="src" path="B7. SearchableComponents"/>
+	<classpathentry kind="src" path="C1. DocumentPane"/>
+	<classpathentry kind="src" path="C2. StatusBar"/>
+	<classpathentry kind="src" path="C3. CollapsiblePane"/>
+	<classpathentry kind="src" path="C4. FloorTabbedPane"/>
+	<classpathentry kind="src" path="C5. FastGradientPaint"/>
+	<classpathentry kind="src" path="D1. DockingFramework"/>
+	<classpathentry kind="src" path="D2. TwoDockingFramework"/>
+	<classpathentry kind="src" path="G1. PropertyPane"/>
+	<classpathentry kind="src" path="G2. SortableTable"/>
+	<classpathentry kind="src" path="G3. LargeSortableTable"/>
+	<classpathentry kind="src" path="G4. ComboBoxes"/>
+	<classpathentry kind="src" path="G5. DateComboBoxes"/>
+	<classpathentry kind="src" path="G6. ColorComboBoxes"/>
+	<classpathentry kind="src" path="G7. FilterableTable"/>
+	<classpathentry kind="src" path="G8. HierarchicalTable"/>
+	<classpathentry kind="src" path="W1. Wizard"/>
+	<classpathentry kind="src" path="W2. OptionsDialog"/>
+	<classpathentry kind="src" path="W3. TipsOfTheDay"/>
+	<classpathentry kind="src" path="W4. ButtonPanel"/>
+	<classpathentry kind="src" path="W5. BannerPanel"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="A3. SwingSet2/SwingSet2.jar"/>
+	<classpathentry kind="lib" path="lib/jide-action.jar"/>
+	<classpathentry kind="lib" path="lib/jide-common.jar"/>
+	<classpathentry kind="lib" path="lib/jide-components.jar"/>
+	<classpathentry kind="lib" path="lib/jide-dialogs.jar"/>
+	<classpathentry kind="lib" path="lib/jide-dock.jar"/>
+	<classpathentry kind="lib" path="lib/jide-grids.jar"/>
+	<classpathentry kind="output" path="classes"/>
+</classpath>
