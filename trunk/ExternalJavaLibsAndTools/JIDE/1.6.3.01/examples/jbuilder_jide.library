@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<library>
+  <!--JBuilder Library Definition File-->
+  <fullname>JIDE</fullname>
+  <class>
+    <path>[lib/jide-common.jar]</path>
+    <path>[lib/jide-components.jar]</path>
+    <path>[lib/jide-dialogs.jar]</path>
+    <path>[lib/jide-dock.jar]</path>
+    <path>[lib/jide-grids.jar]</path>
+    <path>[lib/jide-action.jar]</path>
+  </class>
+  <lastmodsaved>1070135214079</lastmodsaved>
+</library>

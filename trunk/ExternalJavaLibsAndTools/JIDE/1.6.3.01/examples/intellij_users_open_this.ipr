@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="3" relativePaths="false">
+  <component name="ProjectRootManager" version="2">
+    <jdk name="java version &quot;1.4.2_03&quot;" />
+    <projectPath>
+      <root type="composite">
+        <root type="simple" url="file://$PROJECT_DIR$" />
+      </root>
+    </projectPath>
+    <sourcePath>
+      <root type="composite">
+        <root type="jdk" rootType="sourcePath" name="java version &quot;1.4.2_03&quot;" />
+        <root type="simple" url="file://$PROJECT_DIR$/A1. SampleWord" />
+        <root type="simple" url="file://$PROJECT_DIR$/A2. SampleVsnet" />
+        <root type="simple" url="file://$PROJECT_DIR$/A3. SwingSet2" />
+        <root type="simple" url="file://$PROJECT_DIR$/B1. Layouts" />
+        <root type="simple" url="file://$PROJECT_DIR$/B2. IconsFactory" />
+        <root type="simple" url="file://$PROJECT_DIR$/B3. Borders" />
+        <root type="simple" url="file://$PROJECT_DIR$/B4. JideButton" />
+        <root type="simple" url="file://$PROJECT_DIR$/B5. JideSplitPane" />
+        <root type="simple" url="file://$PROJECT_DIR$/B6. JideTabbedPane" />
+        <root type="simple" url="file://$PROJECT_DIR$/B7. SearchableComponents" />
+        <root type="simple" url="file://$PROJECT_DIR$/C1. DocumentPane" />
+        <root type="simple" url="file://$PROJECT_DIR$/C2. StatusBar" />
+        <root type="simple" url="file://$PROJECT_DIR$/C3. CollapsiblePane" />
+        <root type="simple" url="file://$PROJECT_DIR$/C4. FloorTabbedPane" />
+        <root type="simple" url="file://$PROJECT_DIR$/C5. FastGradientPaint" />
+        <root type="simple" url="file://$PROJECT_DIR$/D1. DockingFramework" />
+        <root type="simple" url="file://$PROJECT_DIR$/D2. TwoDockingFramework" />
+        <root type="simple" url="file://$PROJECT_DIR$/G1. PropertyPane" />
+        <root type="simple" url="file://$PROJECT_DIR$/G2. SortableTable" />
+        <root type="simple" url="file://$PROJECT_DIR$/G3. LargeSortabletable" />
+        <root type="simple" url="file://$PROJECT_DIR$/G4. ComboBoxes" />
+        <root type="simple" url="file://$PROJECT_DIR$/G5. DateComboBoxes" />
+        <root type="simple" url="file://$PROJECT_DIR$/G6. ColorComboBoxes" />
+        <root type="simple" url="file://$PROJECT_DIR$/G7. FilterableTable" />
+        <root type="simple" url="file://$PROJECT_DIR$/G8. HierarchicalTable" />
+        <root type="simple" url="file://$PROJECT_DIR$/W1. Wizard" />
+        <root type="simple" url="file://$PROJECT_DIR$/W2. OptionsDialog" />
+        <root type="simple" url="file://$PROJECT_DIR$/W3. TipsOfTheDay" />
+        <root type="simple" url="file://$PROJECT_DIR$/W4. ButtonPanel" />
+        <root type="simple" url="file://$PROJECT_DIR$/W5. BannerPanel" />
+      </root>
+    </sourcePath>
+    <classPath>
+      <root type="composite">
+        <root type="output" />
+        <root type="jdk" rootType="classPath" name="java version &quot;1.4.2_03&quot;" />
+        <root type="simple" url="jar://$PROJECT_DIR$/lib/jide-common.jar!/" />
+        <root type="simple" url="jar://$PROJECT_DIR$/lib/jide-action.jar!/" />
+        <root type="simple" url="jar://$PROJECT_DIR$/lib/jide-grids.jar!/" />
+        <root type="simple" url="jar://$PROJECT_DIR$/lib/jide-dock.jar!/" />
+        <root type="simple" url="jar://$PROJECT_DIR$/lib/jide-dialogs.jar!/" />
+        <root type="simple" url="jar://$PROJECT_DIR$/lib/jide-components.jar!/" />
+      </root>
+    </classPath>
+    <excludePath>
+      <root type="composite">
+        <root type="excludedOutput" />
+      </root>
+    </excludePath>
+    <javadocPath>
+      <root type="composite">
+        <root type="jdk" rootType="javadocPath" name="java version &quot;1.4.2_03&quot;" />
+      </root>
+    </javadocPath>
+    <assert_keyword enabled="no" />
+    <exclude_output enabled="yes" />
+  </component>
+  <component name="CompilerConfiguration">
+    <option name="DEFAULT_COMPILER" value="Javac" />
+    <option name="SYNCHRONIZE_OUTPUT_DIRECTORY" value="false" />
+    <option name="DEFAULT_OUTPUT_PATH" value="$PROJECT_DIR$/classes" />
+    <option name="OUTPUT_MODE" value="single" />
+    <resourceExtensions>
+      <entry name=".+\.(properties|xml|html)" />
+      <entry name=".+\.(gif|png|jpeg|jpg)" />
+    </resourceExtensions>
+  </component>
+  <component name="JavacSettings">
+    <option name="DEBUGGING_INFO" value="true" />
+    <option name="GENERATE_NO_WARNINGS" value="false" />
+    <option name="DEPRECATION" value="true" />
+    <option name="ADDITIONAL_OPTIONS_STRING" value="" />
+    <option name="MAXIMUM_HEAP_SIZE" value="128" />
+  </component>
+  <component name="JikesSettings">
+    <option name="JIKES_PATH" value="" />
+    <option name="DEBUGGING_INFO" value="true" />
+    <option name="DEPRECATION" value="true" />
+    <option name="GENERATE_NO_WARNINGS" value="false" />
+    <option name="GENERATE_MAKE_FILE_DEPENDENCIES" value="false" />
+    <option name="DO_FULL_DEPENDENCE_CHECK" value="false" />
+    <option name="IS_EMACS_ERRORS_MODE" value="true" />
+    <option name="ADDITIONAL_OPTIONS_STRING" value="" />
+  </component>
+  <component name="AntConfiguration">
+    <option name="IS_AUTOSCROLL_TO_SOURCE" value="false" />
+    <option name="FILTER_TARGETS" value="false" />
+  </component>
+  <component name="JavadocGenerationManager">
+    <option name="OUTPUT_DIRECTORY" />
+    <option name="OPTION_SCOPE" value="protected" />
+    <option name="OPTION_HIERARCHY" value="true" />
+    <option name="OPTION_NAVIGATOR" value="true" />
+    <option name="OPTION_INDEX" value="true" />
+    <option name="OPTION_SEPARATE_INDEX" value="true" />
+    <option name="OPTION_DOCUMENT_TAG_USE" value="false" />
+    <option name="OPTION_DOCUMENT_TAG_AUTHOR" value="false" />
+    <option name="OPTION_DOCUMENT_TAG_VERSION" value="false" />
+    <option name="OPTION_DOCUMENT_TAG_DEPRECATED" value="true" />
+    <option name="OPTION_DEPRECATED_LIST" value="true" />
+    <option name="OTHER_OPTIONS" value="" />
+    <option name="HEAP_SIZE" />
+    <option name="OPEN_IN_BROWSER" value="true" />
+  </component>
+  <component name="WebManager">
+    <option enabled="false" />
+  </component>
+  <component name="WebRootContainer" />
+  <component name="EjbManager" enabled="false" />
+  <component name="JUnitProjectSettings">
+    <option name="TEST_RUNNER" value="UI" />
+  </component>
+  <component name="EntryPointsManager">
+    <entry_points />
+  </component>
+  <component name="EjbActionsConfiguration">
+    <option name="NEW_MESSAGE_BEAN_LAST_PACKAGE" value="" />
+    <option name="NEW_ENTITY_BEAN_LAST_PACKAGE" value="" />
+    <option name="NEW_SESSION_BEAN_LAST_PACKAGE" value="" />
+  </component>
+  <component name="CodeStyleManager">
+    <option name="USE_DEFAULT_CODE_STYLE_SCHEME" value="true" />
+    <option name="CODE_STYLE_SCHEME" value="" />
+  </component>
+  <component name="ExportToHTMLSettings">
+    <option name="PRINT_LINE_NUMBERS" value="false" />
+    <option name="OPEN_IN_BROWSER" value="false" />
+    <option name="OUTPUT_DIRECTORY" />
+  </component>
+  <component name="simpleUML.UMLToolWindowPlugin">
+    <General>
+      <option name="birdViewUpdateDelay" value="2000" />
+      <option name="defaultFileLocation" value="file://$APPLICATION_HOME_DIR$/bin" />
+    </General>
+    <Classdiagram>
+      <option name="diagramTitleFont" value="SansSerif,1,12" />
+      <option name="diagramFont" value="SansSerif,0,10" />
+      <option name="defaultFieldsExpanded" value="false" />
+      <option name="defaultContructorsExpanded" value="false" />
+      <option name="defaultMethodsExpanded" value="false" />
+      <option name="showParameters" value="true" />
+      <option name="showTooltip" value="true" />
+      <option name="showReturnValues" value="true" />
+      <option name="longModifier" value="true" />
+      <option name="implementsBehaviour" value="1" />
+      <option name="extendsBehaviour" value="1" />
+      <option name="compartmentBehaviour" value="1" />
+      <option name="interfaceBackgroundColor" value="-6494306" />
+      <option name="abstractClassBackgroundColor" value="-1580132" />
+      <option name="classBackgroundColor" value="-6508057" />
+      <option name="diagramBackgroundColor" value="-986896" />
+      <option name="useAntialiasedConnectors" value="true" />
+      <option name="quickSourceLinkColor" value="-16776961" />
+      <option name="quickDiagramLinkColor" value="-8454144" />
+      <option name="drawDecorations" value="false" />
+      <option name="hideFieldList" value="" />
+      <option name="showFieldList" value="" />
+      <option name="hideConstructorList" value="" />
+      <option name="showConstructorList" value="" />
+      <option name="hideMethodList" value="" />
+      <option name="showMethodList" value="" />
+      <option name="minimumFigureSize" value="0,0" />
+    </Classdiagram>
+  </component>
+</project>
+
