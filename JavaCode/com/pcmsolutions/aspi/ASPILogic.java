@@ -1,6 +1,6 @@
 package com.pcmsolutions.aspi;
 
-import com.excelsior.xFunction.IllegalStructureException;
+// import com.excelsior.xFunction.IllegalStructureException;
 import com.pcmsolutions.system.ZUtilities;
 
 /**
@@ -32,11 +32,7 @@ public class ASPILogic {
             exec.init((char) haid, abortSRB);
             if (exec.execute().getReturnValue() != ASPI.SS_COMP)
                 throw new ASPILogicException("command failed");
-        } catch (ASPIMsg.ASPIUnavailableException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (ASPIMsg.ASPIWrapperException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (IllegalStructureException e) {
+        } catch (Exception e) {
             throw new ASPILogicException(e.getMessage());
         }
     }
@@ -48,9 +44,7 @@ public class ASPILogic {
             Result r = exec.execute();
             if (r.getReturnValue() != ASPI.SS_COMP)
                 throw new CommandFailedException("ASPI Error", r.getReturnValue());
-        } catch (ASPIMsg.ASPIUnavailableException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (ASPIMsg.ASPIWrapperException e) {
+        } catch (Exception e) {
             throw new ASPILogicException(e.getMessage());
         }
     }
@@ -106,9 +100,7 @@ public class ASPILogic {
             else {
                 throw new CommandFailedException("ASPI Error", r.getReturnValue());
             }
-        } catch (ASPIMsg.ASPIUnavailableException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (ASPIMsg.ASPIWrapperException e) {
+        } catch (Exception e) {
             throw new ASPILogicException(e.getMessage());
         }
     }
@@ -158,9 +150,7 @@ public class ASPILogic {
                     return "Identifier = " + getAdapterIdentifier() + ", Manager ID = " + getAdapterManagerIdentifier() + ", SCSI ID = " + getAdapterSCSIId() + ", Adapter Count = " + getAdapterCount();
                 }
             };
-        } catch (ASPIMsg.ASPIUnavailableException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (ASPIMsg.ASPIWrapperException e) {
+        } catch (Exception e) {
             throw new ASPILogicException(e.getMessage());
         }
     }
