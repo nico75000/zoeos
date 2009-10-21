@@ -1,6 +1,12 @@
 package com.pcmsolutions.aspi;
 
-import com.excelsior.xFunction.*;
+import com.sun.jna.Library;
+import com.sun.jna.Native;
+import com.sun.jna.Platform;
+import com.sun.jna.Structure;
+import com.sun.jna.Pointer;
+
+//import com.excelsior.xFunction.*;
 import com.pcmsolutions.system.ZUtilities;
 
 /**
@@ -12,18 +18,13 @@ import com.pcmsolutions.system.ZUtilities;
  */
 public class ASPIMsg {
     public static Exception lastCriticalASPIException = null;
-
+/*
     public static xFunction aspiSend = null;
 
     static {
         try {
             aspiSend = new xFunction("wnaspi32", "int SendASPI32Command(int*)");
-            //com.pcmsolutions.aspi.VoidStruct*
-        } catch (LibraryNotFoundException e) {
-            e.printStackTrace();
-        } catch (FunctionNotFoundException e) {
-            e.printStackTrace();
-        } catch (IllegalSignatureException e) {
+^        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -33,15 +34,11 @@ public class ASPIMsg {
     static {
         try {
             aspiGetSupportInfo = new xFunction("wnaspi32", "int GetASPI32SupportInfo()");
-        } catch (LibraryNotFoundException e) {
-            e.printStackTrace();
-        } catch (FunctionNotFoundException e) {
-            e.printStackTrace();
-        } catch (IllegalSignatureException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
-
+*/
     public static class ASPIUnavailableException extends Exception {
         public ASPIUnavailableException(String message) {
             super(message);
@@ -87,37 +84,33 @@ public class ASPIMsg {
             this.srb_flags = srb_flags;
         }
 
-        public String defineLayout() {
-            return "char srb_cmd, char srb_status, char srb_haid, char srb_flags, int srb_hdr_rsvd";
+        public interface AspiLibrary extends Library {
+
+            AspiLibrary INSTANCE = (AspiLibrary)
+                Native.loadLibrary((Platform.isWindows() ? "msvcrt" : "TODO"),
+                                   AspiLibrary.class);
+
+            int SendASPI32Command(SRB srbStruct);
+            int GetASPI32SupportInfo();
         }
 
-        public Result execute() throws ASPIUnavailableException, ASPIWrapperException {
-            if (aspiSend == null)
-                throw new ASPIUnavailableException((lastCriticalASPIException == null ? "unknown problem" : lastCriticalASPIException.getMessage()));
-            try {
-                final Pointer p = Pointer.createPointerTo(this).cast("int*");
-                final int rv = ((Integer) aspiSend.invoke(p)).intValue();
-                final SRB f_srb = (SRB) p.cast(this.getClass().getName() + "*").deref();
-                return new Result() {
-                    public int getReturnValue() {
-                        return rv;
-                    }
+        public Result execute()  {
+/*           final Pointer p = Pointer.createPointerTo(this).cast("int*");
+            final int rv = ((Integer) aspiSend.invoke(p)).intValue();
+            final SRB f_srb = (SRB) p.cast(this.getClass().getName() + "*").deref();*/
 
-                    public SRB getReturnedStruct() {
-                        return f_srb;
-                    }
-                };
-            } catch (WrongArgumentNumberException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IncompatibleArgumentTypeException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IllegalStructureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IllegalSignatureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (NullDereferenceException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            }
+            final int rv = AspiLibrary.INSTANCE.SendASPI32Command(this);
+            final SRB f_srb = (SRB) this;
+                    
+            return new Result() {
+                public int getReturnValue() {
+                    return rv;
+                }
+
+                public SRB getReturnedStruct() {
+                    return f_srb;
+                }
+            };
         }
     }
 
@@ -156,10 +149,6 @@ public class ASPIMsg {
         void init(char haid) {
             super.init(ASPI.SC_HA_INQUIRY, haid);
         }
-
-        public String defineLayout() {
-            return super.defineLayout() + ",char srb_ha_count, char srb_ha_scsi_id, char[16] srb_ha_managerid, char[16] srb_ha_identifier, char[16] srb_ha_unique, short srb_ha_rsvd1";
-        }
     }
 
 
@@ -176,6 +165,7 @@ public class ASPIMsg {
     */
 
     public static class SRB_RescanPort extends SRB {
+        
         SRB_RescanPort() {
         }
 
@@ -219,10 +209,6 @@ public class ASPIMsg {
             super.init(ASPI.SC_GET_DEV_TYPE, haid);
             srb_target = target;
             srb_lun = lun;
-        }
-
-        public String defineLayout() {
-            return super.defineLayout() + ", char srb_target, char srb_lun, char srb_devicetype, char srb_ha_rsvd1";
         }
     }
 
@@ -280,10 +266,6 @@ public class ASPIMsg {
         private char[] cdbbyte;
         private char[] sensearea = new char[ASPI.SENSE_LEN + 2];
 
-        public String defineLayout() {
-            return super.defineLayout() + ", char srb_target, char srb_lun, short srb_rsvd1, int srb_buflen, char* srb_bufpointer, char srb_senselen,char srb_cdblen, char srb_hastat, char srb_targstat, com.pcmsolutions.aspi.ASPICallback srb_postproc, com.pcmsolutions.aspi.ASPICallback srb_rsvd2, char[16] srb_rsvd3, char[" + CDB_LEN + "] cdbbyte, char[" + (ASPI.SENSE_LEN + 2) + "] sensearea";
-        }
-
         protected void finalize() {
             srb_postproc.free();
         }
@@ -307,12 +289,8 @@ public class ASPIMsg {
             srb_lun = lun;
             try {
                 srb_bufpointer = (Pointer) Argument.create("char*", buf);
-            } catch (IllegalSignatureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (TypesDifferentException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IllegalStringConversionException e) {
-                throw new ASPIWrapperException(e.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
             }
             srb_buflen = buf.length;
             if (cdb.length > CDB_LEN)
@@ -364,16 +342,8 @@ public class ASPIMsg {
                     }
                 };
 
-            } catch (IllegalStructureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IllegalSignatureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (WrongArgumentNumberException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IncompatibleArgumentTypeException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (NullDereferenceException e) {
-                throw new ASPIWrapperException(e.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
     }
@@ -404,10 +374,6 @@ public class ASPIMsg {
         void init(char haid, SRB toAbort) throws IllegalStructureException {
             super.init(ASPI.SC_ABORT_SRB, haid);
             srb_toabort = Pointer.createPointerTo(toAbort);
-        }
-
-        public String defineLayout() {
-            return super.defineLayout() + ", char* srb_toabort";
         }
     }
 //***************************************************************************
@@ -466,10 +432,6 @@ public class ASPIMsg {
             srb_lun = lun;
         }
 
-        public String defineLayout() {
-            return super.defineLayout() + ", char srb_target, char srb_lun, char[12] srb_rsvd1, char srb_hastat, char srb_targstat, BusDeviceResetCallback* srb_postproc, ReservedCallback* srb_rsvd2, char[16] srb_rsvd3, char[16] cdbbyte ";
-        }
-
         public Result execute() throws ASPIUnavailableException, ASPIWrapperException {
             srb_postproc.reset();
             Pointer p;
@@ -500,16 +462,8 @@ public class ASPIMsg {
                     }
                 };
 
-            } catch (IllegalStructureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IllegalSignatureException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (WrongArgumentNumberException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IncompatibleArgumentTypeException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (NullDereferenceException e) {
-                throw new ASPIWrapperException(e.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
     }
@@ -558,10 +512,6 @@ public class ASPIMsg {
             srb_target = target;
             srb_lun = lun;
         }
-
-        public String defineLayout() {
-            return super.defineLayout() + ", char srb_target,char srb_lun, char srb_driveflags, char srb_int13hdriveinfo, char srb_heads, char srb_sectors, char[10] srb_rsvd1 ";
-        }
     }
 
     public static final void main(String[] args) {
@@ -570,9 +520,7 @@ public class ASPIMsg {
         try {
             rv = ((Integer) aspiGetSupportInfo.invoke()).intValue();
             adapters = ZUtilities.lobyte(ZUtilities.loword(rv));
-        } catch (WrongArgumentNumberException e) {
-            e.printStackTrace();
-        } catch (IncompatibleArgumentTypeException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
