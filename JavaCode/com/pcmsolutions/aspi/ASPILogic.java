@@ -79,9 +79,7 @@ public class ASPILogic {
                 throw new CommandFailedException("ASPI Error", st);
             }
             return ((ASPIMsg.SRB_ExecSCSICmd) r.getReturnedStruct()).getBuffer();
-        } catch (ASPIMsg.ASPIWrapperException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (ASPIMsg.ASPIUnavailableException e) {
+        } catch (Exception e) {
             throw new ASPILogicException(e.getMessage());
         }
     }
@@ -166,11 +164,10 @@ public class ASPILogic {
             int rv = r.getReturnedStruct().srb_status;
             if (rv != ASPI.SS_COMP)
                 throw new CommandFailedException("ASPI Error", rv);
-        } catch (ASPIMsg.ASPIUnavailableException e) {
-            throw new ASPILogicException(e.getMessage());
-        } catch (ASPIMsg.ASPIWrapperException e) {
+        } catch (Exception e) {
             throw new ASPILogicException(e.getMessage());
         }
+        
         if ((buf[0] & 0x3f) == 0)
             return true;
         return false;
