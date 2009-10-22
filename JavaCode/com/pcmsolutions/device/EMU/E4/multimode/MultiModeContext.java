@@ -1,5 +1,10 @@
 package com.pcmsolutions.device.EMU.E4.multimode;
 
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.RemoteUnreachableException;
+import com.pcmsolutions.system.tasking.Ticket;
+
+import javax.sound.midi.MidiMessage;
 import java.io.Serializable;
 
 
@@ -10,12 +15,16 @@ import java.io.Serializable;
  * Time: 15:33:53
  * To change this template use Options | File Templates.
  */
-public interface MultiModeContext extends Serializable{
-    public MultiModeMap getMultimodeMap();
+public interface MultiModeContext extends Serializable {
+    public Ticket audition(int ch);
 
-    public MultiModeChannel getMultiModeChannel(Integer channel) throws IllegalMidiChannelException;
+    public MultiModeMap getMultimodeMap() throws DeviceException;
 
-    public void setMultimodeMap(MultiModeMap mmMap);
+    public MultiModeChannel getMultiModeChannel(Integer channel) throws DeviceException;
+
+    public Ticket setMultimodeMap(MultiModeMap mmMap);
+
+    public Integer[] getDistinctMultimodePresetIndexes() throws DeviceException;
 
     public void addMultiModeListener(MultiModeListener mml);
 
@@ -25,21 +34,43 @@ public interface MultiModeContext extends Serializable{
 
     public boolean has32Channels();
 
-    public Integer getPreset(Integer ch) throws IllegalMidiChannelException;
+    public Integer getPreset(Integer ch) throws DeviceException;
 
-    public Integer getVolume(Integer ch) throws IllegalMidiChannelException;
+    public Integer getVolume(Integer ch) throws DeviceException, DeviceException;
 
-    public Integer getPan(Integer ch) throws IllegalMidiChannelException;
+    public Integer getPan(Integer ch) throws DeviceException;
 
-    public Integer getSubmix(Integer ch) throws IllegalMidiChannelException;
+    public Integer getSubmix(Integer ch) throws DeviceException;
 
-    public void setPreset(Integer ch, Integer preset) throws IllegalMidiChannelException;
+    public Ticket setPreset(Integer ch, Integer preset);
 
-    public void setVolume(Integer ch, Integer volume) throws IllegalMidiChannelException;
+    public Ticket setVolume(Integer ch, Integer volume);
 
-    public void setPan(Integer ch, Integer pan) throws IllegalMidiChannelException;
+    public Ticket setPan(Integer ch, Integer pan);
 
-    public void setSubmix(Integer ch, Integer submix) throws IllegalMidiChannelException;
+    public Ticket setSubmix(Integer ch, Integer submix);
 
-    public void refresh();
+    public Ticket offsetPreset(Integer ch, Integer offset);
+
+    public Ticket offsetVolume(Integer ch, Integer offset);
+
+    public Ticket offsetPan(Integer ch, Integer offset) ;
+
+    public Ticket offsetSubmix(Integer ch, Integer offset) ;
+
+    public Ticket offsetPreset(Integer ch, Double offsetAsFOR) ;
+
+    public Ticket offsetVolume(Integer ch, Double offsetAsFOR) ;
+
+    public Ticket offsetPan(Integer ch, Double offsetAsFOR) ;
+
+    public Ticket offsetSubmix(Integer ch, Double offsetAsFOR) ;
+
+    public void sendMidiMessage(MidiMessage m) throws RemoteUnreachableException, DeviceException;
+
+    public Ticket refresh();
+
+    public void syncRefresh() throws DeviceException;
+    
+    public void syncToEdits();
 }

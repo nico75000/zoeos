@@ -8,5 +8,6 @@ public interface FilterParameterDescriptor extends GeneralParameterDescriptor {
     public boolean isCurrentlyActive();
 
     public FilterParameterDescriptor duplicate();
+
 }
 

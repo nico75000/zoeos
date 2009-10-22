@@ -35,8 +35,10 @@ public class Impl_ProgressMultiBox implements ProgressMultiBox {
         progressDialog = new ZDialog(frame, title, false);
         progressDialog.setResizable(false);
         progressDialog.setLocationRelativeTo(relativeTo);
-        progressDialog.getContentPane().setLayout(new BoxLayout(progressDialog.getContentPane(), BoxLayout.Y_AXIS));
-        dlgContents = progressDialog.getContentPane();
+        progressDialog.getContentPane().setLayout(new BorderLayout());
+        dlgContents = new Box(BoxLayout.Y_AXIS);
+       // JScrollPane sp = new JScrollPane(dlgContents);
+        progressDialog.getContentPane().add(dlgContents, BorderLayout.CENTER);
         ZUtilities.applyHideButton(progressDialog, false, false);
         this.ownerFrame = frame;
     }
@@ -242,63 +244,5 @@ public class Impl_ProgressMultiBox implements ProgressMultiBox {
 
     public boolean getShowable() {
         return isShowable;
-    }
-
-    protected class ProgressElement extends Box {
-        String title;
-        JProgressBar bar = new JProgressBar();
-        JLabel label = new JLabel();
-        JProgressBar b;
-        Dimension initialLabelSize;
-
-        private ProgressElement(String title, int maximum) {
-            super(BoxLayout.X_AXIS);
-            this.setAlignmentX(Component.RIGHT_ALIGNMENT);
-            // bar.setAlignmentX(Component.RIGHT_ALIGNMENT);
-            //label.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-            this.title = title;
-            bar.setMaximum(maximum);
-            Dimension barDimension = new Dimension(150, 20);
-            bar.setMaximumSize(barDimension);
-            bar.setPreferredSize(barDimension);
-            bar.setMinimumSize(barDimension);
-            //bar.setAlignmentX(Component.RIGHT_ALIGNMENT);
-
-            label.setText(title);
-            //label.setAlignmentX(Component.LEFT_ALIGNMENT);
-            //label.setHorizontalAlignment(JLabel.LEFT);
-            initialLabelSize = label.getPreferredSize();
-            label.setMaximumSize(initialLabelSize);
-            add(label);
-            add(bar);
-
-        }
-
-        protected void maxBar() {
-            bar.setValue(bar.getMaximum());
-        }
-
-        protected void setMaximum(int max) {
-            bar.setMaximum(max);
-        }
-
-        protected void updateBar(final int status) {
-            bar.setValue(status);
-        }
-
-        protected void updateTitle(final String title) {
-            label.setText(title);
-            label.setPreferredSize(initialLabelSize);
-        }
-
-
-        protected void setIndeterminate(boolean b) {
-            bar.setIndeterminate(b);
-        }
-
-        protected void updateBar() {
-            bar.setValue(bar.getValue() + 1);
-        }
     }
 }

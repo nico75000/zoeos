@@ -1,18 +1,18 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
 import com.pcmsolutions.device.EMU.E4.gui.parameter2.ParameterModelTableCellEditor;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.LinkTable;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.LinkTableTransferHandler;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
-import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.device.EMU.E4.selections.DataFlavorGrid;
 import com.pcmsolutions.device.EMU.E4.selections.LinkParameterSelection;
 import com.pcmsolutions.device.EMU.E4.selections.LinkParameterSelectionCollection;
 import com.pcmsolutions.device.EMU.E4.selections.LinkSelection;
-import com.pcmsolutions.gui.ZoeosFrame;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
@@ -25,8 +25,8 @@ public class EditableLinkTable extends LinkTable implements ZDisposable {
 
     public static final EditableLinkTableTransferHandler editableLinkTableTransferHandler = new EditableLinkTableTransferHandler();
 
-    public EditableLinkTable(ContextEditablePreset p) throws ZDeviceNotRunningException {
-        super(new EditableLinkTableModel(p, p.getDeviceContext().getDeviceParameterContext()));
+    public EditableLinkTable(ContextEditablePreset p, int mode) throws DeviceException {
+        super(new EditableLinkTableModel(p, p.getDeviceContext().getDeviceParameterContext(), mode));
         this.setTransferHandler(editableLinkTableTransferHandler);
         setDropChecker(new DropChecker() {
             public boolean isCellDropTarget(int dropRow, int dropCol, int row, int col, Object value) {
@@ -53,12 +53,26 @@ public class EditableLinkTable extends LinkTable implements ZDisposable {
     }
 
     public void setSelection(LinkParameterSelectionCollection lpsc) {
-        int selRow = getSelectedRow();
-        LinkParameterSelection[] data = lpsc.getSelections();
-        for (int i = 0,j = data.length; i < j; i++) {
-            if (data[i] != null && (selRow + i < getRowCount()))
-                data[i].render(((ContextEditablePreset.EditableLink) getModel().getValueAt(selRow + i, 0)));
+        final int selRow = getSelectedRow();
+        final int rc = getRowCount();
+        final LinkParameterSelection[] data = lpsc.getSelections();
+        final ContextEditablePreset.EditableLink[] links = new ContextEditablePreset.EditableLink[data.length];
+        for (int i = 0, j = data.length; i < j; i++) {
+            if (data[i] != null && (selRow + i < rc))
+                links[i] = (ContextEditablePreset.EditableLink) getModel().getValueAt(selRow + i, 0);
         }
+        //   Impl_ZThread.ddTQ.postTask(new Impl_ZThread.Task(){
+        //     public void doTask() {
+        for (int i = 0, j = data.length; i < j; i++) {
+            if (data[i] != null && (selRow + i < rc))
+                try {
+                    data[i].render(links[i]);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+        }
+        //      }
+        //  });
     }
 
     public interface LinkSelectionAcceptor {
@@ -98,17 +112,11 @@ public class EditableLinkTable extends LinkTable implements ZDisposable {
         public void zDispose() {
         }
 
-        public void setSelection(LinkSelection ils) {
-            for (int i = 0,j = ils.linkCount(); i < j; i++)
+        public void setSelection(final LinkSelection ils) {
+            for (int i = 0, j = ils.linkCount(); i < j; i++)
                 try {
                     ((ContextEditablePreset) EditableLinkTable.this.preset).newLink(ils.getIsolatedLink(i));
-                } catch (NoSuchPresetException e) {
-                    e.printStackTrace();
-                } catch (TooManyVoicesException e) {
-                    JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Could not addDesktopElement all of the links: Too many voices in preset", "Problem", JOptionPane.ERROR_MESSAGE);
-                } catch (NoSuchContextException e) {
-                    e.printStackTrace();
-                } catch (PresetEmptyException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
         }
@@ -119,7 +127,7 @@ public class EditableLinkTable extends LinkTable implements ZDisposable {
             public void zDispose() {
             }
 
-            protected JMenuItem[] getCustomMenuItems() {
+            protected Component[] getCustomMenuItems() {
                 return customRowHeaderMenuItems;
             }
 
@@ -134,8 +142,8 @@ public class EditableLinkTable extends LinkTable implements ZDisposable {
     }
 
     protected ReadablePreset convertPassThroughPreset(ReadablePreset preset) {
-         return preset;
-     }
+        return preset;
+    }
     /*protected JMenuItem[] getCustomMenuItems() {
         try {
             JMenuItem[] cjmi;
@@ -145,9 +153,9 @@ public class EditableLinkTable extends LinkTable implements ZDisposable {
             } else
                 cjmi = new JMenuItem[1];
 
-            cjmi[0] = ZCommandInvocationHelper.getMenu(new Object[]{preset}, null, null, preset.getPresetDisplayName());
+            cjmi[0] = ZCommandFactory.getMenu(new Object[]{preset}, null, null, preset.getPresetDisplayName());
             return cjmi;
-        } catch (NoSuchPresetException e) {
+        } catch (DeviceException e) {
             e.printStackTrace();
         }
         return null;

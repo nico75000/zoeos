@@ -19,9 +19,9 @@ public interface IsolatedPreset extends IsolatedParameters {
 
     public int numVoices();
 
-    public IsolatedVoice getIsolatedVoice(Integer v) throws NoSuchVoiceException;
+    public IsolatedVoice getIsolatedVoice(Integer v) throws PresetException;
 
-    public IsolatedLink getIsolatedLink(Integer l) throws NoSuchLinkException;
+    public IsolatedLink getIsolatedLink(Integer l) throws PresetException;
 
     public String getName();
 
@@ -36,7 +36,7 @@ public interface IsolatedPreset extends IsolatedParameters {
     public interface IsolatedVoice extends IsolatedParameters {
         public int numZones();
 
-        public IsolatedZone getIsolatedZone(Integer z) throws NoSuchZoneException;
+        public IsolatedZone getIsolatedZone(Integer z) throws PresetException;
 
         public Integer getOriginalIndex();
 

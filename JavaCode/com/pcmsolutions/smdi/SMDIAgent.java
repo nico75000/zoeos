@@ -1,15 +1,25 @@
 package com.pcmsolutions.smdi;
 
+import com.pcmsolutions.aspi.ASPILogic;
+import com.pcmsolutions.aspi.ASPIMsg;
+import com.pcmsolutions.aspi.SCSI;
+import com.pcmsolutions.gui.ProgressCallback;
 import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.system.audio.AudioUtilities;
+import org.tritonus.zuonics.sampled.AbstractAudioChunk;
 
+import javax.sound.midi.MidiMessage;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.*;
-import java.text.DecimalFormat;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Vector;
 import java.util.prefs.BackingStoreException;
-import java.util.prefs.PreferenceChangeEvent;
-import java.util.prefs.PreferenceChangeListener;
 import java.util.prefs.Preferences;
 
 /**
@@ -20,85 +30,39 @@ import java.util.prefs.Preferences;
  * To change this template use Options | File Templates.
  */
 public class SMDIAgent {
-    // SMDI message IDs
-    private static final int SMDIM_ENDOFPROCEDURE = 0x01040000;
-    private static final int SMDIM_ERROR = 0x00000000;
-    private static final int SMDIM_SAMPLEHEADER = 0x01210000;
-
-    // SMDI errors
-    private static final int SMDIE_OUTOFRANGE = 0x00200000;
-    private static final int SMDIE_NOSAMPLE = 0x00200002;
-    private static final int SMDIE_NOMEMORY = 0x00200004;
-    private static final int SMDIE_UNSUPPSAMBITS = 0x00200006;
-
-    // File errors
-    private static final int FE_OPENERROR = 0x00010001;      // Couldn't open the File
-    private static final int FE_UNKNOWNFORMAT = 0x00010002; // Unsupported File format
-
-    // File types
-    private static final int FT_WAV = 0x00000001;   // RIFF WAVE
-
-    private static byte MAX_ID = 16;
+    private static byte MAX_IDS = 8;
     private static int numAdapters = 0;
-    private static String versionStr;
-    private static int version;
 
     private static final String PREF_NODE_COUPLINGS = "couplings";
     private static final String EMPTY_COUPLING = "";
 
-    private static Impl_ScsiDeviceInfo[] deviceInfos;
-    private static String[] deviceCouplings;
+    private static Impl_ScsiDeviceInfo[] deviceInfos = new Impl_ScsiDeviceInfo[0];
+    private static String[] deviceCouplings = new String[0];
 
     private static Vector smdiListeners = new Vector();
 
-    private static native int smdiGetVersion();
-
-    private static native byte smdiInit();
-
-    private static native void smdiGetDeviceInfo(byte ha_id, byte scsi_id, Impl_ScsiDeviceInfo sdi);
-
-    private static native int smdiSendFile(byte HA_ID, byte SCSI_ID, int sampleNum, String fileName, String sampleName, boolean async);
-
-    private static native int smdiRecvFile(byte HA_ID, byte SCSI_ID, int sampleNum, String fileName, boolean async);
-
-    private static native int getSampleHeader(byte HA_ID, byte SCSI_ID, int sampleNum, Impl_SmdiSampleHeader hdr);
-
-    private static native int getFileSampleHeader(String fileName, Impl_SmdiSampleHeader hdr);
-
-    private static native void masterIdentify(byte ha_id, byte scsi_id);
-
-    public static final String WAV_EXTENSION = "wav";
-
-    private static volatile boolean smdiDllLoaded = false;
-
-    private static PreferenceChangeListener pcl = new PreferenceChangeListener() {
-        public void preferenceChange(PreferenceChangeEvent evt) {
-            SMDIAgent.refresh();
-        }
-    };
-
-    static {
-        Preferences.userNodeForPackage(SMDIAgent.class).node(PREF_NODE_COUPLINGS).addPreferenceChangeListener(pcl);
-    }
+    private static boolean smdiUnavailable = false;
 
     static {
         try {
             assertSMDI();
+            refresh();
         } catch (SmdiUnavailableException e) {
+            smdiUnavailable = true;
         }
     }
 
-    public static synchronized boolean isSmdiAvailable() {
+    public synchronized static boolean isSmdiAvailable() {
         try {
             assertSMDI();
         } catch (SmdiUnavailableException e) {
             return false;
         }
-        return true;
+        return !smdiUnavailable;
     }
 
     public static interface SmdiListener {
-        public void SmdiChanged();
+        public void smdiChanged();
     }
 
     public static void addSmdiListener(SmdiListener sl) {
@@ -115,7 +79,7 @@ public class SMDIAgent {
                 Vector slc = (Vector) smdiListeners.clone();
                 for (Iterator i = slc.iterator(); i.hasNext();)
                     try {
-                        ((SmdiListener) i.next()).SmdiChanged();
+                        ((SmdiListener) i.next()).smdiChanged();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -123,36 +87,79 @@ public class SMDIAgent {
         });
     }
 
-    public synchronized static void refresh() {
-        if (smdiDllLoaded) {
-            numAdapters = smdiInit();
-            version = smdiGetVersion();
-            DecimalFormat df = new DecimalFormat("###.##");
-            versionStr = (df.format((double) version / 100.0));
-
-            deviceInfos = new Impl_ScsiDeviceInfo[numAdapters * MAX_ID];
-            deviceCouplings = new String[numAdapters * MAX_ID];
+    public synchronized static void refresh() throws SmdiUnavailableException {
+        if (smdiUnavailable)
+            throw new SmdiUnavailableException();
+        try {
+            System.out.println("Refreshing SMDI");
+            numAdapters = ASPIMsg.numAdapters();
+            for (int i = 0; i < numAdapters; i++)
+                try {
+                    ASPILogic.rescanPort(i);
+                } catch (ASPILogic.ASPILogicException e) {
+                    e.printStackTrace();
+                } catch (ASPILogic.CommandFailedException e) {
+                    e.printStackTrace();
+                }
+            System.out.println("SMDI adapters = " + numAdapters);
+            deviceInfos = new Impl_ScsiDeviceInfo[numAdapters * MAX_IDS];
+            deviceCouplings = new String[numAdapters * MAX_IDS];
             for (byte ha = 0; ha < numAdapters; ha++) {
-                for (byte id = 0; id < MAX_ID; id++) {
-                    deviceInfos[ha * MAX_ID + id] = new Impl_ScsiDeviceInfo();
-                    SMDIAgent.smdiGetDeviceInfo(ha, id, deviceInfos[ha * MAX_ID + id]);
-                    deviceCouplings[ha * MAX_ID + id] = Preferences.userNodeForPackage(SMDIAgent.class).node(PREF_NODE_COUPLINGS).get(makePreferenceKey(ha, id), EMPTY_COUPLING);
+                for (byte id = 0; id < MAX_IDS; id++) {
+                    System.out.println("Refeshing HAID = " + ha + ", ID = " + id);
+                    SMDILogic.DeviceInfo di = null;
+                    try {
+                        int type = ASPILogic.getDeviceType(ha, id);
+                        System.out.println("Device type = " + type);
+                        if (type == SCSI.DTYPE_PROC)
+                        //if (type >= SCSI.DTYPE_DASD && type <=SCSI.DTYPE_COMM)
+                            di = SMDILogic.inquireDevice(ha, id);
+                    } catch (ASPILogic.ASPILogicException e) {
+                        e.printStackTrace();
+                    } catch (ASPILogic.CommandFailedException e) {
+                        //  e.printStackTrace();
+                    } catch (ASPILogic.ASPINoDeviceException e) {
+                        // e.printStackTrace();
+                    } catch (SMDILogic.SMDILogicException e) {
+                        e.printStackTrace();
+                    }
+                    if (di == null)
+                        deviceInfos[ha * MAX_IDS + id] = new Impl_ScsiDeviceInfo();
+                    else
+                        deviceInfos[ha * MAX_IDS + id] = new Impl_ScsiDeviceInfo(di);
+                    deviceCouplings[ha * MAX_IDS + id] = Preferences.userNodeForPackage(SMDIAgent.class.getClass()).node(PREF_NODE_COUPLINGS).get(makePreferenceKey(ha, id), EMPTY_COUPLING);
                 }
             }
+            System.out.println("SMDI completed refresh");
             fireSmdiChanged();
+            return;
+        } catch (ASPIMsg.ASPIUnavailableException e) {
+            smdiUnavailable = true;
+        } finally {
         }
+        // error pathology
+        deviceInfos = new Impl_ScsiDeviceInfo[0];
+        deviceCouplings = new String[0];
+        fireSmdiChanged();
     }
 
     private static void assertSMDI() throws SmdiUnavailableException {
-        if (!smdiDllLoaded) {
-            try {
-                System.loadLibrary("pcmsmdi");
-                smdiDllLoaded = true;
-                refresh();
-            } catch (UnsatisfiedLinkError e) {
-                smdiDllLoaded = false;
-                throw new SmdiUnavailableException();
-            }
+        if (smdiUnavailable)
+            throw new SmdiUnavailableException();
+        try {
+            ASPIMsg.assertASPI();
+        } catch (UnsatisfiedLinkError e) {
+            smdiUnavailable = true;
+            e.printStackTrace();
+            throw new SmdiUnavailableException();
+        } catch (ASPIMsg.ASPIUnavailableException e) {
+            smdiUnavailable = true;
+            e.printStackTrace();
+            throw new SmdiUnavailableException();
+        } catch (Exception e) {
+            smdiUnavailable = true;
+            e.printStackTrace();
+            throw new SmdiUnavailableException();
         }
     }
 
@@ -162,11 +169,11 @@ public class SMDIAgent {
         Impl_ScsiDeviceInfo sdi;
         for (int i = 0; i < deviceInfos.length; i++) {
             sdi = deviceInfos[i];
-            if (sdi.getManufacturer() != null && !sdi.getManufacturer().trim().equals(""))
-                if (sdi.isSMDI())
-                    outDevs.add(new Impl_SmdiTarget((byte) (i / MAX_ID), (byte) (i % MAX_ID), sdi));
-                else
-                    outDevs.add(new Impl_ScsiTarget((byte) (i / MAX_ID), (byte) (i % MAX_ID), sdi));
+            //if (sdi.getManufacturer() != null && !sdi.getManufacturer().equals(""))
+            if (sdi.isSMDI())
+                outDevs.add(new Impl_SmdiTarget((byte) (i / MAX_IDS), (byte) (i % MAX_IDS), sdi));
+            else
+                outDevs.add(new Impl_ScsiTarget((byte) (i / MAX_IDS), (byte) (i % MAX_IDS), sdi));
         }
         return (ScsiTarget[]) outDevs.toArray(new ScsiTarget[outDevs.size()]);
     }
@@ -177,7 +184,7 @@ public class SMDIAgent {
         public byte getSCSI_Id();
     }
 
-    public synchronized static ScsiTarget getScsiTarget(ScsiLocation loc) throws NoSuchSCSITargetException, SmdiUnavailableException {
+    public synchronized static ScsiTarget getScsiTarget(ScsiLocation loc) throws NoSuchSCSITargetException {
         return getScsiTarget(loc.getHA_Id(), loc.getSCSI_Id());
     }
 
@@ -188,27 +195,27 @@ public class SMDIAgent {
     }
 
     public synchronized static void setSmdiTargetCoupling(byte HA_ID, byte SCSI_ID, Object identityMessage) throws TargetNotSMDIException, SmdiUnavailableException {
-        assertSMDI();
-        if (!deviceInfos[HA_ID * MAX_ID + SCSI_ID].isSMDI())
+        if (!deviceInfos[HA_ID * MAX_IDS + SCSI_ID].isSMDI())
             throw new TargetNotSMDIException();
         clearAnyCouplingForIdentityMessage(identityMessage);
-        Preferences.userNodeForPackage(SMDIAgent.class).node(PREF_NODE_COUPLINGS).put(makePreferenceKey(HA_ID, SCSI_ID), identityMessage.toString());
+        Preferences.userNodeForPackage(SMDIAgent.class.getClass()).node(PREF_NODE_COUPLINGS).put(makePreferenceKey(HA_ID, SCSI_ID), identityMessage.toString());
+        refresh();
     }
 
-    public static synchronized SmdiTarget getSmdiTargetForIdentityMessage(Object identityMessage) throws DeviceNotCoupledToSmdiException, SmdiUnavailableException {
-        assertSMDI();
+    public synchronized static SmdiTarget getSmdiTargetForIdentityMessage(Object identityMessage) throws DeviceNotCoupledToSmdiException {
+        // refresh();
         for (int i = 0; i < deviceCouplings.length; i++)
             if (deviceCouplings[i].equals(identityMessage.toString()))
                 if (deviceInfos[i].isSMDI())
-                    return new Impl_SmdiTarget((byte) (i / MAX_ID), (byte) (i % MAX_ID), deviceInfos[i]);
+                    return new Impl_SmdiTarget((byte) (i / MAX_IDS), (byte) (i % MAX_IDS), deviceInfos[i]);
 
         throw new DeviceNotCoupledToSmdiException();
     }
 
-    public synchronized static ScsiTarget getScsiTarget(byte HA_ID, byte SCSI_ID) throws NoSuchSCSITargetException, SmdiUnavailableException {
-        assertSMDI();
+    public synchronized static ScsiTarget getScsiTarget(byte HA_ID, byte SCSI_ID) throws NoSuchSCSITargetException {
+        // refresh();
         try {
-            Impl_ScsiDeviceInfo sdi = deviceInfos[HA_ID * MAX_ID + SCSI_ID];
+            Impl_ScsiDeviceInfo sdi = deviceInfos[HA_ID * MAX_IDS + SCSI_ID];
             if (sdi.isSMDI())
                 return new Impl_SmdiTarget(HA_ID, SCSI_ID, sdi);
             else
@@ -216,11 +223,10 @@ public class SMDIAgent {
         } catch (Exception e) {
             throw new NoSuchSCSITargetException();
         }
-
     }
 
-    public static byte getMAX_ID() {
-        return MAX_ID;
+    public static byte getMAX_IDS() {
+        return MAX_IDS;
     }
 
     public static int getNumAdapters() {
@@ -233,71 +239,35 @@ public class SMDIAgent {
 
     private static boolean isScsiLocationSmdi(byte HA_ID, byte SCSI_ID) {
         try {
-            return deviceInfos[HA_ID * MAX_ID + SCSI_ID].isSMDI();
+            return deviceInfos[HA_ID * MAX_IDS + SCSI_ID].isSMDI();
         } catch (Exception e) {
             return false;
         }
     }
 
     public synchronized static void clearCouplings() throws SmdiUnavailableException {
-        assertSMDI();
         try {
-            Preferences.userNodeForPackage(SMDIAgent.class).node(PREF_NODE_COUPLINGS).clear();
+            Preferences.userNodeForPackage(SMDIAgent.class.getClass()).node(PREF_NODE_COUPLINGS).clear();
         } catch (BackingStoreException e) {
             e.printStackTrace();
         }
+        refresh();
     }
 
-    /*public synchronized static String getAssociationTagForSmdiTarget(ScsiLocation sl) throws SmdiTargetNotCoupledException {
-        return getAssociationTagForSmdiTarget(sl.getHA_Id(), sl.getSCSI_Id());
-    }
-
-    public synchronized static String getAssociationTagForSmdiTarget(byte HA_ID, byte SCSI_ID) throws SmdiTargetNotCoupledException {
-        try {
-            if (!(deviceAssociations[HA_ID * MAX_ID + SCSI_ID].equals("")))
-                return deviceAssociations[HA_ID * MAX_ID + SCSI_ID];
-        } catch (Exception e) {
-        }
-        throw new SmdiTargetNotCoupledException();
-    }
-      */
-
-    public static CoupledSmdiTarget getCoupledSmdiTargetForIdentityMessageString(String ims) throws SmdiUnavailableException {
-        assertSMDI();
+    public static synchronized CoupledSmdiTarget getCoupledSmdiTargetForIdentityMessageString(String ims) throws SmdiUnavailableException {
+        refresh();
         synchronized (SMDIAgent.class) {
             for (int i = 0; i < deviceCouplings.length; i++)
                 if (deviceCouplings[i].equals(ims))
                     try {
-                        ScsiTarget st = getScsiTarget((byte) (i / MAX_ID), (byte) (i % MAX_ID));
-                        if (st instanceof SmdiTarget)
+                        Impl_ScsiTarget st = (Impl_ScsiTarget) getScsiTarget((byte) (i / MAX_IDS), (byte) (i % MAX_IDS));
+                        if (st instanceof Impl_SmdiTarget) {
                             return new Impl_CoupledSmdiTarget(ims, (SmdiTarget) st);
+                        }
                     } catch (NoSuchSCSITargetException e) {
                     }
         }
         return null;
-    }
-
-    public static SmdiSampleHeader getSampleHeader(String fileName) throws SmdiFileOpenException, SmdiUnknownFileFormatException, SmdiGeneralException, SmdiUnavailableException {
-        assertSMDI();
-        synchronized (SMDIAgent.class) {
-            Impl_SmdiSampleHeader hdr = new Impl_SmdiSampleHeader();
-            int retval = SMDIM_ERROR;
-            try {
-                retval = SMDIAgent.getFileSampleHeader(fileName, hdr);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            switch (retval) {
-                case FT_WAV:
-                    return hdr;
-                case FE_OPENERROR:
-                    throw new SmdiFileOpenException();
-                case FE_UNKNOWNFORMAT:
-                    throw new SmdiUnknownFileFormatException();
-                default:
-                    throw new SmdiGeneralException();
-            }
-        }
     }
 
     private static String makePreferenceKey(byte HA_ID, byte SCSI_ID) {
@@ -308,95 +278,91 @@ public class SMDIAgent {
         return makePreferenceKey(sl.getHA_Id(), sl.getSCSI_Id());
     }
 
-    public static String getVersionStr() {
-        return versionStr;
-    }
-
     public static void main(String args[]) {
         try {
             System.out.println(Thread.currentThread());
-            //Impl_ScsiDeviceInfo sdi = new Impl_ScsiDeviceInfo();
-            //Impl_SmdiSampleHeader sh = new Impl_SmdiSampleHeader();
+//Impl_ScsiDeviceInfo sdi = new Impl_ScsiDeviceInfo();
+//Impl_SmdiSampleHeader sh = new Impl_SmdiSampleHeader();
 
-            /*      for (int lun = 0; lun < 2; lun++) {
-                      for (int id = 0; id < 8; id++) {
-                          SMDIAgent.smdiGetDeviceInfo((byte) lun, (byte) id, sdi);
-                          System.out.println("LUN: " + lun + " ID: " + id);
-                          System.out.println("TYPE: " + sdi.getDeviceType());
-                          System.out.println("SMDI: " + sdi.isSMDI());
-                          System.out.println("MANUFACTURER: " + sdi.getManufacturer());
-                          System.out.println("NAME: " + sdi.getName());
-                      }
-                  }
-                  */
+/*      for (int lun = 0; lun < 2; lun++) {
+          for (int id = 0; id < 8; id++) {
+              SMDIAgent.smdiGetDeviceInfo((byte) lun, (byte) id, sdi);
+              System.out.println("LUN: " + lun + " ID: " + id);
+              System.out.println("TYPE: " + sdi.getDeviceType());
+              System.out.println("SMDI: " + sdi.isSMDI());
+              System.out.println("MANUFACTURER: " + sdi.getManufacturer());
+              System.out.println("NAME: " + sdi.getName());
+          }
+      }
+      */
 
-            /* for (Iterator i = devices.keySet().iterator(); i.hasNext();) {
-                 ScsiTarget st = (ScsiTarget) i.next();
-                 System.out.println("HA: " + st.getHA_Id() + " ID: " + st.getSCSI_Id());
-                 System.out.println("TYPE: " + st.getDeviceType());
-                 System.out.println("SMDI: " + st.isSMDI());
-                 System.out.println("MANUFACTURER: " + st.getDeviceManufacturer());
-                 System.out.println("NAME: " + st.getDeviceName());
-             }*/
-
-
-            //sa.smdiGetDeviceInfo((byte)1,(byte)2,sdi);
-            //System.out.println(sdi.getDeviceType());
-            /*System.out.println(SMDIAgent.getFileSampleHeader("e:\\PENEMY2.wav", sh));
-            System.out.println(SMDIAgent.getSampleHeader((byte) 1, (byte) 2, 1, sh));
-            System.out.println(SMDIAgent.getVersionStr());
-            //System.out.println(sa.smdiSendFile((byte) 0, (byte) 3, (short) 1, "e:\\sooth2.wav", "tester", false));
-            // System.out.println(sa.smdiSendFile((byte) 1, (byte) 2, (short) 1, "e:\\PENEMY.wav", "tester", false));
-            System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY2.wav", false));
-              */
-            //System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 1, "e:\\sooth2.wav", "tester", false));
-            //System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, "e:\\sooth2.wav", "tester", false));
-            // System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 3, "e:\\sooth2.wav", "tester", false));
-            //System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 4, "e:\\sooth2.wav", "tester", false));
-
-            //System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 1, "e:\\PENEMY2.wav", "tester", false));
-            //System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, "e:\\PENEMY2.wav", "tester", false));
+/* for (Iterator i = devices.keySet().iterator(); i.hasNext();) {
+     ScsiTarget st = (ScsiTarget) i.next();
+     System.out.println("HA: " + st.getHA_Id() + " ID: " + st.getSCSI_Id());
+     System.out.println("TYPE: " + st.getDeviceType());
+     System.out.println("SMDI: " + st.isSMDI());
+     System.out.println("MANUFACTURER: " + st.getDeviceManufacturer());
+     System.out.println("NAME: " + st.getDeviceName());
+ }*/
 
 
-            /* System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 1, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-             System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-             System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 3, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-             System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 4, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-             */
-            // System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 5, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-            // System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 6, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-            // System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 7, new String("e:\\PENEMY2.wav"), new String("tester"), false));
-            // System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 8, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+//sa.smdiGetDeviceInfo((byte)1,(byte)2,sdi);
+//System.out.println(sdi.getDeviceType());
+/*System.out.println(SMDIAgent.getFileSampleHeader("e:\\PENEMY2.wav", sh));
+System.out.println(SMDIAgent.getSampleHeader((byte) 1, (byte) 2, 1, sh));
+System.out.println(SMDIAgent.getVersionStr());
+//System.out.println(sa.smdiSendFile((byte) 0, (byte) 3, (short) 1, "e:\\sooth2.wav", "tester", false));
+// System.out.println(sa.smdiSendFile((byte) 1, (byte) 2, (short) 1, "e:\\PENEMY.wav", "tester", false));
+System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY2.wav", false));
+  */
+//System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 1, "e:\\sooth2.wav", "tester", false));
+//System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, "e:\\sooth2.wav", "tester", false));
+// System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 3, "e:\\sooth2.wav", "tester", false));
+//System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 4, "e:\\sooth2.wav", "tester", false));
+
+//System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 1, "e:\\PENEMY2.wav", "tester", false));
+//System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, "e:\\PENEMY2.wav", "tester", false));
+
+
+/* System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 1, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+ System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+ System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 3, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+ System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 4, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+ */
+// System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 5, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+// System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 6, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+// System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 7, new String("e:\\PENEMY2.wav"), new String("tester"), false));
+// System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 8, new String("e:\\PENEMY2.wav"), new String("tester"), false));
 
 
 
-            /* System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY3.wav", false));
-             System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY4.wav", false));
-             System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 3, "e:\\PENEMY5.wav", false));
-             System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 4, "e:\\PENEMY6.wav", false));
+/* System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY3.wav", false));
+ System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY4.wav", false));
+ System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 3, "e:\\PENEMY5.wav", false));
+ System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 4, "e:\\PENEMY6.wav", false));
 
-             System.out.println("farting");
-             */
-            //System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY4.wav", false));
-            //System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 3, "e:\\PENEMY5.wav", false));
+ System.out.println("farting");
+ */
+//System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY4.wav", false));
+//System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 3, "e:\\PENEMY5.wav", false));
 
-            //SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, "e:\\PENEMY2.wav", "tester", false);
-            // System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 3, "e:\\sooth2.wav", "tester", false));
-            //System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 4, "e:\\sooth2.wav", "tester", false));
+//SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 2, "e:\\PENEMY2.wav", "tester", false);
+// System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 3, "e:\\sooth2.wav", "tester", false));
+//System.out.println(SMDIAgent.smdiSendFile((byte) 1, (byte) 2, (short) 4, "e:\\sooth2.wav", "tester", false));
 
-            //System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY2.wav", false));
-            /*  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY3.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY4.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY5.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY6.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY7.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY8.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY9.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY0.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY10.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY11.wav", false));
-              System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY12.wav", false));
-              */
+//System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY2.wav", false));
+/*  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY3.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY4.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY5.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY6.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY7.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY8.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY9.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY0.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 1, "e:\\PENEMY10.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY11.wav", false));
+  System.out.println(SMDIAgent.smdiRecvFile((byte) 1, (byte) 2, 2, "e:\\PENEMY12.wav", false));
+  */
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -408,6 +374,7 @@ public class SMDIAgent {
         protected String deviceName;
         protected String deviceManufacturer;
         protected int deviceType;
+        protected boolean isDevice;
 
         public Impl_ScsiTarget(byte HA_ID, byte SCSI_ID, Impl_ScsiDeviceInfo info) {
             this.HA_ID = HA_ID;
@@ -415,6 +382,7 @@ public class SMDIAgent {
             deviceManufacturer = info.getManufacturer();
             deviceName = info.getName();
             deviceType = info.getDeviceType();
+            isDevice = info.isDevice();
         }
 
         public String toString() {
@@ -450,6 +418,10 @@ public class SMDIAgent {
             return deviceManufacturer;
         }
 
+        public boolean isDevice() {
+            return isDevice;
+        }
+
         public int getDeviceType() {
             return deviceType;
         }
@@ -457,12 +429,16 @@ public class SMDIAgent {
         public boolean isSMDI() {
             synchronized (SMDIAgent.class) {
                 try {
-                    return deviceInfos[HA_ID * MAX_ID + SCSI_ID].isSMDI();
+                    return deviceInfos[HA_ID * MAX_IDS + SCSI_ID].isSMDI();
                 } catch (Exception e) {
                     return false;
                 }
             }
         }
+    }
+
+    public interface SampleInputStreamHandler{
+        void handleStream(AudioInputStream ais) throws Exception;
     }
 
     private static class Impl_SmdiTarget extends Impl_ScsiTarget implements SmdiTarget {
@@ -472,158 +448,139 @@ public class SMDIAgent {
                 throw new IllegalArgumentException("SCSI device not a SMDI target!");
         }
 
-        private void ZoeAssert() throws TargetNotSMDIException {
+        private void assertSMDI() throws TargetNotSMDIException {
             if (!isSMDI())
                 throw new TargetNotSMDIException();
         }
 
-        public void sendSync(String fileName, int sampleNum, String sampleName) throws SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException {
+        public void sendSync(final AudioInputStream ais, final int sampleNum, final String sampleName, final int packetSize, final ProgressCallback prog) throws SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, UnsupportedAudioFileException, IOException, SmdiUnsupportedConversionException, SmdiSampleEmptyException, SmdiTransferAbortedException {
             if (sampleNum == 0)
                 throw new SmdiOutOfRangeException("sample 0");
             synchronized (SMDIAgent.class) {
-                ZoeAssert();
+                assertSMDI();
+                SMDISendInstance si = new SMDISendInstance() {
+                    final private ProgressCallback pc;
 
-                int retval = SMDIM_ERROR;
+                    {
+                        pc = (prog == null ? ProgressCallback.DUMMY : prog);
 
+                    }
+
+                    public AudioInputStream getAudioInputStream() {
+                        return ais;
+                    }
+
+                    public String getSampleName() {
+                        return sampleName;
+                    }
+
+                    public int getPacketSizeInBytes() {
+                        return packetSize * 1024;
+                    }
+
+                    public int getHAID() {
+                        return HA_ID;
+                    }
+
+                    public int getID() {
+                        return SCSI_ID;
+                    }
+
+                    public int getSample() {
+                        return sampleNum;
+                    }
+
+                    public ProgressCallback getProgressCallback() {
+                        return pc;
+                    }
+                };
                 try {
-                    retval = smdiSendFile(HA_ID, SCSI_ID, sampleNum, fileName, sampleName, false);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                switch (retval) {
-                    case SMDIM_ENDOFPROCEDURE:
-                        break;
-                    case SMDIE_OUTOFRANGE:
-                        throw new SmdiOutOfRangeException();
-                    case SMDIE_NOMEMORY:
-                        throw new SmdiNoMemoryException();
-                    case SMDIE_UNSUPPSAMBITS:
-                        throw new SmdiUnsupportedSampleBitsException();
-                    case FE_OPENERROR:
-                        throw new SmdiFileOpenException();
-                    case FE_UNKNOWNFORMAT:
-                        throw new SmdiUnknownFileFormatException();
-                    default:
-                        refresh();
-                        throw new SmdiGeneralException();
+                    SMDILogic.sendSample(si);
+                } catch (SMDILogic.SMDILogicException e) {
+                    throw new SmdiGeneralException(e.getMessage());
                 }
             }
         }
 
-        public void sendAsync(String fileName, int sampleNum, String sampleName) throws SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException {
-            if (sampleNum == 0)
-                throw new SmdiOutOfRangeException("sample 0");
-            synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                int retval = SMDIM_ERROR;
-                try {
-                    retval = smdiSendFile(HA_ID, SCSI_ID, sampleNum, fileName, sampleName, true);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                if (retval != -1) { //0xffffffff
-                    refresh();
-                    throw new SmdiGeneralException();
-                }
-            }
-        }
-
-        public void recvSync(String fileName, int sampleNum) throws SmdiFileOpenException, SmdiNoSampleException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException {
+        public void recvSync(SampleInputStreamHandler isf, final AudioFileFormat.Type fileType, final int sampleNum, final int packetSize, final ProgressCallback prog) throws SmdiOutOfRangeException, TargetNotSMDIException, SmdiGeneralException, SmdiNoMemoryException, SmdiSampleEmptyException {
             if (sampleNum == 0)
                 throw new SmdiOutOfRangeException("Illegal sample index 0");
             synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                int retval = SMDIM_ERROR;
+                assertSMDI();
+                SMDIRecvInstance ri = new SMDIRecvInstance() {
+                    final private ProgressCallback pc;
+
+                    {
+                        pc = (prog == null ? ProgressCallback.DUMMY : prog);
+                    }
+
+                    public int getPacketSizeInBytes() {
+                        return packetSize * 1024;
+                    }
+
+                    public int getHAID() {
+                        return HA_ID;
+                    }
+
+                    public int getID() {
+                        return SCSI_ID;
+                    }
+
+                    public int getSample() {
+                        return sampleNum;
+                    }
+
+                    public ProgressCallback getProgressCallback() {
+                        return pc;
+                    }
+
+                    public OutputStream getOutputStream() {
+                        return null;
+                    }
+
+                    public AudioFileFormat.Type getFileType() {
+                        return fileType;
+                    }
+
+                    public Map<String, Object> getPropertiesForSampleHeader(SmdiSampleHeader hdr) {
+                        AbstractAudioChunk[] chunks = AudioUtilities.getSMDIHeaderChunks(hdr, fileType);
+                        return AudioUtilities.getChunkPropertiesMap(chunks);
+                    }
+                };
                 try {
-                    retval = smdiRecvFile(HA_ID, SCSI_ID, sampleNum, fileName, false);
-                    //SMDIAgent.masterIdentify(HA_ID, SCSI_ID);
-                } catch (Exception e) {
+                   isf.handleStream(SMDILogic.recvSampleAsync(ri));
+                } catch (SMDILogic.SMDILogicException e) {
+                    throw new SmdiGeneralException(e.getMessage());
+                }catch(Exception e){
                     throw new SmdiGeneralException(e.getMessage());
                 }
-                switch (retval) {
-                    case SMDIM_ENDOFPROCEDURE:
-                        break;
-                    case SMDIE_OUTOFRANGE:
-                        throw new SmdiOutOfRangeException();
-                    case SMDIE_NOSAMPLE:
-                        throw new SmdiNoSampleException();
-                    case FE_OPENERROR:
-                        throw new SmdiFileOpenException();
-                    case FE_UNKNOWNFORMAT:
-                    default:
-                        refresh();
-                        throw new SmdiGeneralException();
+            }
+        }
+
+        public byte[] sendMidiMessage(MidiMessage m) throws TargetNotSMDIException, SmdiGeneralException {
+            synchronized (SMDIAgent.class) {
+                assertSMDI();
+                try {
+                    return SMDILogic.sendMidi(HA_ID, SCSI_ID, m.getMessage());
+                } catch (SMDILogic.SMDILogicException e) {
+                    throw new SmdiGeneralException(e.getMessage());
+                } catch (SmdiOutOfRangeException e) {
+                    throw new SmdiGeneralException(e.getMessage());
+                } catch (SmdiNoMemoryException e) {
+                    throw new SmdiGeneralException(e.getMessage());
+                } catch (SmdiSampleEmptyException e) {
+                    throw new SmdiGeneralException(e.getMessage());
                 }
             }
         }
 
-        public void recvAsync(String fileName, int sampleNum) throws SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException {
-            if (sampleNum == 0)
-                throw new SmdiOutOfRangeException("sample 0");
+        public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, SmdiSampleEmptyException, SmdiNoMemoryException {
             synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                int retval = SMDIM_ERROR;
+                assertSMDI();
                 try {
-                    retval = smdiRecvFile(HA_ID, SCSI_ID, sampleNum, fileName, true);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                if (retval != -1) {            //0xffffffff
-                    refresh();
-                    throw new SmdiGeneralException();
-                }
-            }
-        }
-
-        public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiOutOfRangeException, SmdiNoSampleException, SmdiGeneralException, TargetNotSMDIException {
-            synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                Impl_SmdiSampleHeader hdr = new Impl_SmdiSampleHeader();
-
-                int retval = SMDIM_ERROR;
-
-                try {
-                    retval = SMDIAgent.getSampleHeader(HA_ID, SCSI_ID, sampleNum, hdr);
-                    SMDIAgent.masterIdentify(HA_ID, SCSI_ID);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                switch (retval) {
-                    case SMDIM_SAMPLEHEADER:
-                        return hdr;
-                    case SMDIE_OUTOFRANGE:
-                        throw new SmdiOutOfRangeException();
-                    case SMDIE_NOSAMPLE:
-                        throw new SmdiNoSampleException();
-                    default:
-                        refresh();
-                        throw new SmdiGeneralException();
-                }
-            }
-        }
-
-        public SmdiSampleHeader getSampleHeader(String fileName) throws SmdiFileOpenException, SmdiUnknownFileFormatException, SmdiGeneralException, TargetNotSMDIException {
-            synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                Impl_SmdiSampleHeader hdr = new Impl_SmdiSampleHeader();
-                int retval = SMDIM_ERROR;
-                try {
-                    retval = SMDIAgent.getFileSampleHeader(fileName, hdr);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                switch (retval) {
-                    case FT_WAV:
-                        return hdr;
-                    case FE_OPENERROR:
-                        throw new SmdiFileOpenException();
-                    case FE_UNKNOWNFORMAT:
-                        throw new SmdiUnknownFileFormatException();
-                    default:
-                        refresh();
-                        throw new SmdiGeneralException();
+                    return SMDILogic.getSampleHeader(HA_ID, SCSI_ID, sampleNum);
+                } catch (SMDILogic.SMDILogicException e) {
+                    throw new SmdiGeneralException(e.getMessage());
                 }
             }
         }
@@ -631,7 +588,7 @@ public class SMDIAgent {
         public boolean isCoupled() {
             synchronized (SMDIAgent.class) {
                 try {
-                    return (!deviceCouplings[HA_ID * MAX_ID + SCSI_ID].equals(EMPTY_COUPLING));
+                    return (!deviceCouplings[HA_ID * MAX_IDS + SCSI_ID].equals(EMPTY_COUPLING));
                 } catch (Exception e) {
                     return false;
                 }
@@ -642,7 +599,7 @@ public class SMDIAgent {
             synchronized (SMDIAgent.class) {
                 if (!isCoupled())
                     throw new SmdiTargetNotCoupledException();
-                return deviceCouplings[HA_ID * MAX_ID + SCSI_ID];
+                return deviceCouplings[HA_ID * MAX_IDS + SCSI_ID];
             }
         }
 
@@ -660,9 +617,9 @@ public class SMDIAgent {
             this.st = st;
         }
 
-        private void ZoeAssert() throws SmdiTargetCouplingInvalidException {
+        private void assertCoupling() throws SmdiTargetCouplingInvalidException {
             try {
-                if (coupling.equals(deviceCouplings[st.getHA_Id() * MAX_ID + st.getSCSI_Id()]))
+                if (coupling.equals(deviceCouplings[st.getHA_Id() * MAX_IDS + st.getSCSI_Id()]))
                     return;
             } catch (Exception e) {
             }
@@ -670,45 +627,28 @@ public class SMDIAgent {
 
         }
 
-        public void sendSync(String fileName, int sampleNum, String sampleName) throws SmdiTargetCouplingInvalidException, SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException {
+        public void sendSync(AudioInputStream ais, int sampleNum, String sampleName, int packetSize, ProgressCallback prog) throws SmdiTargetCouplingInvalidException, SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, SmdiUnsupportedConversionException, SMDILogic.SMDILogicException, SmdiSampleEmptyException, UnsupportedAudioFileException, IOException, SmdiTransferAbortedException {
             synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                st.sendSync(fileName, sampleNum, sampleName);
+                assertCoupling();
+                st.sendSync(ais, sampleNum, sampleName, packetSize, prog);
             }
         }
 
-        public void sendAsync(String fileName, int sampleNum, String sampleName) throws SmdiTargetCouplingInvalidException, SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException {
+        public void recvAsync(SampleInputStreamHandler ish, AudioFileFormat.Type fileType, int sampleNum, int packetSize, ProgressCallback prog) throws SmdiTargetCouplingInvalidException, SmdiFileOpenException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiTransferAbortedException, IOException {
             synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                st.sendAsync(fileName, sampleNum, sampleName);
+                assertCoupling();
+                st.recvSync(ish, fileType, sampleNum, packetSize, prog);
             }
         }
 
-        public void recvSync(String fileName, int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiFileOpenException, SmdiNoSampleException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException {
-            synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                st.recvSync(fileName, sampleNum);
-            }
+        public byte[] sendMidiMessage(MidiMessage m) throws SmdiGeneralException, TargetNotSMDIException {
+            return st.sendMidiMessage(m);
         }
 
-        public void recvAsync(String fileName, int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException {
+        public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, SmdiSampleEmptyException, SmdiNoMemoryException {
             synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                st.recvAsync(fileName, sampleNum);
-            }
-        }
-
-        public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiTargetCouplingInvalidException, SmdiOutOfRangeException, SmdiNoSampleException, SmdiGeneralException, TargetNotSMDIException {
-            synchronized (SMDIAgent.class) {
-                ZoeAssert();
+                assertCoupling();
                 return st.getSampleHeader(sampleNum);
-            }
-        }
-
-        public SmdiSampleHeader getSampleHeader(String fileName) throws SmdiTargetCouplingInvalidException, SmdiFileOpenException, SmdiUnknownFileFormatException, SmdiGeneralException, TargetNotSMDIException {
-            synchronized (SMDIAgent.class) {
-                ZoeAssert();
-                return st.getSampleHeader(fileName);
             }
         }
 
@@ -726,6 +666,10 @@ public class SMDIAgent {
 
         public String getDeviceName() {
             return st.getDeviceName();
+        }
+
+        public boolean isDevice() {
+            return st.isDevice();
         }
 
         public String getDeviceManufacturer() {

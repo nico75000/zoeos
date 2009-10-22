@@ -68,7 +68,7 @@ public class ClassUtility {
                 return false;
         }
         return true;
-    }
+    }    
 
     // object returned is an element from the array passed in and is an instance of the most super type
     // null returned if there is no object that can represent the most super ( i.e at least one object is not on the same inheritance branch as all the others)

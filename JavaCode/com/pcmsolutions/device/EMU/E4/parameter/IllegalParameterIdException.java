@@ -6,24 +6,17 @@
 
 package com.pcmsolutions.device.EMU.E4.parameter;
 
+import com.pcmsolutions.system.IntPool;
+
 /**
  *
  * @author  pmeehan
  */
-public class IllegalParameterIdException extends java.lang.Exception {
-
-    /**
-     * Creates a new instance of <code>IllegalParameterId</code> without detail message.
-     */
-    public IllegalParameterIdException() {
+public class IllegalParameterIdException extends ParameterException {
+    public IllegalParameterIdException(Integer id) {
+        super("illegal parameter id", id);
     }
-
-
-    /**
-     * Constructs an instance of <code>IllegalParameterId</code> with the specified detail message.
-     * @param msg the detail message.
-     */
-    public IllegalParameterIdException(String msg) {
-        super(msg);
+    public IllegalParameterIdException() {
+        super("illegal parameter id", IntPool.minus_one);
     }
 }

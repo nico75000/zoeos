@@ -21,7 +21,8 @@ public class DeviceRemovedLabel extends JLabel {
         this.setIcon(new ImageIcon("toolbarButtonGraphics/general/delete16.gif"));
         this.setIcon(new ImageIcon("toolbarButtonGraphics/general/delete16.gif"));
     }
-        public Color getForeground() {
+
+    public Color getForeground() {
         return UIColors.getDefaultFG();
     }
 

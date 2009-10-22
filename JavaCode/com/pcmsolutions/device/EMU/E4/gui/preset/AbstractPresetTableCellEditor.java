@@ -1,8 +1,9 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
@@ -22,7 +23,7 @@ public abstract class AbstractPresetTableCellEditor extends AbstractCellEditor i
     protected List presetItems;
     private boolean comboModelInitialized;
 
-    public AbstractPresetTableCellEditor(DeviceContext d, Color bg, Color fg) throws ZDeviceNotRunningException {
+    public AbstractPresetTableCellEditor(DeviceContext d, Color bg, Color fg)  {
         this.d = d;
 
         presetItems = buildPresetItemList();
@@ -33,10 +34,10 @@ public abstract class AbstractPresetTableCellEditor extends AbstractCellEditor i
         comboBox.addActionListener(this);
     }
 
-    protected List buildPresetItemList() throws ZDeviceNotRunningException {
+    protected List buildPresetItemList()  {
         try {
             return d.getDefaultPresetContext().getDatabasePresets();
-        } catch (NoSuchContextException e) {
+        } catch (DeviceException e) {
             return new ArrayList();
         }
     }
@@ -49,12 +50,18 @@ public abstract class AbstractPresetTableCellEditor extends AbstractCellEditor i
                                                  boolean isSelected,
                                                  int row, int column) {
         comboModelInitialized = false;
-        setSelectedIndex(getSelectedIndex());
+        try {
+            setSelectedIndex(getSelectedIndex());
+        } catch (DeviceException e) {
+            e.printStackTrace();
+        } catch (ParameterException e) {
+            e.printStackTrace();
+        }
         comboModelInitialized = true;
         return comboBox;
     }
 
-    protected abstract Integer getSelectedIndex();
+    protected abstract Integer getSelectedIndex() throws DeviceException, ParameterException;
 
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == comboBox)

@@ -14,8 +14,13 @@ public class SystemPathFactory {
     public static final SystemEntryPoint systemEntryPoint = new Impl_SystemEntryPoint(Zoeos.class, "ZoeOS");
     private static final String PATH_ELEMENT_ZOEOS = "ZoeOS";
     private static final String PATH_ELEMENT_PROPERTIES = "Properties";
+    //private static final String PATH_ELEMENT_PIANO = "Piano";
 
     public static LogicalPath providePropertiesPath() {
         return new LogicalPath(systemEntryPoint, new Object[]{PATH_ELEMENT_ZOEOS, PATH_ELEMENT_PROPERTIES});
     }
+    /*
+    public static LogicalPath providePianoPath() {
+        return new LogicalPath(systemEntryPoint, new Object[]{PATH_ELEMENT_ZOEOS, PATH_ELEMENT_PIANO});
+    } */
 }

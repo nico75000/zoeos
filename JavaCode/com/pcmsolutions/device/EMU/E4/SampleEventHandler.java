@@ -1,6 +1,6 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.events.SampleEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleEvent;
 import com.pcmsolutions.device.EMU.E4.sample.SampleListener;
 
 

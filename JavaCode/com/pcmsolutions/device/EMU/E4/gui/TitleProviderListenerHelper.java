@@ -29,9 +29,10 @@ public class TitleProviderListenerHelper implements Serializable {
         makeTransients();
     }
 
-    public void clearListeners(){
+    public void clearListeners() {
         listeners.clear();
     }
+
     public final void addTitleProviderListener(TitleProviderListener tpl) {
         listeners.add(tpl);
     }

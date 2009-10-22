@@ -1,6 +1,9 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.events.PresetInitializationStatusChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetInitializationStatusChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetInitializationStatusChangedEvent;
+import com.pcmsolutions.device.EMU.E4.remote.DumpMonitor;
+import com.pcmsolutions.device.EMU.database.events.content.ManageableContentEventHandler;
 
 /**
  * Created by IntelliJ IDEA.
@@ -9,14 +12,13 @@ import com.pcmsolutions.device.EMU.E4.events.PresetInitializationStatusChangedEv
  * Time: 05:43:45
  * To change this template use Options | File Templates.
  */
-class PresetInitializationMonitor {
-    private PresetEventHandler peh;
-    private Integer preset;
+class PresetInitializationMonitor implements DumpMonitor {
+    final ManageableContentEventHandler ceh;
+    final Integer preset;
+    volatile double status = 0;
 
-    private volatile double status = RemoteObjectStates.STATUS_INITIALIZED;
-
-    public PresetInitializationMonitor(Integer preset, PresetEventHandler peh) {
-        this.peh = peh;
+    public PresetInitializationMonitor(Integer preset, ManageableContentEventHandler ceh) {
+        this.ceh = ceh;
         this.preset = preset;
     }
 
@@ -26,6 +28,10 @@ class PresetInitializationMonitor {
 
     public void setStatus(double status) {
         this.status = status;
-        peh.postPresetEvent(new PresetInitializationStatusChangedEvent(this, preset, status));
+        try {
+            ceh.sendInternalEvent(new PresetInitializationStatusChangedEvent(this, preset, status));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

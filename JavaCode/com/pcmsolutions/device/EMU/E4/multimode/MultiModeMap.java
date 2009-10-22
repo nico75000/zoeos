@@ -17,21 +17,23 @@ public interface MultiModeMap extends ByteStreamable, Serializable {
 
     public void setMapData(byte[] mapData);
 
-    public Integer getPreset(Integer ch) throws IllegalMidiChannelException;
+    public byte[] getMapData();
 
-    public Integer getVolume(Integer ch) throws IllegalMidiChannelException;
+    public Integer getPreset(Integer ch) throws IllegalMultimodeChannelException;
 
-    public Integer getPan(Integer ch) throws IllegalMidiChannelException;
+    public Integer getVolume(Integer ch) throws IllegalMultimodeChannelException;
 
-    public Integer getSubmix(Integer ch) throws IllegalMidiChannelException;
+    public Integer getPan(Integer ch) throws IllegalMultimodeChannelException;
 
-    public void setPreset(Integer ch, Integer preset) throws IllegalMidiChannelException;
+    public Integer getSubmix(Integer ch) throws IllegalMultimodeChannelException;
 
-    public void setVolume(Integer ch, Integer volume) throws IllegalMidiChannelException;
+    public void setPreset(Integer ch, Integer preset) throws IllegalMultimodeChannelException;
 
-    public void setPan(Integer ch, Integer pan) throws IllegalMidiChannelException;
+    public void setVolume(Integer ch, Integer volume) throws IllegalMultimodeChannelException;
 
-    public void setSubmix(Integer ch, Integer submix) throws IllegalMidiChannelException;
+    public void setPan(Integer ch, Integer pan) throws IllegalMultimodeChannelException;
+
+    public void setSubmix(Integer ch, Integer submix) throws IllegalMultimodeChannelException;
 
     public MultiModeMap getCopy();
 

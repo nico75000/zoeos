@@ -1,9 +1,11 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer;
 
-import com.pcmsolutions.device.EMU.E4.DeviceContext;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.parameter.ParameterUtilities;
+import com.pcmsolutions.device.EMU.E4.gui.preset.PresetViewModes;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinPopupMenu;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinTableCellRenderer;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinValueProfile;
@@ -11,6 +13,8 @@ import com.pcmsolutions.device.EMU.E4.gui.table.ColumnData;
 import com.pcmsolutions.device.EMU.E4.gui.table.SectionData;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
 import com.pcmsolutions.gui.IconAndTipCarrier;
 import com.pcmsolutions.system.*;
 import com.pcmsolutions.system.preferences.ZIntPref;
@@ -30,7 +34,7 @@ import java.util.*;
  * To change this template use Options | File Templates.
  */
 public class LinkTableModel extends AbstractPresetTableModel implements ZDisposable, ChangeListener {
-    protected static final Map id2col = new Hashtable();
+    protected final Map id2col = new Hashtable();
 
     protected List readablePresets;
     protected int numLinks;
@@ -38,13 +42,16 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
     private PresetListener gpl;
     private Integer[] gpi;
 
-    public LinkTableModel(ReadablePreset p, DeviceParameterContext dpc) throws ZDeviceNotRunningException {
+    int mode;
+
+    public LinkTableModel(ReadablePreset p, DeviceParameterContext dpc, int mode) {
         super(p, dpc.getLinkContext());
+        this.mode = mode;
         try {
             readablePresets = p.getDeviceContext().getDefaultPresetContext().getDatabasePresets();
-        } catch (NoSuchContextException e1) {
+        } catch (DeviceException e) {
             readablePresets = new ArrayList();
-            e1.printStackTrace();
+            e.printStackTrace();
         }
         init();
 
@@ -55,27 +62,27 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
         try {
             gpl = new PresetListenerAdapter() {
                 public void presetNameChanged(PresetNameChangeEvent ev) {
-                    updatePresetCells(ev.getPreset());
-                }
-
-                public void presetInitialized(PresetInitializeEvent ev) {
-                    updatePresetCells(ev.getPreset());
+                    updatePresetCells(ev.getIndex());
                 }
 
                 public void presetInitializationStatusChanged(PresetInitializationStatusChangedEvent ev) {
-                    updatePresetCells(ev.getPreset());
+                    updatePresetCells(ev.getIndex());
                 }
 
-                public void presetRefreshed(PresetRefreshEvent ev) {
-                    updatePresetCells(ev.getPreset());
+                public void presetRefreshed(PresetInitializeEvent ev) {
+                    updatePresetCells(ev.getIndex());
                 }
             };
             Set s = preset.getPresetContext().getDatabaseIndexes();
             gpi = (Integer[]) s.toArray(new Integer[s.size()]);
-            preset.getPresetContext().addPresetListener(gpl, gpi);
-        } catch (NoSuchContextException e) {
+            preset.getPresetContext().addContentListener(gpl, gpi);
+        } catch (DeviceException e) {
             e.printStackTrace();
         }
+    }
+
+    public int getMode() {
+        return mode;
     }
 
     public void updatePresetCells(Integer preset) {
@@ -86,7 +93,7 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
                 try {
                     if (v instanceof ReadableParameterModel && ((ReadableParameterModel) v).getValue().equals(preset))
                         LinkTableModel.this.fireTableCellUpdated(i, col.intValue());
-                } catch (ParameterUnavailableException e) {
+                } catch (ParameterException e) {
                 }
             }
     }
@@ -98,129 +105,162 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
 
     public void zDispose() {
         if (gpi != null && gpl != null)
-            preset.getPresetContext().removePresetListener(gpl, gpi);
-
+            preset.getPresetContext().removeContentListener(gpl, gpi);
         super.zDispose();
         WinValueProfile.ZPREF_keyWinDisplayMode.removeChangeListener(this);
         WinValueProfile.ZPREF_velWinDisplayMode.removeChangeListener(this);
         readablePresets.clear();
     }
 
+    private static final String SECTION_MAIN = "MAIN";
+    private static final String SECTION_KEYWIN = "KEY WIN";
+    private static final String SECTION_VELWIN = "VELOCITY WIN";
+    private static final String SECTION_FILTER = "FILTER";
+
+    SectionData createSection(String section, int colWidthCount) {
+        if (section.equals(SECTION_MAIN)) {
+            return new SectionData(UIColors.getTableFirstSectionBG(),
+                    UIColors.getTableFirstSectionHeaderBG(),
+                    UIColors.getTableFirstSectionFG(),
+                    colWidthCount,
+                    "MAIN");
+        } else if (section.equals(SECTION_KEYWIN)) {
+            return new SectionData(UIColors.getTableSecondSectionBG(),
+                    UIColors.getTableSecondSectionHeaderBG(),
+                    UIColors.getTableSecondSectionFG(),
+                    colWidthCount,
+                    "KEY WIN", new MouseAdapter() {
+                        public void mouseReleased(MouseEvent e) {
+                            if (e.isPopupTrigger())
+                                new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                        }
+
+                        public void mousePressed(MouseEvent e) {
+                            if (e.isPopupTrigger())
+                                new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                        }
+
+                        public void mouseClicked(MouseEvent e) {
+                            if (e.isPopupTrigger())
+                                new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            else if (e.getClickCount() >= 2) {
+                                try {
+                                    WinValueProfile.ZPREF_keyWinDisplayMode.putValue((WinValueProfile.ZPREF_keyWinDisplayMode.getValue() + 1) % 3);
+                                } catch (Exception e1) {
+                                    e1.printStackTrace();
+                                }
+                            }
+                        }
+                    });
+        } else if (section.equals(SECTION_VELWIN)) {
+            return new SectionData(UIColors.getTableThirdSectionBG(),
+                    UIColors.getTableThirdSectionHeaderBG(),
+                    UIColors.getTableThirdSectionFG(),
+                    colWidthCount,
+                    "VELOCITY WIN", new MouseAdapter() {
+                        public void mouseReleased(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mousePressed(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mouseClicked(MouseEvent e) {
+                            if (e.isPopupTrigger())
+                                new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            else if (e.getClickCount() >= 2) {
+                                try {
+                                    WinValueProfile.ZPREF_velWinDisplayMode.putValue((WinValueProfile.ZPREF_velWinDisplayMode.getValue() + 1) % 3);
+                                } catch (Exception e1) {
+                                    e1.printStackTrace();
+                                }
+                            }
+                        }
+                    });
+        } else if (section.equals(SECTION_FILTER)) {
+            return new SectionData(UIColors.getTableFourthSectionBG(),
+                    UIColors.getTableFourthSectionHeaderBG(),
+                    UIColors.getTableFourthSectionFG(),
+                    colWidthCount,
+                    "MIDI FILTERS");
+        } else
+            throw new IllegalArgumentException("unsupported section");
+    }
+
     protected void buildColumnAndSectionData() {
-        rowHeaderColumnData = new ColumnData("", DEF_COL_WIDTH, JLabel.LEFT, 0, Object.class);
+        rowHeaderColumnData = new ColumnData("", DEF_COL_WIDTH + 2, JLabel.LEFT, 0, Object.class);
         columnData = new ColumnData[parameterObjects.size()];
-        String title;
-        GeneralParameterDescriptor pd;
+
         int id;
         ArrayList arrSectionData = new ArrayList();
         int sectionIndex = 0;
         int colWidthCount = 0;
-
+        String currSection = null;
         id2col.clear();
 
         for (int i = 0, n = parameterObjects.size(); i < n; i++) {
-            pd = (GeneralParameterDescriptor) parameterObjects.get(i);
-            title = getColNameFromRefString(pd.getReferenceString(), 1);
-            id = pd.getId().intValue();
-
+            id = ((GeneralParameterDescriptor) parameterObjects.get(i)).getId().intValue();
             id2col.put(IntPool.get(id), IntPool.get(i + 1));
-
-            if (id == 23)
-                columnData[i] = new ColumnData(title, DEF_COL_WIDTH * 4, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
-            else if (id == 28 || id == 30) // alphanumeric key position and keyWin
-                columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 5, JLabel.LEFT, sectionIndex, ReadableParameterModel.class, WinTableCellRenderer.CANONICAL_RENDERERS[(id - 28) % 4]);
-            else if (id >= 28 && id <= 35) // keyWin, velWin
-                columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class, WinTableCellRenderer.CANONICAL_RENDERERS[(id - 28) % 4]);
-            else if (id == 251)
-                columnData[i] = new ColumnData(title, (DEF_COL_WIDTH * 3) / 2, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
-            else
-                columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
-
-            colWidthCount += columnData[i].width;
-
-            if (id == 27) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableFirstSectionBG(),
-                        UIColors.getTableFirstSectionFG(),
-                        colWidthCount,
-                        "MAIN"));
-                sectionIndex++;
-                colWidthCount = 0;
-            } else if (id == 31) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableSecondSectionBG(),
-                        UIColors.getTableSecondSectionFG(),
-                        colWidthCount,
-                        "KEY WIN", new MouseAdapter() {
-                            public void mouseReleased(MouseEvent e) {
-                                if (e.isPopupTrigger())
-                                    new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                            }
-
-                            public void mousePressed(MouseEvent e) {
-                                if (e.isPopupTrigger())
-                                    new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                            }
-
-                            public void mouseClicked(MouseEvent e) {
-                                if (e.isPopupTrigger())
-                                    new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                else if (e.getClickCount() >= 2) {
-                                    try {
-                                        WinValueProfile.ZPREF_keyWinDisplayMode.putValue((WinValueProfile.ZPREF_keyWinDisplayMode.getValue() + 1) % 3);
-                                    } catch (Exception e1) {
-                                        e1.printStackTrace();
-                                    }
-                                }
-                            }
-                        }));
-                sectionIndex++;
-                colWidthCount = 0;
-
-            } else if (id == 35) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableThirdSectionBG(),
-                        UIColors.getTableThirdSectionFG(),
-                        colWidthCount,
-                        "VELOCITY WIN", new MouseAdapter() {
-                            public void mouseReleased(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mousePressed(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mouseClicked(MouseEvent e) {
-                                if (e.isPopupTrigger())
-                                    new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                else if (e.getClickCount() >= 2) {
-                                    try {
-                                        WinValueProfile.ZPREF_velWinDisplayMode.putValue((WinValueProfile.ZPREF_velWinDisplayMode.getValue() + 1) % 3);
-                                    } catch (Exception e1) {
-                                        e1.printStackTrace();
-                                    }
-                                }
-                            }
-                        }));
-                sectionIndex++;
-                colWidthCount = 0;
-            } else if (preset.getDeviceContext().getDevicePreferences().ZPREF_showLinkFilterSection.getValue() && id == 266) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableFourthSectionBG(),
-                        UIColors.getTableFourthSectionFG(),
-                        colWidthCount,
-                        "MIDI FILTERS"));
-                sectionIndex++;
-                colWidthCount = 0;
+            if (ParameterUtilities.isKeyWinId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_KEYWIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_KEYWIN;
+            } else if (ParameterUtilities.isVelWinId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_VELWIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_VELWIN;
+            } else if (ParameterUtilities.isMainId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_MAIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_MAIN;
+            } else if (ParameterUtilities.isLinkFilterId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_FILTER)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_FILTER;
             }
+            generateColumnDataInstance(i, sectionIndex);
+            colWidthCount += columnData[i].width;
         }
+        arrSectionData.add(createSection(currSection, colWidthCount));
         sectionData = new SectionData[arrSectionData.size()];
         arrSectionData.toArray(sectionData);
+    }
+
+    private void generateColumnDataInstance(int i, int sectionIndex) {
+        String title;
+        GeneralParameterDescriptor pd;
+
+        pd = (GeneralParameterDescriptor) parameterObjects.get(i);
+        title = getColNameFromRefString(pd.getReferenceString(), 1);
+        int id = pd.getId().intValue();
+
+        if (id == 23)
+            columnData[i] = new ColumnData(title, (int) (DEF_COL_WIDTH * 3.45), JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        else if (id == 28 || id == 30) // alphanumeric key position and keyWin
+            columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 5, JLabel.LEFT, sectionIndex, ReadableParameterModel.class, WinTableCellRenderer.CANONICAL_RENDERERS[(id - 28) % 4]);
+        else if (id >= 28 && id <= 35) // keyWin, velWin
+            columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class, WinTableCellRenderer.CANONICAL_RENDERERS[(id - 28) % 4]);
+        else if (id == 251)
+            columnData[i] = new ColumnData(title, (DEF_COL_WIDTH * 3) / 2, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        else
+            columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
     }
 
     protected void buildDefaultParameterData(ParameterContext vc) {
@@ -266,90 +306,95 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
             pd = vc.getParameterDescriptor(IntPool.get(23));
             parameterObjects.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(24));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(25));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(26));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(27));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(28));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(29));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(30));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(31));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(32));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(33));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(34));
-            parameterObjects.add(pd);
-
-            pd = vc.getParameterDescriptor(IntPool.get(35));
-            parameterObjects.add(pd);
-
-            if (preset.getDeviceContext().getDevicePreferences().ZPREF_showLinkFilterSection.getValue()) {
-                pd = vc.getParameterDescriptor(IntPool.get(251));
+            if (mode == PresetViewModes.LINK_MODE_MAIN || mode == PresetViewModes.LINK_MODE_MAIN_WIN) {
+                pd = vc.getParameterDescriptor(IntPool.get(24));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(252));
+                pd = vc.getParameterDescriptor(IntPool.get(25));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(253));
+                pd = vc.getParameterDescriptor(IntPool.get(26));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(254));
+                pd = vc.getParameterDescriptor(IntPool.get(27));
+                parameterObjects.add(pd);
+            }
+            if (mode == PresetViewModes.LINK_MODE_WIN || mode == PresetViewModes.LINK_MODE_MAIN_WIN) {
+
+                pd = vc.getParameterDescriptor(IntPool.get(28));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(255));
+                pd = vc.getParameterDescriptor(IntPool.get(29));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(256));
+                pd = vc.getParameterDescriptor(IntPool.get(30));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(257));
+                pd = vc.getParameterDescriptor(IntPool.get(31));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(258));
+                pd = vc.getParameterDescriptor(IntPool.get(32));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(259));
+                pd = vc.getParameterDescriptor(IntPool.get(33));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(260));
+                pd = vc.getParameterDescriptor(IntPool.get(34));
                 parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(261));
+                pd = vc.getParameterDescriptor(IntPool.get(35));
                 parameterObjects.add(pd);
+            }
+            if (mode == PresetViewModes.LINK_MODE_MAIN || mode == PresetViewModes.LINK_MODE_MAIN_WIN) {
+                if (preset.getDeviceContext().getDevicePreferences().ZPREF_showLinkFilterSection.getValue()) {
+                    pd = vc.getParameterDescriptor(IntPool.get(251));
+                    parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(262));
-                parameterObjects.add(pd);
+                    pd = vc.getParameterDescriptor(IntPool.get(252));
+                    parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(263));
-                parameterObjects.add(pd);
+                    pd = vc.getParameterDescriptor(IntPool.get(253));
+                    parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(264));
-                parameterObjects.add(pd);
+                    pd = vc.getParameterDescriptor(IntPool.get(254));
+                    parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(265));
-                parameterObjects.add(pd);
+                    pd = vc.getParameterDescriptor(IntPool.get(255));
+                    parameterObjects.add(pd);
 
-                pd = vc.getParameterDescriptor(IntPool.get(266));
-                parameterObjects.add(pd);
+                    pd = vc.getParameterDescriptor(IntPool.get(256));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(257));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(258));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(259));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(260));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(261));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(262));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(263));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(264));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(265));
+                    parameterObjects.add(pd);
+
+                    pd = vc.getParameterDescriptor(IntPool.get(266));
+                    parameterObjects.add(pd);
+                }
             }
         } catch (IllegalParameterIdException e) {
             e.printStackTrace();
@@ -366,7 +411,7 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
             pm.setTipShowingOwner(true);
         }
 
-        public Integer getValue() throws ParameterUnavailableException {
+        public Integer getValue() throws ParameterException {
             return pm.getValue();
         }
 
@@ -378,11 +423,11 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
             return pm.isTipShowingOwner();
         }
 
-        public String getValueString() throws ParameterUnavailableException {
+        public String getValueString() throws ParameterException {
             return pm.getValueString();
         }
 
-        public String getValueUnitlessString() throws ParameterUnavailableException {
+        public String getValueUnitlessString() throws ParameterException {
             return pm.getValueUnitlessString();
         }
 
@@ -410,20 +455,22 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
             pm.zDispose();
         }
 
-        public ZCommand[] getZCommands() {
-            return pm.getZCommands();
+        public ZCommand[] getZCommands(Class markerClass) {
+            return pm.getZCommands(markerClass);
+        }
+
+        // most capable/super first
+        public Class[] getZCommandMarkers() {
+            return pm.getZCommandMarkers();
         }
 
         public String toString() {
             Integer pn = IntPool.get(0);
             try {
                 pn = pm.getValue();
-                return new AggRemoteName(pn, defPC.getPresetName(pm.getValue())).toString();
-            } catch (ParameterUnavailableException e) {
-                //e.printStackTrace();
-            } catch (NoSuchPresetException e) {
-            } catch (PresetEmptyException e) {
-                return new AggRemoteName(pn, DeviceContext.EMPTY_PRESET).toString();
+                return new ContextLocation(pn, defPC.getString(pm.getValue())).toString();
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
             }
             return pn.toString();
         }
@@ -431,8 +478,8 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
         public Icon getIcon() {
             try {
                 return defPC.getReadablePreset(pm.getValue()).getIcon();
-            } catch (NoSuchPresetException e) {
-            } catch (ParameterUnavailableException e) {
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
             }
             return null;
         }
@@ -440,8 +487,8 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
         public String getToolTipText() {
             try {
                 return defPC.getReadablePreset(pm.getValue()).getToolTipText();
-            } catch (NoSuchPresetException e) {
-            } catch (ParameterUnavailableException e) {
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
             }
             return "";
         }
@@ -462,10 +509,10 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
                 newLink();
                 numLinks++;
             }
-        } catch (NoSuchPresetException e) {
-            handleNoSuchPresetException();
-        } catch (PresetEmptyException e) {
-            handlePresetEmptyException();
+        } catch (EmptyException e) {
+            handleEmptyException();
+        } catch (PresetException e) {
+            handlePresetException();
         } finally {
             //ignorePresetInitialize = false;
         }
@@ -478,12 +525,9 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
     }
 
     public void linkAdded(final LinkAddEvent ev) {
-        final int num = ev.getNumberOfLinks();
-        for (int n = 0; n < num; n++) {
-            newLink();
-            fireTableRowsInserted(numLinks - 1, numLinks - 1); // -1 because newLink incremented numLinks
-            numLinks++;
-        }
+        newLink();
+        fireTableRowsInserted(numLinks - 1, numLinks - 1); // -1 because newLink incremented numLinks
+        numLinks++;
     }
 
     public void linkRemoved(final LinkRemoveEvent ev) {
@@ -496,7 +540,7 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
     public void linkChanged(final LinkChangeEvent ev) {
         int ind = ev.getLink().intValue();
         if (ind >= 0 && ind < tableRowObjects.size())
-            ((LinkTableModel.Link) tableRowObjects.get(ind)).updateParameters(ev.getParameters());
+            ((LinkTableModel.Link) tableRowObjects.get(ind)).updateParameters(ev.getIds());
     }
 
     private void remapLinks() {
@@ -574,14 +618,24 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
                     pm = getAppropiateParameterModelInterface(i);
                     pm.setShowUnits(false);
                     linkColumnObjects.add(pm);
-                } catch (IllegalParameterIdException e) {
+                    if (pm.getParameterDescriptor().getId().equals(ID.preset)) {
+                        final ReadableParameterModel f_pm = pm;
+                        try {
+                            if (preset.getPresetContext().isEmpty(f_pm.getValue()))
+                                preset.getPresetContext().assertNamed(f_pm.getValue(), true).post();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                } catch (ParameterException e) {
                     e.printStackTrace();
                     linkColumnObjects.add("");
                 }
             }
         }
 
-        protected ReadableParameterModel getAppropiateParameterModelInterface(int i) throws IllegalParameterIdException {
+        protected ReadableParameterModel getAppropiateParameterModelInterface(int i) throws ParameterException {
             ReadableParameterModel pm = link.getParameterModel(((GeneralParameterDescriptor) parameterObjects.get(i)).getId());
             if (((GeneralParameterDescriptor) parameterObjects.get(i)).getId().equals(IntPool.get(23)))
                 return new LinkPresetReadableParameterModel(pm, preset.getPresetContext());
@@ -608,7 +662,7 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
             return ((ContextEditablePreset.EditableLink) link).getPresetContext();
         }
 
-        public Integer[] getLinkParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException {
+        public Integer[] getLinkParams(Integer[] ids) throws EmptyException, ParameterException, PresetException, EmptyException {
             return link.getLinkParams(ids);
         }
 
@@ -620,7 +674,7 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
             this.link.setLinkNumber(link);
         }
 
-        public IsolatedPreset.IsolatedLink getIsolated() throws PresetEmptyException, NoSuchPresetException, NoSuchLinkException {
+        public IsolatedPreset.IsolatedLink getIsolated() throws EmptyException, PresetException {
             return link.getIsolated();
         }
 
@@ -629,10 +683,10 @@ public class LinkTableModel extends AbstractPresetTableModel implements ZDisposa
         }
 
         public Integer getPresetNumber() {
-            return preset.getPresetNumber();
+            return preset.getIndex();
         }
 
-        public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
+        public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
             return link.getParameterModel(id);
         }
 

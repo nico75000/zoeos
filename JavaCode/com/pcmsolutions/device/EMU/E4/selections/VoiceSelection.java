@@ -2,6 +2,8 @@ package com.pcmsolutions.device.EMU.E4.selections;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 
 import java.util.Arrays;
 
@@ -44,11 +46,9 @@ public class VoiceSelection extends AbstractE4Selection {
                 try {
                     voices[i] = readableVoices[i].getIsolated();
                     return voices[i];
-                } catch (NoSuchPresetException e) {
+                } catch (EmptyException e) {
                     e.printStackTrace();
-                } catch (PresetEmptyException e) {
-                    e.printStackTrace();
-                } catch (NoSuchVoiceException e) {
+                } catch (PresetException e) {
                     e.printStackTrace();
                 }
         }

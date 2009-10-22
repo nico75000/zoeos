@@ -1,7 +1,6 @@
 package com.pcmsolutions.aspi;
-import com.sun.jna.Callback;
 
-// import com.excelsior.xFunction.Callback;
+import com.excelsior.xFunction.Callback;
 
 /**
  * Created by IntelliJ IDEA.
@@ -10,11 +9,11 @@ import com.sun.jna.Callback;
  * Time: 16:37:32
  * To change this template use Options | File Templates.
  */
-public class ASPICallback /* extends Callback*/ {
+class ASPICallback extends Callback {
     private int hits = 0;
 
     public ASPICallback() {
-         //System.out.println("callback created "+ this.toString());
+        //System.out.println("callback created " + this.toString());
     }
 
     public int getHits() {
@@ -30,11 +29,11 @@ public class ASPICallback /* extends Callback*/ {
     }
 
     private void theCallback() {
-        //System.out.println("calling back! on " + this.toString());
+     //   System.out.println("calling back! on " + this.toString());
         synchronized (this) {
             hits++;
-//            notifyAll();
-          //  System.out.println("calledback! on " + this.toString());
+            notifyAll();
+          //  System.out.println("called back! on " + this.toString());
         }
     }
 }

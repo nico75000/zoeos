@@ -3,11 +3,9 @@ package com.pcmsolutions.device.EMU.E4.selections;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.gui.parameter.ParameterUtilities;
 import com.pcmsolutions.device.EMU.E4.master.MasterContext;
-import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.E4.parameter.*;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import java.util.ArrayList;
 
@@ -78,7 +76,7 @@ public class MasterParameterSelection extends AbstractE4Selection {
         this.vals = (Integer[]) l_vals.toArray(new Integer[l_vals.size()]);
     }
 
-    public MasterParameterSelection(DeviceContext dev, Integer[] ids, int category) throws ZDeviceNotRunningException, IllegalParameterIdException {
+    public MasterParameterSelection(DeviceContext dev, Integer[] ids, int category) throws ParameterException, DeviceException {
         super(dev);
         this.ids = new Integer[ids.length];
         this.vals = new Integer[ids.length];
@@ -110,10 +108,8 @@ public class MasterParameterSelection extends AbstractE4Selection {
     public void render(MasterContext mc) {
         for (int i = 0, n = ids.length; i < n; i++) {
             try {
-                mc.setMasterParam(ids[i], vals[i]);
-            } catch (IllegalParameterIdException e) {
-                e.printStackTrace();
-            } catch (ParameterValueOutOfRangeException e) {
+                mc.setMasterParam(ids[i], vals[i]).post();
+            } catch (ResourceUnavailableException e) {
                 e.printStackTrace();
             }
         }

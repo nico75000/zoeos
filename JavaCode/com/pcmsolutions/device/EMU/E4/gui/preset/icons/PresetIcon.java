@@ -9,19 +9,21 @@ package com.pcmsolutions.device.EMU.E4.gui.preset.icons;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 
 import javax.swing.*;
+import javax.sound.sampled.AudioSystem;
 import java.awt.*;
 import java.awt.geom.Ellipse2D;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 public class PresetIcon implements Icon {
-    private int w, h;
-    private Color c1, c2, core;
-    private boolean empty;
+    int w, h;
+    Color c1, c2, core;
+    boolean empty;
 
-    /** Creates a new instance of PresetIcon */
+    /**
+     * Creates a new instance of PresetIcon
+     */
     public PresetIcon(int w, int h, Color c1, Color c2) {
         this(w, h, c1, c2, false);
     }
@@ -39,7 +41,7 @@ public class PresetIcon implements Icon {
         this.h = h;
         this.c1 = UIColors.applyAlpha(c1, UIColors.iconAlpha);
         this.c2 = UIColors.applyAlpha(c2, UIColors.iconAlpha);
-        this.core = core;
+        this.core = UIColors.applyAlpha(core, UIColors.iconAlpha);
     }
 
     public int getIconHeight() {
@@ -58,32 +60,31 @@ public class PresetIcon implements Icon {
         return c2;
     }
 
-    private static int fact(int val, double fact) {
-        return (int) Math.round(val * fact);
-    }
-
     public void paintIcon(java.awt.Component component, java.awt.Graphics graphics, int x, int y) {
         Graphics2D g2d = ((Graphics2D) graphics);
-        Shape c;
-        if (empty) {
-            c = new Ellipse2D.Double(x + 1, y + 1, w - 2, h - 2);
-            g2d.setColor(c1);
-            g2d.draw(c);
-            return;
-        }
-        c = new Ellipse2D.Double(x, y, w, h);
-        GradientPaint gp = new GradientPaint(x, y, c1, x + w, y + h, c2, false);
-        g2d.setPaint(gp);
-        g2d.fill(c);
-        g2d.draw(c);
-        if (core != null) {
-            c = new Ellipse2D.Double(x + fact(w, 0.25), y + fact(h, 0.25), w / 2, h / 2);
-            //gp = new GradientPaint(x, y, c1, x + w / 2, y + h / 2, c2, false);
-            gp = new GradientPaint(x, y, c1, x + w, y + h, core, false);
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
+        try {
+            Shape c;
+            if (empty) {
+                c = new Ellipse2D.Double(x + 1, y + 1, w - 2, h - 2);
+                g2d.setColor(c1);
+                g2d.draw(c);
+                return;
+            }
+            c = new Ellipse2D.Double(x, y, w, h);
+            GradientPaint gp = new GradientPaint(x, y, c1, x + w, y + h, c2, false);
             g2d.setPaint(gp);
             g2d.fill(c);
-            g2d.setColor(core);
             g2d.draw(c);
+            if (core != null) {
+                c = new Ellipse2D.Double(x + w * 0.25, y + h * 0.25, w * 0.5, h * 0.5);
+                gp = new GradientPaint(x, y, c1, x + w, y + h, core, false);
+                g2d.setPaint(gp);
+                g2d.fill(c);
+            }
+        } finally {
+            g2d.setRenderingHints(hints);
         }
     }
 }

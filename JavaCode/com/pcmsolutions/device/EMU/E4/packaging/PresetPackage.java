@@ -6,7 +6,7 @@ import com.pcmsolutions.util.IntegerUseMap;
 
 import java.util.Map;
 
-public interface PresetPackage{
+public interface PresetPackage {
     //public static final int MAX_PRESETS = 1000;
 
     public static final String PRESET_PKG_EXT = "zppkg";

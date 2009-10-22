@@ -1,9 +1,8 @@
 package com.pcmsolutions.gui.desktop;
 
 import com.jidesoft.docking.DockableFrame;
-import com.pcmsolutions.system.ZDisposable;
-import com.pcmsolutions.device.EMU.E4.gui.device.DeviceIcon;
 import com.pcmsolutions.gui.EmptyIcon;
+import com.pcmsolutions.system.ZDisposable;
 
 /**
  * User: paulmeehan

@@ -1,13 +1,13 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope;
 
+import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.system.preferences.ZBoolPref;
 import com.pcmsolutions.system.preferences.ZEnumPref;
-import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 
 import javax.swing.*;
-import java.awt.event.MouseListener;
-import java.awt.event.MouseEvent;
 import java.awt.event.ActionEvent;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 
 /**
  * User: paulmeehan

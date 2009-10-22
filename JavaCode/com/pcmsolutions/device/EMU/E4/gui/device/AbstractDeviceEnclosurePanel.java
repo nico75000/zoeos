@@ -5,6 +5,7 @@ import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListener;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.system.*;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -109,14 +110,18 @@ public abstract class AbstractDeviceEnclosurePanel extends JPanel implements ZDe
         innerPanel.add(stoppedTextPane, BorderLayout.CENTER);
         innerPanel.add(new JButton(new AbstractAction("Try Restart") {
             public void actionPerformed(ActionEvent e) {
-                Zoeos.getInstance().getDeviceManager().startDevice(device);
+                try {
+                    Zoeos.getInstance().getDeviceManager().startDevice(device).post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                }
             }
         }), BorderLayout.SOUTH);
 
         stoppedPanel.setViewportView(innerPanel);
     }
 
-    protected abstract void buildRunningPanel() throws ZDeviceNotRunningException;
+    protected abstract void buildRunningPanel() ;
 
     public DeviceContext getDevice() {
         return device;
@@ -125,6 +130,7 @@ public abstract class AbstractDeviceEnclosurePanel extends JPanel implements ZDe
     protected void syncPanel() {
         switch (device.getState()) {
             case ZExternalDevice.STATE_STOPPED:
+                stoppedTextPane.setText(device.getReasonForState());
                 loadPanel(stoppedPanel);
                 break;
             case ZExternalDevice.STATE_PENDING:
@@ -132,13 +138,13 @@ public abstract class AbstractDeviceEnclosurePanel extends JPanel implements ZDe
                 break;
             case ZExternalDevice.STATE_RUNNING:
                 if (!runningPanelBuilt)
-                    try {
+                  //  try {
                         buildRunningPanel();
-                    } catch (ZDeviceNotRunningException e) {
+                   // } catch (ZDeviceNotRunningException e) {
                         // oops
-                        loadPanel(stoppedPanel);
-                        break;
-                    }
+                   //     loadPanel(stoppedPanel);
+                       // break;
+                 //   }
                 loadPanel(runningPanel);
                 break;
             default:

@@ -1,23 +1,18 @@
 package com.pcmsolutions.smdi;
 
 import com.pcmsolutions.aspi.ASPILogic;
-import com.pcmsolutions.gui.ProgressUpdater;
+import com.pcmsolutions.aspi.SCSI;
+import com.pcmsolutions.gui.ProgressCallback;
 import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.preferences.Impl_ZDoublePref;
-import com.pcmsolutions.system.preferences.Impl_ZIntPref;
-import com.pcmsolutions.system.preferences.ZDoublePref;
-import com.pcmsolutions.system.preferences.ZIntPref;
+import com.pcmsolutions.system.audio.AudioConversionException;
+import com.pcmsolutions.system.audio.AudioConverter;
+import com.pcmsolutions.system.threads.Impl_ZThread;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.UnsupportedAudioFileException;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.text.DecimalFormat;
-import java.util.prefs.Preferences;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 
 
 /**
@@ -27,26 +22,17 @@ import java.util.prefs.Preferences;
  * Time: 02:06:20
  * To change this template use Options | File Templates.
  */
-class SMDILogic {
-    private static int extractAddMsgLen(char[] arr) {
-        if (arr.length < 11)
-            throw new IllegalArgumentException("not a valid SMDI message");
-        int v = 0;
-        v += arr[8] << 16;
-        v += arr[9] << 8;
-        v += arr[10];
-        return v;
-    }
+public class SMDILogic {
 
-    private static boolean checkWait(char[] reply, long interval, long timeout) throws SMDILogicException, SMDISampleEmptyException {
+    private static boolean checkWait(char[] reply, long interval, long timeout) {
         return false;
     }
 
-    private static int checkReject(char[] reply) throws SMDILogicException, SMDISampleEmptyException {
+    private static int checkReject(byte[] reply) throws SMDILogicException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiOutOfRangeException {
         try {
-            int rmid = ZUtilities.extractInt(reply, 4);
+            int rmid = ZUtilities.extractUnsignedInt(reply, 4);
             if (rmid == SMDI.SMDI_MSG_REJECT) {
-                int rcode = ZUtilities.extractInt(reply, 11);
+                int rcode = ZUtilities.extractUnsignedInt(reply, 11);
                 switch (rcode) {
                     case SMDI.SMDI_REJECT_BPW:
                         throw new SMDILogicException("Unsupported number of bits per sample word");
@@ -55,21 +41,21 @@ class SMDILogic {
                     case SMDI.SMDI_REJECT_CHNLS:
                         throw new SMDILogicException("Unsupported number of audio channels");
                     case SMDI.SMDI_REJECT_EMPTY:
-                        throw new SMDISampleEmptyException("Empty");
+                        throw new SmdiSampleEmptyException("Empty sample");
                     case SMDI.SMDI_REJECT_HDR_MISMATCH:
                         throw new SMDILogicException("Sample header mismatch");
                     case SMDI.SMDI_REJECT_INAPPROPIATE:
                         throw new SMDILogicException("Inappropiate SMDI message");
                     case SMDI.SMDI_REJECT_MEMORY:
-                        throw new SMDILogicException("Insufficient sample memory");
+                        throw new SmdiNoMemoryException("Insufficient sample memory");
                     case SMDI.SMDI_REJECT_OUTOFRANGE:
-                        throw new SMDILogicException("Sample out of range");
+                        throw new SmdiOutOfRangeException("Sample out of range");
                     case SMDI.SMDI_REJECT_PACKET_LENGTH:
                         throw new SMDILogicException("Unsupported packet length");
                     case SMDI.SMDI_REJECT_PACKET_MISMATCH:
                         throw new SMDILogicException("Packet number mismatch");
                     case SMDI.SMDI_REJECT_PARAM_MEMORY:
-                        throw new SMDILogicException("Insufficient parameter memory");
+                        throw new SmdiNoMemoryException("Insufficient parameter memory");
                     case SMDI.SMDI_REJECT_UNSUPPORTED:
                         throw new SMDILogicException("Unsupported command");
                     default:
@@ -88,66 +74,322 @@ class SMDILogic {
         }
     }
 
-    public static class SMDISampleEmptyException extends Exception {
-        public SMDISampleEmptyException(String message) {
-            super(message);
-        }
-    }
-
-    public static void deleteSample(int haid, int id, int sample) throws SMDILogicException, SMDISampleEmptyException {
+    public static void deleteSample(int haid, int id, int sample) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.DeleteSample msg = new SMDIMsg.DeleteSample().setSample(sample);
         try {
-            char[] reply = msg.dispatch(haid, id);
+            byte[] reply = msg.dispatch(haid, id);
             int rm = checkReject(reply);
         } catch (ASPILogic.ASPILogicException e) {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
+        } catch (SMDIMsg.SMDIMsgException e) {
+            throw new SMDILogicException(e.getMessage());
         }
     }
 
-    public static void nameSample(int haid, int id, int sample, String name) throws SMDILogicException, SMDISampleEmptyException {
+    public static void nameSample(int haid, int id, int sample, String name) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.SampleName msg = new SMDIMsg.SampleName().setName(sample, name);
         try {
-            char[] reply = msg.dispatch(haid, id);
+            byte[] reply = msg.dispatch(haid, id);
             int rm = checkReject(reply);
         } catch (ASPILogic.ASPILogicException e) {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
+        } catch (SMDIMsg.SMDIMsgException e) {
+            throw new SMDILogicException(e.getMessage());
         }
     }
 
-    public static void masterIdentify(int haid, int id) throws SMDILogicException, SMDISampleEmptyException {
+    public interface DeviceInfo extends ASPILogic.DeviceInfo {
+        public boolean isSMDI();
+    }
+
+    // may return null to indicate no device
+    public static DeviceInfo inquireDevice(int haid, int id) throws SMDILogicException {
+        try {
+            final ASPILogic.DeviceInfo di;
+            try {
+                di = ASPILogic.inquireDevice(haid, id);
+            } catch (ASPILogic.ASPINoDeviceException e) {
+                return null;
+            }
+            if (di == null)
+                return null;
+            boolean smdiSlave = false;
+            try {
+                smdiSlave = masterIdentify(haid, id);
+            } catch (SMDILogicException e) {
+                throw new SMDILogicException(e.getMessage());
+            } catch (SmdiOutOfRangeException e) {
+                throw new SMDILogicException(e.getMessage());
+            } catch (SmdiSampleEmptyException e) {
+                throw new SMDILogicException(e.getMessage());
+            } catch (SmdiNoMemoryException e) {
+                throw new SMDILogicException(e.getMessage());
+            }
+            final boolean isSMDI = (di.getDeviceType() == SCSI.DTYPE_PROC && smdiSlave);
+            return new DeviceInfo() {
+                public boolean isSMDI() {
+                    return isSMDI;
+                }
+
+                public String getManufacturer() {
+                    return di.getManufacturer();
+                }
+
+                public String getName() {
+                    return di.getName();
+                }
+
+                public int getHaId() {
+                    return di.getHaId();
+                }
+
+                public int getScsiId() {
+                    return di.getScsiId();
+                }
+
+                public int getDeviceType() {
+                    return di.getDeviceType();
+                }
+
+                public char[] getResultBuffer() {
+                    return di.getResultBuffer();
+                }
+            };
+        } catch (ASPILogic.CommandFailedException e) {
+            // throw new SMDILogicException(e.getMessage());
+            return null;
+        } catch (ASPILogic.ASPILogicException e) {
+            throw new SMDILogicException(e.getMessage());
+        }
+    }
+
+    public static boolean masterIdentify(int haid, int id) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.MasterIdentify msg = new SMDIMsg.MasterIdentify();
         try {
-            char[] reply = msg.dispatch(haid, id);
+            byte[] reply = msg.dispatch(haid, id);
             int rm = checkReject(reply);
+            return rm == SMDI.SMDI_MSG_SLAVE;
         } catch (ASPILogic.ASPILogicException e) {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
+        } catch (SMDIMsg.SMDIMsgException e) {
+            throw new SMDILogicException(e.getMessage());
         }
     }
 
-    public static synchronized byte[] sendMidi(int haid, int id, byte[] midiData) throws SMDILogicException, SMDISampleEmptyException {
+    public static byte[] sendMidi(int haid, int id, byte[] midiData) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.Midi msg = new SMDIMsg.Midi().setMidi(midiData);
         try {
-            char[] reply = msg.dispatch(haid, id);
+            byte[] reply = msg.dispatch(haid, id);
             int rm = checkReject(reply);
-            byte[] arr = ZUtilities.extractByteArray(reply, 11, extractAddMsgLen(reply));
-            return arr;
+            return SMDIMsg.stripHeader(reply);
         } catch (ASPILogic.ASPILogicException e) {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
+        } catch (SMDIMsg.SMDIMsgException e) {
+            throw new SMDILogicException(e.getMessage());
         }
     }
 
-    private static SMDITransactionReport IN_reqSampleHeader(int haid, int id, int sample) throws SMDILogicException, SMDISampleEmptyException {
+    public static Impl_SmdiSampleHeader getSampleHeader(int haid, int id, int sample) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
+        byte[] reply = SMDIMsg.stripHeader(IN_reqSampleHeader(haid, id, sample).getReply());
+        masterIdentify(haid, id);
+        //tryAbort(haid, id);
+        return SMDIMsg.SampleHeader.getSampleHeader(reply);
+    }
+
+    private static int GC_BYTE_THRESHOLD = 1024 * 1204 * 8;
+
+    public static AudioInputStream recvSampleAsync(final SMDIRecvInstance ri) throws SmdiOutOfRangeException, SmdiNoMemoryException, SMDILogicException, SmdiSampleEmptyException, SmdiGeneralException {
+        final byte[] reply = SMDIMsg.stripHeader(IN_reqSampleHeader(ri.getHAID(), ri.getID(), ri.getSample()).getReply());
+        final AudioFormat af = SMDIMsg.SampleHeader.getAudioFormat(reply, ri);
+        final int len = SMDIMsg.SampleHeader.getSampleLength(reply);
+        final PipedInputStream pis = new PipedInputStream();
+        final PipedOutputStream pos;
+        try {
+            pos = new PipedOutputStream(pis);
+        } catch (IOException e) {
+            throw new SmdiGeneralException();
+        }
+        AudioInputStream ais = new AudioInputStream(pis, af, len);
+        new Impl_ZThread() {
+            public void runBody() {
+                ProgressCallback prog = ri.getProgressCallback();
+                try {
+                    SMDITransactionReport rep;
+                    int ps = ri.getPacketSizeInBytes();
+                    prog.updateProgress(0);
+                    try {
+                        int bytesOutstanding = len * (af.getSampleSizeInBits() / 8) * af.getChannels();
+                        rep = IN_beginTransfer(ri.getHAID(), ri.getID(), ri.getSample(), ps);
+                        double tot = bytesOutstanding;
+                        double gc_pass_tot = 0;
+                        // System.out.println("Total length = " + tot);
+                        int packet = 0;
+                        while (bytesOutstanding > 0) {
+                            try {
+                                rep = IN_sendNextPacket(ri.getHAID(), ri.getID(), ri.getSample(), packet++, ps);
+                                byte[] packetData = SMDIMsg.DataPacket.getData(rep.getReply());
+                                // System.out.println("Packet length = " + packetData.length);
+                                // System.out.println("bytes outstanding = " + bytesOutstanding);
+                                pos.write(packetData, 0, packetData.length);
+                                bytesOutstanding -= packetData.length;
+                                gc_pass_tot += packetData.length;
+                                if (prog.isCancelled()) {
+                                    tryAbort(ri.getHAID(), ri.getID());
+                                    throw new SmdiTransferAbortedException();
+                                }
+                                prog.updateProgress((tot - bytesOutstanding) / tot);
+                            } finally {
+                                if (gc_pass_tot > GC_BYTE_THRESHOLD) {
+                                    System.gc();
+                                    gc_pass_tot = 0;
+                                }
+                            }
+                        }
+                        pos.close();
+                    } catch (SmdiOutOfRangeException e) {
+                        e.printStackTrace();
+                    } catch (SmdiTransferAbortedException e) {
+                        e.printStackTrace();
+                    } catch (SmdiNoMemoryException e) {
+                        e.printStackTrace();
+                    } catch (SMDILogicException e) {
+                        e.printStackTrace();
+                    } catch (SmdiSampleEmptyException e) {
+                        e.printStackTrace();
+                    } finally {
+                        prog.updateProgress(1);
+                        //System.gc();
+                        //System.gc();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }.start();
+        return ais;
+    }
+
+    /*
+    public static AudioOutputStream recvSample(SMDIRecvInstance ri) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiTransferAbortedException, IOException, SmdiGeneralException {
+        SMDITransactionReport rep;
+        final ProgressCallback prog = ri.getProgressCallback();
+
+        final byte[] reply = SMDIMsg.stripHeader(IN_reqSampleHeader(ri.getHAID(), ri.getID(), ri.getSample()).getReply());
+        final AudioFormat af = SMDIMsg.SampleHeader.getAudioFormat(reply, ri);
+
+        AudioOutputStream aos = null;
+        int len = SMDIMsg.SampleHeader.getSampleLength(reply);
+        int ps = ri.getPacketSizeInBytes();
+        prog.updateProgress(0);
+
+        try {
+            int bytesOutstanding = len * (af.getSampleSizeInBits() / 8) * af.getChannels();
+            try {
+                aos = ZAudioSystem.getAudioOutputStream(ri.getFileType(), af, bytesOutstanding, ri.getOutputStream());
+            } catch (Exception e) {
+                throw new SmdiGeneralException(e.getMessage());
+            }
+            rep = IN_beginTransfer(ri.getHAID(), ri.getID(), ri.getSample(), ps);
+            double tot = bytesOutstanding;
+            // System.out.println("Total length = " + tot);
+            int packet = 0;
+            while (bytesOutstanding > 0) {
+                rep = IN_sendNextPacket(ri.getHAID(), ri.getID(), ri.getSample(), packet++, ps);
+                byte[] packetData = SMDIMsg.DataPacket.getData(rep.getReply());
+                // System.out.println("Packet length = " + packetData.length);
+                // System.out.println("bytes outstanding = " + bytesOutstanding);
+                aos.write(packetData, 0, packetData.length);
+                bytesOutstanding -= packetData.length;
+                if (prog.isCancelled()) {
+                    tryAbort(ri.getHAID(), ri.getID());
+                    throw new SmdiTransferAbortedException();
+                }
+                prog.updateProgress((tot - bytesOutstanding) / tot);
+            }
+        } finally {
+            prog.updateProgress(1);
+            System.gc();
+        }
+        return aos;
+    }
+     */
+    public static void sendSample(SMDISendInstance si) throws SMDILogicException, IOException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiTransferAbortedException {
+        SMDITransactionReport rep;
+        AudioInputStream ais = si.getAudioInputStream();
+        ProgressCallback prog = si.getProgressCallback();
+        try {
+            prog.updateProgress(0);
+            rep = OUT_sendHeader(si.getHAID(), si.getID(), si.getSample(), si.getSampleName(), ais.getFrameLength(), ais.getFormat());
+            int ps = SMDIMsg.TransferAck.getPacketLength(rep.getReply());
+            if (ps < si.getPacketSizeInBytes())
+                ps = si.getPacketSizeInBytes();
+            long tot = ais.getFrameLength() * ais.getFormat().getFrameSize();
+            // System.out.println("Total length = " + tot);
+            double runTot = 0;
+            rep = OUT_beginTransfer(si.getHAID(), si.getID(), si.getSample(), ps);
+            int packet = 0;
+            //int gc_pass_tot = 0;
+            do {
+                try {
+                    rep = OUT_sendNextPacket(si.getHAID(), si.getID(), packet++, ais, ps);
+                    runTot += rep.getAudioBytesTransferred();
+                    //gc_pass_tot += rep.getAudioBytesTransferred();
+                    //System.out.println("Bytes transferred = " + runTot);
+                    if (prog.isCancelled()) {
+                        tryAbort(si.getHAID(), si.getID());
+                        throw new SmdiTransferAbortedException();
+                    }
+                    prog.updateProgress(runTot / tot);
+                } finally {
+                    /*
+                    if (gc_pass_tot > GC_BYTE_THRESHOLD) {
+                        System.gc();
+                        gc_pass_tot = 0;
+                    }
+                    */
+                }
+            } while (rep.getMID() != SMDI.SMDI_MSG_EOP);
+        } catch (SMDILogicException e) {
+            tryAbort(si.getHAID(), si.getID());
+            throw e;
+        } catch (IOException e) {
+            tryAbort(si.getHAID(), si.getID());
+            throw e;
+        } finally {
+            prog.updateProgress(1);
+            //System.gc();
+        }
+    }
+
+    private static boolean tryAbort(int haid, int id) {
+        SMDIMsg.Abort abort = new SMDIMsg.Abort();
+        try {
+            if (checkReject(abort.dispatch(haid, id)) == SMDI.SMDI_MSG_ACK)
+                return true;
+        } catch (ASPILogic.ASPILogicException e1) {
+        } catch (ASPILogic.CommandFailedException e1) {
+        } catch (SMDILogicException e) {
+        } catch (SmdiSampleEmptyException e) {
+        } catch (SmdiNoMemoryException e) {
+        } catch (SmdiOutOfRangeException e) {
+        } catch (SMDIMsg.SMDIMsgException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    private static SMDITransactionReport IN_reqSampleHeader(int haid, int id, int sample) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.SampleHeaderRequest msg = new SMDIMsg.SampleHeaderRequest().setSample(sample);
         int mid;
-        char[] reply;
+        byte[] reply;
         try {
             reply = msg.dispatch(haid, id);
             mid = checkReject(reply);
@@ -155,12 +397,14 @@ class SMDILogic {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
+        } catch (SMDIMsg.SMDIMsgException e) {
+            throw new SMDILogicException(e.getMessage());
         }
 
-        final char[] f_reply = reply;
+        final byte[] f_reply = reply;
         final int f_mid = mid;
         return new SMDITransactionReport() {
-            public char[] getReply() {
+            public byte[] getReply() {
                 return f_reply;
             }
 
@@ -174,38 +418,28 @@ class SMDILogic {
         };
     }
 
-    public static void recvSample(int haid, int id, int sample, OutputStream os, ProgressUpdater prog) throws SMDISampleEmptyException, SMDILogicException {
-        SMDITransactionReport rep;
-        rep = IN_reqSampleHeader(haid, id, sample);
-
-
-         //ByteArrayInputStream bais = new ByteArrayInputStream();
-
-        //AudioSystem.write();
-        //AudioInputStream ais = new AudioInputStream();
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-
-        rep = IN_beginTransfer(haid, id, sample);
-    }
-
-    private static SMDITransactionReport IN_beginTransfer(int haid, int id, int sample) throws SMDILogicException {
+    private static SMDITransactionReport IN_beginTransfer(int haid, int id, int sample, int packetSize) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiTransferAbortedException {
         SMDIMsg.TransferBegin tb = new SMDIMsg.TransferBegin();
-        tb.setSample(sample, ZPREF_smdiPacketSizeKb.getValue() * 1024);
-        char[] reply;
+        int mid;
+        tb.setSample(sample, packetSize);
+        byte[] reply;
         try {
             reply = tb.dispatch(haid, id);
-            if (checkReject(reply) != SMDI.SMDI_MSG_TRANSFER_ACK)
+            mid = checkReject(reply);
+            if (mid == SMDI.SMDI_MSG_ABORT)
+                throw new SmdiTransferAbortedException();
+            else if (mid != SMDI.SMDI_MSG_TRANSFER_ACK)
                 throw new SMDILogicException("Unexpected response from slave device");
         } catch (ASPILogic.ASPILogicException e) {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
-        } catch (SMDISampleEmptyException e) {
+        } catch (SMDIMsg.SMDIMsgException e) {
             throw new SMDILogicException(e.getMessage());
         }
-        final char[] f_reply = reply;
+        final byte[] f_reply = reply;
         return new SMDITransactionReport() {
-            public char[] getReply() {
+            public byte[] getReply() {
                 return f_reply;
             }
 
@@ -219,12 +453,46 @@ class SMDILogic {
         };
     }
 
-    private static final int WAIT_INTERVAL = 50;
+    private static SMDITransactionReport IN_sendNextPacket(int haid, int id, int sample, int packet, int packetSize) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiTransferAbortedException {
+        int mid;
+        SMDIMsg.SendNextPacket snp = new SMDIMsg.SendNextPacket();
+        snp.setPacket(packet, packetSize);
+        byte[] reply;
+        try {
+            reply = snp.dispatch(haid, id);
+            mid = checkReject(reply);
+            if (mid == SMDI.SMDI_MSG_ABORT)
+                throw new SmdiTransferAbortedException();
+        } catch (ASPILogic.ASPILogicException e) {
+            throw new SMDILogicException(e.getMessage());
+        } catch (ASPILogic.CommandFailedException e) {
+            throw new SMDILogicException(e.getMessage());
+        } catch (SMDIMsg.SMDIMsgException e) {
+            throw new SMDILogicException(e.getMessage());
+        }
+        final byte[] f_reply = reply;
+        final int f_mid = mid;
+        return new SMDITransactionReport() {
+            public byte[] getReply() {
+                return f_reply;
+            }
 
-    private static SMDITransactionReport OUT_sendHeader(int haid, int id, int sample, String name, long length, AudioFormat f) throws SMDILogicException {
+            public int getAudioBytesTransferred() {
+                return 0;
+            }
+
+            public int getMID() {
+                return f_mid;
+            }
+        };
+    }
+
+    private static final int WAIT_INTERVAL = 100;
+
+    private static SMDITransactionReport OUT_sendHeader(int haid, int id, int sample, String name, long length, AudioFormat f) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.SampleHeader h = new SMDIMsg.SampleHeader();
         h.setSample(sample, name, length, f);
-        char[] reply;
+        byte[] reply;
         int mid;
         try {
             reply = h.dispatch(haid, id);
@@ -243,13 +511,13 @@ class SMDILogic {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
-        } catch (SMDISampleEmptyException e) {
+        } catch (SMDIMsg.SMDIMsgException e) {
             throw new SMDILogicException(e.getMessage());
         }
-        final char[] f_reply = reply;
+        final byte[] f_reply = reply;
         final int f_mid = mid;
         return new SMDITransactionReport() {
-            public char[] getReply() {
+            public byte[] getReply() {
                 return f_reply;
             }
 
@@ -263,10 +531,10 @@ class SMDILogic {
         };
     }
 
-    private static SMDITransactionReport OUT_beginTransfer(int haid, int id, int sample, int pl) throws SMDILogicException {
+    private static SMDITransactionReport OUT_beginTransfer(int haid, int id, int sample, int pl) throws SMDILogicException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.TransferBegin tb = new SMDIMsg.TransferBegin();
         tb.setSample(sample, pl);
-        char[] reply;
+        byte[] reply;
         int mid;
         try {
             reply = tb.dispatch(haid, id);
@@ -286,13 +554,13 @@ class SMDILogic {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
-        } catch (SMDISampleEmptyException e) {
+        } catch (SMDIMsg.SMDIMsgException e) {
             throw new SMDILogicException(e.getMessage());
         }
-        final char[] f_reply = reply;
+        final byte[] f_reply = reply;
         final int f_mid = mid;
         return new SMDITransactionReport() {
-            public char[] getReply() {
+            public byte[] getReply() {
                 return f_reply;
             }
 
@@ -306,9 +574,9 @@ class SMDILogic {
         };
     }
 
-    private static SMDITransactionReport OUT_sendNextPacket(int haid, int id, int packet, AudioInputStream ais, int pl) throws SMDILogicException, IOException {
+    private static SMDITransactionReport OUT_sendNextPacket(int haid, int id, int packet, AudioInputStream ais, int pl) throws SMDILogicException, IOException, SmdiOutOfRangeException, SmdiSampleEmptyException, SmdiNoMemoryException {
         SMDIMsg.DataPacket dp = new SMDIMsg.DataPacket();
-        char[] reply;
+        byte[] reply;
         int mid;
         try {
             ais.mark(ais.available());
@@ -337,14 +605,14 @@ class SMDILogic {
             throw new SMDILogicException(e.getMessage());
         } catch (ASPILogic.CommandFailedException e) {
             throw new SMDILogicException(e.getMessage());
-        } catch (SMDISampleEmptyException e) {
+        } catch (SMDIMsg.SMDIMsgException e) {
             throw new SMDILogicException(e.getMessage());
         }
-        final char[] f_reply = reply;
+        final byte[] f_reply = reply;
         final int f_pl = pl;
         final int f_mid = mid;
         return new SMDITransactionReport() {
-            public char[] getReply() {
+            public byte[] getReply() {
                 return f_reply;
             }
 
@@ -358,170 +626,28 @@ class SMDILogic {
         };
     }
 
-
     private static interface SMDITransactionReport {
-        public char[] getReply();
+        public byte[] getReply();
 
         public int getAudioBytesTransferred();
 
         public int getMID();
     }
 
-    // optional audio format conversion, null is ok
-    public static final ZIntPref ZPREF_smdiPacketSizeKb = new Impl_ZIntPref(Preferences.userNodeForPackage(SMDILogic.class), "smdiPacketSizeKb", 64);
-
-    private static class AudioConverter {
-        public static final ZDoublePref ZPREF_maxRate = new Impl_ZDoublePref(Preferences.userNodeForPackage(SMDILogic.class), "smdiMaxRate", 48000);
-
-        public static AudioInputStream prepareAudioStream(AudioInputStream ais) throws SmdiUnsupportedConversionException {
+    private static class Converter {
+        public static AudioInputStream prepareAudioStream(AudioInputStream ais, float maxRate) throws SmdiUnsupportedConversionException, AudioConversionException {
             AudioFormat af = ais.getFormat();
             if (af.getChannels() > 2)
                 throw new SmdiUnsupportedConversionException("Too many channels in audio data");
 
-            AudioFormat naf;
-            if (!af.getEncoding().equals(AudioFormat.Encoding.PCM_SIGNED) || !af.isBigEndian()) {
-                naf = new AudioFormat(af.getSampleRate(), af.getSampleSizeInBits(), af.getChannels(), true, true);
-                if (AudioSystem.isConversionSupported(naf, af))
-                    ais = AudioSystem.getAudioInputStream(naf, ais);
-                else
-                    throw new SmdiUnsupportedConversionException("Unsupported audio conversion");
-            }
-
-            float mr = (float) ZPREF_maxRate.getValue();
-            if (af.getSampleRate() > mr || af.getSampleSizeInBits() != 16) {
-                float rate = Math.min(af.getSampleRate(), mr);
-                naf = new AudioFormat(rate, 16, af.getChannels(), true, true);
-                if (AudioSystem.isConversionSupported(naf, af))
-                    ais = AudioSystem.getAudioInputStream(naf, ais);
-                else
-                    throw new SmdiUnsupportedConversionException("Unsupported audio conversion");
-            }
-            return ais;
+            float rate = af.getSampleRate();
+            if (rate > maxRate)
+                rate = maxRate;
+            return AudioConverter.convertStream(ais, new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, rate, 16, af.getChannels(), af.getFrameSize(), af.getFrameRate(), true, af.properties()));
         }
     }
 
-    public static void sendSample(int haid, int id, int sample, String name, AudioInputStream ais, ProgressUpdater prog) throws SMDILogicException, IOException, SmdiUnsupportedConversionException {
-        ais = AudioConverter.prepareAudioStream(ais);
-        SMDITransactionReport rep;
-        try {
-            prog.setProgress(0);
-            rep = OUT_sendHeader(haid, id, sample, name, ais.getFrameLength(), ais.getFormat());
-            int ps = SMDIMsg.TransferAck.getPacketLength(rep.getReply());
-            if (ps < ZPREF_smdiPacketSizeKb.getValue() * 1024)
-                ps = ZPREF_smdiPacketSizeKb.getValue() * 1024;
-            long tot = ais.getFrameLength() * ais.getFormat().getFrameSize();
-            long runTot = 0;
-            rep = OUT_beginTransfer(haid, id, sample, ps);
-            int packet = 0;
-            do {
-                rep = OUT_sendNextPacket(haid, id, packet++, ais, ps);
-                runTot += rep.getAudioBytesTransferred();
-                prog.setProgress(runTot / (double) tot);
-            } while (rep.getMID() != SMDI.SMDI_MSG_EOP);
-        } catch (SMDILogicException e) {
-            tryAbort(haid, id);
-            throw e;
-        } catch (IOException e) {
-            tryAbort(haid, id);
-            throw e;
-        } finally {
-            // ais.closed();
-            prog.setProgress(1);
-        }
-    }
-    /* public static void recvSample(int haid, int id, int sample, AudioOutputStream aos) throws SMDILogicException, IOException {
-         OutputStream o;
-         //AudioInputStream ais = new AudioInputStream(o.);
+    public static void main(String[] args) {
 
-     }*/
-
-    private static boolean tryAbort(int haid, int id) {
-        SMDIMsg.Abort abort = new SMDIMsg.Abort();
-        try {
-            if (checkReject(abort.dispatch(haid, id)) == SMDI.SMDI_MSG_ACK)
-                return true;
-        } catch (ASPILogic.ASPILogicException e1) {
-        } catch (ASPILogic.CommandFailedException e1) {
-        } catch (SMDILogicException e) {
-        } catch (SMDISampleEmptyException e) {
-        }
-        return false;
-    }
-
-    public static final void main(String[] args) {
-        try {
-            //AudioInputStream ais = AudioSystem.getAudioInputStream(new File("c://whine.wav"));
-            //AudioInputStream ais = AudioSystem.getAudioInputStream(new File("c://starter1.wav"));
-            // AudioInputStream ais = AudioSystem.getAudioInputStream(new File("c://dayrush.wav"));
-            //AudioInputStream ais = AudioSystem.getAudioInputStream(new File("c://test24bit.wav"));
-            AudioInputStream ais = AudioSystem.getAudioInputStream(new File("c://test32.wav"));
-            sendSample(0, 2, 10, "farts", ais, new ProgressUpdater() {
-                // fraction 0..1
-                // < 0 signifies inactive
-                public void setProgress(double p) {
-                    System.out.println(new DecimalFormat("00.00").format(p * 100) + " %");
-                }
-            });
-
-            //sendSample(0, 2, 1, "farts", AudioSystem.getAudioInputStream(new File("c://starter1.wav")));
-            //sendSample(0, 2, 1, "farts", AudioSystem.getAudioInputStream(new File("c://dayrush.wav")));
-        } catch (SMDILogicException e) {
-            e.printStackTrace();
-        } catch (UnsupportedAudioFileException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (SmdiUnsupportedConversionException e) {
-            e.printStackTrace();
-        }
     }
 }
-
-/*  try {
-              System.out.println(ASPIMsg.aspiGetSupportInfo.invoke());
-          } catch (WrongArgumentNumberException e) {
-              e.printStackTrace();
-          } catch (IncompatibleArgumentTypeException e) {
-              e.printStackTrace();
-          }*/
-/*
-         try {
-             System.out.println(ASPILogic.testUnitReady(0, 2));
-         } catch (ASPILogic.ASPILogicException e) {
-             e.printStackTrace();
-         } catch (ASPILogic.CommandFailedException e) {
-             e.printStackTrace();
-         }
-         byte[] reply = null;
-         try {
-             reply = sendMidi(0, 2, new IdentityRequest((byte) 127).getMessage());
-         } catch (SMDILogicException e) {
-             e.printStackTrace();
-         } catch (SMDISampleEmptyException e) {
-             e.printStackTrace();
-         }
-         for (int i = 1; i < 1000; i++) {
-             try {
-                 reqSampleHeader(0, 2, i);
-                 masterIdentify(0, 2);
-             } catch (SMDILogicException e) {
-                 e.printStackTrace();
-             } catch (SMDISampleEmptyException e) {
-                 System.out.println("Empty sample");
-             }
-             System.out.println(i);
-         }
-         for (int i = 1; i < 20; i++) {
-             try {
-                 nameSample(0, 2, i, String.valueOf(i));
-                 //deleteSample(0, 2, i);
-                 //masterIdentify(0, 2);
-             } catch (SMDILogicException e) {
-                 e.printStackTrace();
-             } catch (SMDISampleEmptyException e) {
-                 System.out.println("Empty sample");
-             }
-             System.out.println(i);
-         }
-         //deleteSample(0, 2, 2);
-         */

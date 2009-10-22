@@ -1,5 +1,7 @@
 package com.pcmsolutions.system;
 
+import com.pcmsolutions.system.tasking.Ticket;
+
 import java.util.List;
 import java.util.Map;
 
@@ -10,7 +12,7 @@ import java.util.Map;
  * Time: 23:20:43
  * To change this template use Options | File Templates.
  */
-public interface ZDeviceManager extends ZDisposable{
+public interface ZDeviceManager extends ZDisposable {
 
     public void performHunt();
 
@@ -30,27 +32,19 @@ public interface ZDeviceManager extends ZDisposable{
 
     public boolean isDuplicate(Object deviceIndentityMessage);
 
-    public void startDevice(ZExternalDevice d);
+    public Ticket startDevice(ZExternalDevice d);
 
-    public void stopDevice(ZExternalDevice d, String reason);
+    public Ticket stopDevice(ZExternalDevice d, String reason);
 
-    public void removeDevice(ZExternalDevice d, boolean saveState);
+    public Ticket removeDevice(ZExternalDevice d, boolean saveState);
 
-    public void revokeDevices();
+    public Ticket revokeDevices(String reason);
 
-    public void revokeDevicesNonThreaded();
-
-    public void revokeDevicesNonThreaded(String reason);
-
-    public void unrevokeDevices();
-
-    //public boolean getStartBarrier();
-
-    // public void setStartBarrier(boolean v);
+    public Ticket unrevokeDevices();
 
     public void clearUnidentified();
 
-    public Map getDuplicateMap();
+    public Map<ZExternalDevice,ZExternalDevice> getDuplicateMap();
 
     public void clearDuplicates();
 }

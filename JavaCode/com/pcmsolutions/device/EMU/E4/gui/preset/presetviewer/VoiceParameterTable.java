@@ -2,19 +2,18 @@ package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer;
 
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 import com.pcmsolutions.system.ZDisposable;
 
-import javax.swing.*;
+import java.awt.*;
 
 public class VoiceParameterTable extends AbstractVoiceParameterTable implements ZDisposable {
     private String title;
 
-    public VoiceParameterTable(ReadablePreset.ReadableVoice voice, String category, ReadableParameterModel[] parameterModels, String title) throws ZDeviceNotRunningException {
+    public VoiceParameterTable(ReadablePreset.ReadableVoice voice, String category, ReadableParameterModel[] parameterModels, String title)  {
         this(voice, category, new VoiceParameterTableModel(parameterModels), title);
     }
 
-    public VoiceParameterTable(ReadablePreset.ReadableVoice voice, String category, VoiceParameterTableModel pgtm, String title) throws ZDeviceNotRunningException {
+    public VoiceParameterTable(ReadablePreset.ReadableVoice voice, String category, VoiceParameterTableModel pgtm, String title)  {
         super(voice, category, pgtm, VoiceParameterTableTransferHandler.getInstance(), null, title + " >");
         this.title = title;
         //setDragEnabled(true);
@@ -24,7 +23,7 @@ public class VoiceParameterTable extends AbstractVoiceParameterTable implements 
         dropOverExtent = -1;
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
+    protected Component[] getCustomMenuItems() {
         return null;
     }
 

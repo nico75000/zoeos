@@ -7,12 +7,8 @@ package com.pcmsolutions.device.EMU.E4.parameter;
  * Time: 01:08:07
  * To change this template use Options | File Templates.
  */
-public class ParameterValueOutOfRangeException extends java.lang.Exception {
-
-    public ParameterValueOutOfRangeException() {
-    }
-
-    public ParameterValueOutOfRangeException(String msg) {
-        super(msg);
+public class ParameterValueOutOfRangeException extends ParameterException {
+    public ParameterValueOutOfRangeException(Integer id) {
+        super("parameter value outside range", id);
     }
 }

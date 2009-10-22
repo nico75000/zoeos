@@ -1,15 +1,20 @@
 package com.pcmsolutions.gui.midi;
 
-import com.pcmsolutions.comms.MidiSystemFacade;
+import com.pcmsolutions.comms.ZMidiSystem;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTablePanel;
 import com.pcmsolutions.gui.ZDialog;
-import com.pcmsolutions.system.ZEditIgnoreTokensDialog;
 import com.pcmsolutions.system.Zoeos;
 import com.pcmsolutions.system.ZoeosPreferences;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
+import javax.sound.midi.MidiDevice;
+import javax.sound.midi.MidiUnavailableException;
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentEvent;
@@ -23,11 +28,10 @@ import java.util.prefs.Preferences;
  * Time: 23:00:21
  * To change this template use Options | File Templates.
  */
-public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.MidiSystemListener, ComponentListener {
+public class ZMidiManagerDialog extends ZDialog implements ZMidiSystem.MidiSystemListener, ComponentListener, ChangeListener {
     protected RowHeaderedAndSectionedTablePanel midiPanel;
     protected MidiManagerTable midiManagerTable;
     protected JScrollPane scrollPane;
-    protected ZEditIgnoreTokensDialog editIgnoreTokensDlg;
 
     private static final String PREF_midiManagerMaxHeight = "midiManagerMaxHeight";
     private JCheckBox relCheck;
@@ -48,82 +52,85 @@ public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.Midi
         huntButt.setAction(new AbstractAction("Hunt") {
             public void actionPerformed(ActionEvent e) {
                 huntButt.setEnabled(false);
-                Thread t = new ZDefaultThread("MidiManager Hunt") {
-                    public void run() {
-                        try {
-                            Zoeos.getInstance().getDeviceManager().performHunt();
-                        } finally {
+                try {
+                    Zoeos.getInstance().getSystemQ().getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
+                            try {
+                                Zoeos.getInstance().getDeviceManager().performHunt();
+                            } finally {
+                            }
+                        }
+                    }, "midiManagerHunt").post(new Callback() {
+                        public void result(Exception e, boolean wasCancelled) {
                             SwingUtilities.invokeLater(new Runnable() {
                                 public void run() {
                                     huntButt.setEnabled(true);
                                 }
                             });
                         }
-                    }
-                };
-                t.start();
+                    });
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                    huntButt.setEnabled(true);
+                }
             }
         });
 
         huntButt.setAlignmentX(Component.LEFT_ALIGNMENT);
         huntButt.setToolTipText("Hunt For Devices");
 
-        /*final JButton permitButt = new JButton();
-        permitButt.setAction(new AbstractAction("Modify Port Ignore Tokens") {
-            public void actionPerformed(ActionEvent e) {
-                if ( editIgnoreTokensDlg == null)
-                    editIgnoreTokensDlg = new ZEditIgnoreTokensDialog(ZoeosFrame.getInstance(), false);
-
-                editIgnoreTokensDlg.show();
-            }
-        });
-        permitButt.setToolTipText("Specify which ports ZoeOS is permitted to use");
-         */
-
-        final JButton permitButt = new JButton();
-        permitButt.setAction(new AbstractAction("Permit") {
+        final JButton togglePermitButt = new JButton();
+        togglePermitButt.setAction(new AbstractAction("Toggle permission") {
             public void actionPerformed(ActionEvent e) {
                 int[] selRows = midiManagerTable.getSelectedRows();
-                for (int i = 0,j = selRows.length; i < j; i++) {
-                    Object tok = midiManagerTable.getModel().getValueAt(selRows[i], 0);
-                    if (tok != null && !tok.equals(""))
-                        MidiSystemFacade.getInstance().removeIgnoreToken(tok);
+                for (int i = 0, j = selRows.length; i < j; i++) {
+                    MidiDevice.Info dev = (MidiDevice.Info) midiManagerTable.getModel().getValueAt(selRows[i], 0);
+                    if (dev != null)
+                        try {
+                            ZMidiSystem.getInstance().togglePortPermitted(dev);
+                        } catch (MidiUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
                 }
             }
         });
-        permitButt.setToolTipText("Permit selected ports");
-
-        final JButton ignoreButt = new JButton();
-        ignoreButt.setAction(new AbstractAction("Ignore") {
-            public void actionPerformed(ActionEvent e) {
-                int[] selRows = midiManagerTable.getSelectedRows();
-                for (int i = 0,j = selRows.length; i < j; i++) {
-                    Object tok = midiManagerTable.getModel().getValueAt(selRows[i], 0);
-                    if (tok != null && !tok.equals(""))
-                        MidiSystemFacade.getInstance().addIgnoreToken(tok);
-                }
-            }
-        });
-        ignoreButt.setToolTipText("Ignore selected ports");
-
+        togglePermitButt.setToolTipText("Toggle permission on selected ports");
 
         final JButton permitAllButt = new JButton();
         permitAllButt.setAction(new AbstractAction("Permit All") {
             public void actionPerformed(ActionEvent e) {
-                MidiSystemFacade.getInstance().clearIgnoreTokens();
+                ZMidiSystem.getInstance().permitAll();
             }
         });
         permitAllButt.setToolTipText("Permit all ports");
 
+        /*
+        final JButton toggleNeverCloseButt = new JButton();
+        toggleNeverCloseButt.setAction(new AbstractAction("Toggle never closes") {
+            public void actionPerformed(ActionEvent e) {
+                int[] selRows = midiManagerTable.getSelectedRows();
+                for (int i = 0, j = selRows.length; i < j; i++) {
+                    MidiDevice.Info info = (MidiDevice.Info)midiManagerTable.getModel().getValueAt(selRows[i], 0);
+                    if (info != null)
+                        try {
+                            ZMidiSystem.getInstance().togglePortNeverToBeClosed(info);
+                        } catch (MidiUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
+                }
+            }
+        });
+        toggleNeverCloseButt.setToolTipText("Toggle never closes");
+        */
 
-        relCheck = new JCheckBox(new AbstractAction("Release Midi when Application Minimized (Stop Devices)") {
+        relCheck = new JCheckBox(new AbstractAction("Release Midi resources when application is minimized (= Stop devices)") {
             public void actionPerformed(ActionEvent e) {
                 ZoeosPreferences.ZPREF_releaseMidiOnMinimize.putValue(relCheck.isSelected());
             }
         });
 
         relCheck.setSelected(ZoeosPreferences.ZPREF_releaseMidiOnMinimize.getValue());
-
+        ZoeosPreferences.ZPREF_releaseMidiOnMinimize.addChangeListener(this);
         JPanel bottomPanel = new JPanel() {
             public Color getBackground() {
                 return UIColors.getDefaultBG();
@@ -144,9 +151,9 @@ public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.Midi
         bp2.setLayout(new FlowLayout(FlowLayout.LEFT));
         bp2.add(hideButt);
         bp2.add(huntButt);
-        bp2.add(permitButt);
-        bp2.add(ignoreButt);
+        bp2.add(togglePermitButt);
         bp2.add(permitAllButt);
+        //bp2.add(toggleNeverCloseButt);
 
         bottomPanel.add(bp1, BorderLayout.NORTH);
         bottomPanel.add(bp2, BorderLayout.CENTER);
@@ -155,24 +162,31 @@ public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.Midi
             public void actionPerformed(final ActionEvent e) {
                 if (e.getSource() instanceof Component) {
                     ((Component) e.getSource()).setEnabled(false);
-                    new ZDefaultThread("Refresh Midi") {
-                        public void run() {
-                            try {
-                                //MidiSystemFacade.getInstance().refresh(true);
-                            } finally {
+                    try {
+                        Zoeos.getInstance().getSystemQ().getPostableTicket(new TicketRunnable() {
+                            public void run() throws Exception {
+                                try {
+                                    //ZMidiSystem.getInstance().refresh(true);
+                                } finally {
+                                }
+                            }
+                        }, "performHunt").post(new Callback() {
+                            public void result(Exception e1, boolean wasCancelled) {
                                 SwingUtilities.invokeLater(new Runnable() {
                                     public void run() {
                                         ((Component) e.getSource()).setEnabled(true);
                                     }
                                 });
                             }
-                        }
-                    }.start();
+                        });
+                    } catch (ResourceUnavailableException e1) {
+                        e1.printStackTrace();
+                        ((Component) e.getSource()).setEnabled(true);
+                    }
                 }
             }
         };
         ract.putValue("tip", "Refresh Midi System");
-
 
         midiManagerTable = new MidiManagerTable();
         midiPanel = new RowHeaderedAndSectionedTablePanel().init(midiManagerTable, null, null, ract);
@@ -180,7 +194,8 @@ public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.Midi
 
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-
+        scrollPane.getVerticalScrollBar().setUnitIncrement(UIColors.getTableRowHeight());
+        scrollPane.getVerticalScrollBar().setBlockIncrement(UIColors.getTableRowHeight() * 4);
         this.getContentPane().setLayout(new BorderLayout());
         this.getContentPane().add(scrollPane, BorderLayout.CENTER);
         this.getContentPane().add(bottomPanel, BorderLayout.SOUTH);
@@ -194,10 +209,11 @@ public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.Midi
 
     public void dispose() {
         super.dispose();
-        MidiSystemFacade.getInstance().removeMidiSystemListener(this);
+        ZMidiSystem.getInstance().removeMidiSystemListener(this);
+        ZoeosPreferences.ZPREF_releaseMidiOnMinimize.removeChangeListener(this);
     }
 
-    public void midiSystemChanged(MidiSystemFacade msf) {
+    public void midiSystemChanged(ZMidiSystem msf) {
 
     }
 
@@ -225,5 +241,10 @@ public class ZMidiManagerDialog extends ZDialog implements MidiSystemFacade.Midi
     }
 
     public void componentHidden(ComponentEvent e) {
+    }
+
+    public void stateChanged(ChangeEvent e) {
+        if (e.getSource() == ZoeosPreferences.ZPREF_releaseMidiOnMinimize)
+            relCheck.setSelected(ZoeosPreferences.ZPREF_releaseMidiOnMinimize.getValue());
     }
 }

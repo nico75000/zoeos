@@ -1,14 +1,16 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope;
 
+import com.pcmsolutions.device.EMU.E4.DevicePreferences;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
-import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.system.IntPool;
 
-import javax.swing.event.ChangeListener;
-import javax.swing.event.ChangeEvent;
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.event.ActionEvent;
 
 
@@ -28,8 +30,8 @@ public class FilterEnvelopePanel extends VoiceEnvelopePanel {
         }
     };
 
-    public FilterEnvelopePanel init(ReadablePreset.ReadableVoice voice) throws IllegalParameterIdException {
-        super.init(voice, ParameterCategories.VOICE_FILTER_ENVELOPE, IntPool.get(93), "Filter Envelope", toggleAction);
+    public FilterEnvelopePanel init(ReadablePreset.ReadableVoice voice, TableExclusiveSelectionContext tsc) throws ParameterException {
+        super.init(voice, tsc,ParameterCategories.VOICE_FILTER_ENVELOPE, IntPool.get(93), "Filter Envelope", toggleAction);
         DevicePreferences.ZPREF_fillFilterEnvelopes.addChangeListener(cl);
         DevicePreferences.ZPREF_filterEnvelopeMode.addChangeListener(cl);
         getEnvelope().addMouseListener(new RatesEnvelopeMouseListener(getEnvelope(), DevicePreferences.ZPREF_fillFilterEnvelopes, DevicePreferences.ZPREF_filterEnvelopeMode));

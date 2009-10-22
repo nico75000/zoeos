@@ -1,19 +1,18 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope;
 
+import com.pcmsolutions.device.EMU.E4.DevicePreferences;
+import com.pcmsolutions.device.EMU.E4.gui.Impl_TableExclusiveSelectionContext;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
-import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.preferences.ZBoolPref;
-import com.pcmsolutions.system.preferences.ZEnumPref;
 
-import javax.swing.event.ChangeListener;
-import javax.swing.event.ChangeEvent;
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.event.ActionEvent;
-import java.awt.event.MouseListener;
-import java.awt.event.MouseEvent;
 
 
 public class AmpEnvelopePanel extends VoiceEnvelopePanel {
@@ -32,8 +31,8 @@ public class AmpEnvelopePanel extends VoiceEnvelopePanel {
         }
     };
 
-    public AmpEnvelopePanel init(ReadablePreset.ReadableVoice voice) throws IllegalParameterIdException {
-        super.init(voice, ParameterCategories.VOICE_AMPLIFIER_ENVELOPE, IntPool.get(70), "Amp Envelope", toggleAction);
+    public AmpEnvelopePanel init(ReadablePreset.ReadableVoice voice, TableExclusiveSelectionContext tsc) throws ParameterException {
+        super.init(voice, tsc,ParameterCategories.VOICE_AMPLIFIER_ENVELOPE, IntPool.get(70), "Amp Envelope", toggleAction);
         DevicePreferences.ZPREF_fillAmpEnvelopes.addChangeListener(cl);
         DevicePreferences.ZPREF_ampEnvelopeMode.addChangeListener(cl);
         getEnvelope().addMouseListener(new RatesEnvelopeMouseListener(getEnvelope(), DevicePreferences.ZPREF_fillAmpEnvelopes, DevicePreferences.ZPREF_ampEnvelopeMode));

@@ -26,9 +26,9 @@ public interface MidiInletStateMachine extends StdStates {
     public final static String[] midiInletStateNames = new String[]{
         "STATE_PENDING", "STATE_INITIALIZED", "STATE_STARTED", "STATE_STOPPED", "STATE_REVOKED", "STATE_UNREVOKED", "STATE_DISCARDED"};
 
-   // public void revoke() throws IllegalStateTransitionException;
+    // public void revoke() throws IllegalStateTransitionException;
 
-   // public void unrevoke(Transmitter t) throws IllegalStateTransitionException;
+    // public void unrevoke(Transmitter t) throws IllegalStateTransitionException;
 
     public void discard() throws IllegalStateTransitionException;
 }

@@ -1,21 +1,31 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext;
 
-import com.pcmsolutions.device.EMU.E4.*;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.DeviceContext;
+import com.pcmsolutions.device.EMU.E4.PresetClassManager;
+import com.pcmsolutions.device.EMU.E4.SampleContextMacros;
+import com.pcmsolutions.device.EMU.E4.ViewMessaging;
 import com.pcmsolutions.device.EMU.E4.gui.AbstractContextTableModel;
 import com.pcmsolutions.device.EMU.E4.gui.device.DefaultDeviceEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext.SampleContextEnclosurePanel;
-import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContext;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable;
 import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
-import com.pcmsolutions.gui.MenuBarProvider;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.gui.FrameMenuBarProvider;
 import com.pcmsolutions.gui.UserMessaging;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.gui.ZoeosFrame;
+import com.pcmsolutions.gui.desktop.ViewMessageReceiver;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
-import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.Linkable;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
 import javax.swing.*;
 import javax.swing.event.ListSelectionEvent;
@@ -30,7 +40,7 @@ import java.util.List;
 import java.util.Set;
 
 
-public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel implements ZDisposable, MenuBarProvider, ListSelectionListener, Linkable {
+public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel implements ZDisposable, FrameMenuBarProvider, ListSelectionListener, Linkable, ViewMessageReceiver {
     protected DeviceContext device;
     private PresetContextEditorPanel pcep;
 
@@ -44,10 +54,9 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
     private static final String statusInfix = " / ";
     private PresetContext presetContext;
     private SampleContextEnclosurePanel sampleContextEnclosurePanel;
-    private boolean supressSelectionChange = false;
 
     private Timer freeMemTimer;
-    private static int freeMemInterval = 10000;
+    private static int freeMemInterval = 20000;
 
     public void init(DeviceContext device) throws Exception {
         this.device = device;
@@ -55,7 +64,7 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         super.init(device, pcep);
         setupMenu();
         pcep.getPresetContextTable().getSelectionModel().addListSelectionListener(this);
-        setStatus(pcep.getPresetContextTable().getSelectedRowCount() + statusInfix + pcep.getPresetContextTable().getRowCount() + " presets selected");
+        updateStatus();
     }
 
     protected void buildRunningPanel() {
@@ -69,7 +78,7 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
     }
 
     public void valueChanged(ListSelectionEvent e) {
-        if (!supressSelectionChange)
+        if (!e.getValueIsAdjusting())
             handleSelectionChange();
     }
 
@@ -80,22 +89,12 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
             processMenu.setEnabled(true);
     }
 
-    private void runWithSelectionHandlingSupressed(Runnable r) {
-        supressSelectionChange = true;
-        try {
-            r.run();
-        } finally {
-            supressSelectionChange = false;
-            handleSelectionChange();
-        }
-    }
-
     private void handleSelectionChange() {
-        setStatus(pcep.getPresetContextTable().getSelectedRowCount() + statusInfix + pcep.getPresetContextTable().getRowCount() + " presets selected");
+        updateStatus();
         processMenu.removeAll();
-        JMenu m = ZCommandInvocationHelper.getMenu(pcep.getPresetContextTable().getSelObjects(), null, null, "Process");
+        JMenu m = ZCommandFactory.getMenu(pcep.getPresetContextTable().getSelObjects(), "Process");
         Component[] comps = m.getMenuComponents();
-        for (int i = 0,j = comps.length; i < j; i++)
+        for (int i = 0, j = comps.length; i < j; i++)
             processMenu.add(comps[i]);
 
         finalizeProcessMenu();
@@ -116,7 +115,7 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
     public boolean scrollToPreset(Integer preset, boolean select) {
         PresetContextTableModel pctm = ((PresetContextTableModel) pcep.getPresetContextTable().getModel());
-        int row = pctm.getRowForPreset(preset);
+        int row = pctm.getRowForIndex(preset);
         if (row != -1) {
             Rectangle cellRect = pcep.getPresetContextTable().getCellRect(row, 0, true);
             pcep.scrollRectToVisible(cellRect);
@@ -142,7 +141,7 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         JMenuItem jmi;
         jmi = new JMenuItem(new AbstractAction("Index (goto)") {
             public void actionPerformed(ActionEvent e) {
-                String input = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Preset Index?", "Goto Preset Index", JOptionPane.QUESTION_MESSAGE, null, null, null);
+                String input = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Preset index?", "Goto preset index", JOptionPane.QUESTION_MESSAGE, null, null, null);
                 if (input != null)
                     try {
                         int pi = Integer.parseInt(input);
@@ -156,27 +155,19 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         jmi.setMnemonic(KeyEvent.VK_I);
         locateMenu.add(jmi);
 
-        jmi = new JMenuItem(new AbstractAction("First Empty") {
+        final String firstEmpty = "First empty";
+        jmi = new JMenuItem(new AbstractAction(firstEmpty) {
             public void actionPerformed(ActionEvent e) {
                 try {
-                    Integer empty = pcep.getPresetContext().firstEmptyPresetInContext();
-                    if (scrollToPreset(empty, true))
-                        return;
-                    else {
-                        if (JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "The first empty preset is not visible under the current filter. Remove filter and select?", "Remove Preset Filter", JOptionPane.YES_NO_OPTION) == 0) {
-                            ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(null);
-                            ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                            scrollToPreset(empty, true);
-                            return;
-                        }
-                    }
-
+                    Integer empty = pcep.getPresetContext().firstEmpty();
+                    if (!pcep.getPresetContextTable().showingAllIndexes(new Integer[]{empty}))
+                        ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).addIndexesToCurrentContextFilter(new Integer[]{empty}, firstEmpty);
+                    scrollToPreset(empty, true);
                 } catch (NoSuchContextException e1) {
                     e1.printStackTrace();
-                } catch (NoSuchPresetException e1) {
+                } catch (DeviceException e1) {
                     e1.printStackTrace();
                 }
-                UserMessaging.showInfo("No empty preset found");
             }
         });
         jmi.setMnemonic(KeyEvent.VK_E);
@@ -184,20 +175,16 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         jmi = new JMenuItem(new AbstractAction("Using Regex on name") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular Expression?", "Select by Regular Expression on Preset Name", JOptionPane.QUESTION_MESSAGE, null, null, null);
-                        if (regex == null)
-                            return;
-                        Integer first = pcep.getPresetContextTable().selectPresetsByRegex(regex, false, false, true);
-                        if (first != null)
-                            scrollToPreset(first, false);
-                        else {
-                            UserMessaging.showInfo("Nothing to select");
-                            return;
-                        }
-                    }
-                });
+                String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular Expression?", "Select by Regular Expression on Preset Name", JOptionPane.QUESTION_MESSAGE, null, null, null);
+                if (regex == null)
+                    return;
+                Integer first = pcep.getPresetContextTable().selectPresetsByRegex(regex, false, false, true);
+                if (first != null)
+                    scrollToPreset(first, false);
+                else {
+                    UserMessaging.showInfo("Nothing to select");
+                    return;
+                }
             }
         });
         jmi.setMnemonic(KeyEvent.VK_R);
@@ -205,86 +192,30 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         jmi = new JMenuItem(new AbstractAction("Using Regex on indexed name") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular Expression?", "Select by Regular Expression on Indexed Preset Name", JOptionPane.QUESTION_MESSAGE, null, null, null);
-                        if (regex == null)
-                            return;
-                        Integer first = pcep.getPresetContextTable().selectPresetsByRegex(regex, false, true, true);
-                        if (first != null)
-                            scrollToPreset(first, false);
-                        else {
-                            UserMessaging.showInfo("Nothing to select");
-                            return;
-                        }
-                    }
-                });
+                String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular Expression?", "Select by Regular Expression on Indexed Preset Name", JOptionPane.QUESTION_MESSAGE, null, null, null);
+                if (regex == null)
+                    return;
+                Integer first = pcep.getPresetContextTable().selectPresetsByRegex(regex, false, true, true);
+                if (first != null)
+                    scrollToPreset(first, false);
+                else {
+                    UserMessaging.showInfo("Nothing to select");
+                    return;
+                }
             }
         });
         jmi.setMnemonic(KeyEvent.VK_X);
         locateMenu.add(jmi);
 
-        class PresetReferencingRunnable implements Runnable {
-            private ReadablePreset[] currPresets;
-            private ReadableSample[] currSamples;
-
-            public PresetReferencingRunnable(ReadablePreset[] currPresets, ReadableSample[] currSamples) {
-                this.currPresets = currPresets;
-                this.currSamples = currSamples;
-            }
-
-            public void run() {
-                try {
-                    if (!PresetContextMacros.confirmInitializationOfPresets(currPresets))
-                        return;
-                    new ZDefaultThread("Operation: Presets referencing current sample selection") {
-                        public void run() {
-                            try {
-                                final ReadablePreset[] filtPresets = PresetContextMacros.filterPresetsReferencingSamples(currPresets, currSamples);
-                                if (filtPresets.length == 0) {
-                                    UserMessaging.showInfo("Nothing to select");
-                                    return;
-                                }
-                                SwingUtilities.invokeLater(new Runnable() {
-                                    public void run() {
-                                        if (!UserMessaging.askYesNo("Referencing presets determined. Select now?"))
-                                            return;
-                                        if (!pcep.getPresetContextTable().showingAllPresets(PresetContextMacros.extractPresetIndexes(filtPresets))) {
-                                            if (UserMessaging.askYesNo("Some of the selected presets will not be visible under the current filter. Remove filter before performing selection?")) {
-                                                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(null);
-                                                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                                            }
-                                        }
-                                        runWithSelectionHandlingSupressed(new Runnable() {
-                                            public void run() {
-                                                Integer[] fp = PresetContextMacros.extractPresetIndexes(filtPresets);
-                                                pcep.getPresetContextTable().clearSelection();
-                                                pcep.getPresetContextTable().addPresetsToSelection(fp);
-                                            }
-                                        });
-                                    }
-                                });
-                            } catch (NoSuchPresetException e1) {
-                                UserMessaging.showOperationFailed("Preset not found");
-                                return;
-                            }
-                        }
-                    }.start();
-                } catch (NoSuchPresetException e1) {
-                    UserMessaging.showOperationCancelled("Preset not found");
-                }
-            }
-        }
-
         jmi = new JMenuItem(new AbstractAction("Referencing current sample selection") {
             public void actionPerformed(ActionEvent e) {
                 final ReadableSample[] currSamples = SampleContextMacros.extractReadableSamples(sampleContextEnclosurePanel.getSampleContextTable().getSelObjects());
                 try {
-                    List cp = pcep.getPresetContextTable().getPresetContext().getContextPresets();
+                    List cp = pcep.getPresetContextTable().getContext().getContextPresets();
                     final ReadablePreset[] currPresets = (ReadablePreset[]) cp.toArray(new ReadablePreset[cp.size()]);
-                    new PresetReferencingRunnable(currPresets, currSamples).run();
-                } catch (NoSuchContextException e1) {
-                    UserMessaging.showOperationFailed("No such context");
+                    determineReferencing(currPresets, currSamples);
+                } catch (Exception e1) {
+                    UserMessaging.showOperationFailed("Internal error");
                 }
             }
         });
@@ -295,19 +226,54 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
             public void actionPerformed(ActionEvent e) {
                 final ReadableSample[] currSamples = SampleContextMacros.extractReadableSamples(sampleContextEnclosurePanel.getSampleContextTable().getSelObjects());
                 final ReadablePreset[] currPresets = PresetContextMacros.extractReadablePresets(pcep.getPresetContextTable().getSelObjects());
-                new PresetReferencingRunnable(currPresets, currSamples).run();
+                determineReferencing(currPresets, currSamples);
             }
         });
         jmi.setMnemonic(KeyEvent.VK_L);
         locateMenu.add(jmi);
+        final String multimodePresets = "Multimode presets";
+        jmi = new JMenuItem(new AbstractAction(multimodePresets) {
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    final Integer[] presets = pcep.getPresetContext().getDeviceContext().getMultiModeContext().getDistinctMultimodePresetIndexes();
+                    if (presets.length > 0) {
+                        if (!pcep.getPresetContextTable().showingAllIndexes(presets))
+                            ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).addIndexesToCurrentContextFilter(presets, multimodePresets);
+                        pcep.getPresetContextTable().clearSelection();
+                        SwingUtilities.invokeLater(new Runnable() {
+                            public void run() {
+                                pcep.getPresetContextTable().addIndexesToSelection(presets);
+                            }
+                        });
+                    } else {
+                        UserMessaging.showInfo("Nothing to select");
+                        return;
+                    }
+
+                } catch (DeviceException e1) {
+                    UserMessaging.showWarning(e1.getMessage());
+                }
+            }
+        });
+        jmi.setMnemonic(KeyEvent.VK_M);
+        locateMenu.add(jmi);
+
+        jmi = new JMenuItem(new AbstractAction("Open in workspace") {
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    pcep.getPresetContext().getDeviceContext().getViewManager().selectOpenPresetsInPresetContext().post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                }
+            }
+        });
+        jmi.setMnemonic(KeyEvent.VK_O);
+        locateMenu.add(jmi);
+
 
         jmi = new JMenuItem(new AbstractAction("All") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        pcep.getPresetContextTable().selectAll();
-                    }
-                });
+                pcep.getPresetContextTable().selectAll();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_A);
@@ -315,11 +281,7 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         jmi = new JMenuItem(new AbstractAction("Clear") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        pcep.getPresetContextTable().clearSelection();
-                    }
-                });
+                pcep.getPresetContextTable().clearSelection();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_C);
@@ -327,39 +289,41 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         jmi = new JMenuItem(new AbstractAction("Invert") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        pcep.getPresetContextTable().invertSelection();
-                    }
-                });
+                pcep.getPresetContextTable().invertSelection();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_V);
         locateMenu.add(jmi);
 
-        jmi = new JMenuItem(new AbstractAction("Deep") {
+        final String deep = "Deep";
+        jmi = new JMenuItem(new AbstractAction(deep) {
             public void actionPerformed(ActionEvent e) {
-
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        Object[] sobjs = pcep.getPresetContextTable().getSelObjects();
-                        Set totSet = new HashSet();
-                        for (int i = 0; i < sobjs.length; i++)
-                            if (sobjs[i] instanceof ReadablePreset)
-                                try {
-                                    totSet.addAll(((ReadablePreset) sobjs[i]).getPresetSet());
-                                } catch (NoSuchPresetException e1) {
-                                } catch (PresetEmptyException e1) {
+                try {
+                    device.getQueues().generalQ().getPostableTicket(new TicketRunnable(){
+                        public void run() throws Exception {
+                            final Object[] sobjs = pcep.getPresetContextTable().getSelObjects();
+                            final Set<Integer> deepSet = new HashSet<Integer>();
+                            for (int i = 0; i < sobjs.length; i++)
+                                if (sobjs[i] instanceof ReadablePreset)
+                                    try {
+                                        deepSet.addAll(((ReadablePreset) sobjs[i]).getPresetSet());
+                                    } catch (EmptyException e1) {
+                                    } catch (PresetException e1) {
+                                    }
+                            final Integer[] deepArray = deepSet.toArray(new Integer[deepSet.size()]);
+                            if (!pcep.getPresetContextTable().showingAllIndexes(deepArray))
+                                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).addIndexesToCurrentContextFilter(deepArray, deep);
+                            pcep.getPresetContextTable().clearSelection();
+                            SwingUtilities.invokeLater(new Runnable() {
+                                public void run() {
+                                    pcep.getPresetContextTable().addIndexesToSelection(deepArray);
                                 }
-                        if (!pcep.getPresetContextTable().showingAllPresets((Integer[]) totSet.toArray(new Integer[totSet.size()])))
-                            if (JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "Some of the selected presets will not be visible under the current filter. Remove filter before performing selection?", "Remove Preset Filter", JOptionPane.YES_NO_OPTION) == 0) {
-                                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(null);
-                                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                            }
-                        pcep.getPresetContextTable().clearSelection();
-                        pcep.getPresetContextTable().addPresetsToSelection((Integer[]) totSet.toArray(new Integer[totSet.size()]));
-                    }
-                });
+                            });
+                        }
+                    }, "deepSelect").post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                }
             }
         });
         jmi.setMnemonic(KeyEvent.VK_D);
@@ -373,14 +337,13 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
             public void actionPerformed(ActionEvent e) {
                 // set to default filter ( all preset filter)
                 ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(null);
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " presets selected");
+               // ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_A);
         jmi.setSelected(true);
         filterMenu.add(jmi);
-
 
         jmi = new JMenuItem(new AbstractAction("Non-Empty") {
             public void actionPerformed(ActionEvent e) {
@@ -397,8 +360,8 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+                //((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_N);
@@ -419,8 +382,8 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+               // ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_E);
@@ -432,11 +395,9 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                 ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(new AbstractContextTableModel.ContextFilter() {
                     public boolean filter(Integer index, String name, boolean wasFilteredPreviously) {
                         try {
-                            if (wasFilteredPreviously && (presetContext.isPresetInitialized(index) && !presetContext.isPresetEmpty(index)))
+                            if (wasFilteredPreviously && (presetContext.isInitialized(index) && !presetContext.isEmpty(index)))
                                 return true;
-                        } catch (NoSuchPresetException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchContextException e1) {
+                        } catch (DeviceException e1) {
                             e1.printStackTrace();
                         }
                         return false;
@@ -447,8 +408,8 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+                //((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_C);
@@ -470,8 +431,8 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+               // ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_U);
@@ -494,27 +455,48 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+              //  ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_F);
         filterMenu.add(jmi);
 
+        jmi = new JMenuItem(new AbstractAction("Invert") {
+            public void actionPerformed(ActionEvent e) {
+                // set to default filter ( all preset filter)
+                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(new AbstractContextTableModel.ContextFilter() {
+                    public boolean filter(Integer index, String name, boolean wasFilteredPreviously) {
+                        if (wasFilteredPreviously)
+                            return false;
+                        return true;
+                    }
+
+                    public String getFilterName() {
+                        return "Invert current filter";
+                    }
+
+                });
+               // ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
+            }
+        });
+        jmi.setMnemonic(KeyEvent.VK_I);
+        filterMenu.add(jmi);
 
         jmi = new JMenuItem(new AbstractAction("Selected") {
             public void actionPerformed(ActionEvent e) {
-                //((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                //((PresetContextTableModel) pcep.getPresetContextTable().getName()).refresh(false);
                 Object[] sobjs = pcep.getPresetContextTable().getSelObjects();
                 if (sobjs.length < 1) {
-                    UserMessaging.showInfo("No samples selected");
-                    pcep.getPresetContextTable().grabFocus();
+                    UserMessaging.showInfo("No presets selected");
+                    pcep.getPresetContextTable().requestFocus();
                     return;
                 }
 
                 final HashMap map_sobjs = new HashMap();
-                for (int i = 0,j = sobjs.length; i < j; i++)
-                    map_sobjs.put(((ReadablePreset) sobjs[i]).getPresetNumber(), null);
+                for (int i = 0, j = sobjs.length; i < j; i++)
+                    map_sobjs.put(((ReadablePreset) sobjs[i]).getIndex(), null);
 
                 // set to default filter ( all preset filter)
                 ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).setContextFilter(new AbstractContextTableModel.ContextFilter() {
@@ -529,8 +511,8 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+              //  ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_S);
@@ -538,7 +520,7 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
 
         PresetClassManager.PresetClassProfile[] profs = PresetClassManager.getAllProfilesWithNonNullPrefix();
-        for (int i = 0,j = profs.length; i < j; i++) {
+        for (int i = 0, j = profs.length; i < j; i++) {
             final String name = profs[i].getName();
             final String prefix = profs[i].getPrefix();
             jmi = new JCheckBoxMenuItem(new AbstractAction(profs[i].getName()) {
@@ -555,8 +537,8 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                         }
 
                     });
-                    ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
-                    setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " samples selected");
+                  //  ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                    updateStatus();
                 }
             });
             // assuming format of prefix is X_
@@ -569,20 +551,23 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         freeMem.setEnabled(false);
         freeMemTimer = new Timer(freeMemInterval, new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Preset Memory Monitor") {
-                    public void run() {
-                        try {
-                            final Remotable.PresetMemory pm = presetContext.getDeviceContext().getPresetMemory();
-                            SwingUtilities.invokeLater(new Runnable() {
-                                public void run() {
-                                    freeMem.setText((pm.getPresetFreeMemory().intValue() + " Kb"));
-                                }
-                            });
-                        } catch (RemoteUnreachableException e1) {
-                        } catch (ZDeviceNotRunningException e1) {
+                try {
+                    presetContext.getDeviceContext().getQueues().generalQ().getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
+                            try {
+                                final Remotable.PresetMemory pm = presetContext.getDeviceContext().getPresetMemory();
+                                SwingUtilities.invokeLater(new Runnable() {
+                                    public void run() {
+                                        freeMem.setText((pm.getPresetFreeMemory().intValue() + " Kb"));
+                                    }
+                                });
+                            } catch (Exception e1) {
+                            }
                         }
-                    }
-                }.start();
+                    }, "Preset memory monitor").post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                }
             }
         });
         freeMemTimer.setCoalesce(true);
@@ -606,26 +591,82 @@ public class PresetContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         sampleContextEnclosurePanel = null;
     }
 
-    public boolean isMenuBarAvailable() {
+    public boolean isFrameMenuBarAvailable() {
         return true;
     }
 
-    public JMenuBar getMenuBar() {
+    public JMenuBar getFrameMenuBar() {
         return menuBar;
     }
-    /*
-    public SampleContextEnclosurePanel getSampleContextEnclosurePanel() {
-        return sampleContextEnclosurePanel;
-    }
 
-    public void setSampleContextEnclosurePanel(SampleContextEnclosurePanel sampleContextEnclosurePanel) {
-        this.sampleContextEnclosurePanel = sampleContextEnclosurePanel;
-    }
-    */
     public void linkTo(Object o) throws Linkable.InvalidLinkException {
         if (o instanceof SampleContextEnclosurePanel)
             sampleContextEnclosurePanel = (SampleContextEnclosurePanel) o;
         else
             throw new Linkable.InvalidLinkException("PresetContextEnclosurePanel cannot link to " + o.getClass());
+    }
+
+    void determineReferencing(final ReadablePreset[] presets, final ReadableSample[] samples) {
+        try {
+            if (!PresetContextMacros.confirmInitializationOfPresets(presets))
+                return;
+            device.getQueues().generalQ().getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    final ReadablePreset[] filtPresets = PresetContextMacros.filterPresetsReferencingSamples(presets, samples);
+                    if (filtPresets.length == 0) {
+                        UserMessaging.showInfo("Nothing to select");
+                        return;
+                    }
+                    SwingUtilities.invokeLater(new Runnable() {
+                        public void run() {
+                            if (!UserMessaging.askYesNo("Referencing presets determined. Select now?"))
+                                return;
+                            final Integer[] fpi = PresetContextMacros.extractPresetIndexes(filtPresets);
+                            if (!pcep.getPresetContextTable().showingAllIndexes(fpi))
+                                ((PresetContextTableModel) pcep.getPresetContextTable().getModel()).addIndexesToCurrentContextFilter(fpi, "preset referencing");
+                            pcep.getPresetContextTable().clearSelection();
+                            SwingUtilities.invokeLater(new Runnable() {
+                                public void run() {
+                                    pcep.getPresetContextTable().addIndexesToSelection(fpi);
+                                }
+                            });
+                            //((PresetContextTableModel) pcep.getPresetContextTable().getModel()).refresh(false);
+                        }
+                    });
+                }
+            }, "presetReferencing").post();
+        } catch (PresetException e) {
+            e.printStackTrace();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void receiveMessage(String msg) {
+        if (msg.startsWith(ViewMessaging.MSG_ADD_PRESETS_TO_PRESET_CONTEXT_FILTER)) {
+            Integer[] presets = ViewMessaging.extractIntegersFromMessage(msg);
+            PresetContextTableModel pctm = (PresetContextTableModel) pcep.getPresetContextTable().getModel();
+            pctm.addIndexesToCurrentContextFilter(presets, ViewMessaging.MSG_ADD_PRESETS_TO_PRESET_CONTEXT_FILTER);
+           // pctm.refresh(false);
+        } else if (msg.startsWith(ViewMessaging.MSG_SELECT_OPEN_PRESETS_IN_PRESET_CONTEXT)) {
+            final Integer[] presets = ViewMessaging.extractIntegersFromMessage(msg);
+            PresetContextTableModel pctm = (PresetContextTableModel) pcep.getPresetContextTable().getModel();
+            pctm.addIndexesToCurrentContextFilter(presets, ViewMessaging.MSG_SELECT_OPEN_PRESETS_IN_PRESET_CONTEXT);
+            pcep.getPresetContextTable().clearSelection();
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    pcep.getPresetContextTable().addIndexesToSelection(presets);
+                }
+            });
+          //  pctm.refresh(false);
+        }
+    }
+
+    public boolean testCondition(String condition) {
+        return false;
+    }
+
+    void updateStatus() {
+        setStatus(pcep.getPresetContextTable().getSelectedRowCount() + " of " + pcep.getPresetContextTable().getRowCount() + " presets selected");
     }
 }

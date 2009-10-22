@@ -3,17 +3,19 @@ package com.pcmsolutions.device.EMU.E4;
 import com.pcmsolutions.comms.RemoteDeviceDidNotRespondException;
 import com.pcmsolutions.comms.RemoteMessagingException;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable;
+import com.pcmsolutions.gui.ProgressSession;
 import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.system.SystemErrors;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.Zoeos;
 
 import javax.swing.*;
-import java.awt.*;
 import java.io.Serializable;
 import java.util.*;
-import java.util.List;
 
 // should be immutable after construction/initialization
+
 class Impl_DeviceParameterContext implements DeviceParameterContext, Serializable, ZDisposable {
     private String generator = new String("Unknown");
 
@@ -54,26 +56,26 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
     private DeviceContext dc;
     private double devVer;
 
-    public Impl_DeviceParameterContext(DeviceContext dc, com.pcmsolutions.device.EMU.E4.Remotable remote) throws RemoteDeviceDidNotRespondException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteMessagingException {
+    public Impl_DeviceParameterContext(DeviceContext dc, com.pcmsolutions.device.EMU.E4.remote.Remotable remote) throws RemoteDeviceDidNotRespondException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteMessagingException {
         this.devVer = remote.getDeviceVersion();
         this.dc = dc;
         Zoeos z = Zoeos.getInstance();
-        z.beginProgressElement(this, dc.makeDeviceProgressTitle("Initializing Device Parameter Context "), 6);
+        ProgressSession ps = z.getProgressSession(dc.makeDeviceProgressTitle("Initializing Device Parameter Context "), 6);
         try {
             generateMultiModeIds(remote);
-            z.updateProgressElement(this);
+            ps.updateStatus();
             generateMasterIds(remote);
-            z.updateProgressElement(this);
+            ps.updateStatus();
             generatePresetIds(remote);
-            z.updateProgressElement(this);
+            ps.updateStatus();
             generateLinkIds(remote);
-            z.updateProgressElement(this);
+            ps.updateStatus();
             generateZoneIds(remote);
-            z.updateProgressElement(this);
+            ps.updateStatus();
             generateVoiceIds(remote);
-            z.updateProgressElement(this);
+            ps.updateStatus();
         } finally {
-            z.endProgressElement(this);
+            ps.end();
         }
     }
 
@@ -93,19 +95,19 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         // CLASSIC
         for (int n = 0; n < 13; n++) {
             id = IntPool.get(183 + n);
-            this.addMasterParameterToContext(remote,id);
+            this.addMasterParameterToContext(remote, id);
         }
         for (int n = 0; n < 2; n++) {
             id = IntPool.get(198 + n);
-            this.addMasterParameterToContext(remote,id);
+            this.addMasterParameterToContext(remote, id);
         }
         for (int n = 0; n < 22; n++) {
             id = IntPool.get(201 + n);
-            this.addMasterParameterToContext(remote,id);
+            this.addMasterParameterToContext(remote, id);
         }
         for (int n = 0; n < 18; n++) {
             id = IntPool.get(228 + n);
-            this.addMasterParameterToContext(remote,id);
+            this.addMasterParameterToContext(remote, id);
         }
         //this.addMasterParameterToContext(IntPool.get(271));
 
@@ -113,7 +115,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         if (remote.getDeviceVersion() >= DeviceContext.BASE_ULTRA_VERSION)
             for (int n = 0; n < 4; n++) {
                 id = IntPool.get(267 + n);
-                this.addMasterParameterToContext(remote,id);
+                this.addMasterParameterToContext(remote, id);
             }
     }
 
@@ -122,7 +124,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         Integer id;
         for (int n = 0; n < 22; n++) {
             id = IntPool.get(n);
-            this.addPresetParameterToContext(remote,id);
+            this.addPresetParameterToContext(remote, id);
         }
     }
 
@@ -131,7 +133,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         Integer id;
         for (int n = 0; n < 4; n++) {
             id = IntPool.get(247 + n);
-            this.addMultiModeParameterToContext(remote,id);
+            this.addMultiModeParameterToContext(remote, id);
         }
     }
 
@@ -140,24 +142,24 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         Integer id;
         for (int n = 0; n < 13; n++) {
             id = IntPool.get(23 + n);
-            this.addLinkParameterToContext(remote,id);
+            this.addLinkParameterToContext(remote, id);
         }
         for (int n = 0; n < 16; n++) {
             id = IntPool.get(251 + n);
-            this.addLinkParameterToContext(remote,id);
+            this.addLinkParameterToContext(remote, id);
         }
     }
 
     protected void generateZoneIds(Remotable remote) throws RemoteDeviceDidNotRespondException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteMessagingException {
         // 38-40, 42, 44-52 inclusive(13 total)
-        this.addZoneParameterToContext(remote,IntPool.get(38));
-        this.addZoneParameterToContext(remote,IntPool.get(39));
-        this.addZoneParameterToContext(remote,IntPool.get(40));
-        this.addZoneParameterToContext(remote,IntPool.get(42));
+        this.addZoneParameterToContext(remote, IntPool.get(38));
+        this.addZoneParameterToContext(remote, IntPool.get(39));
+        this.addZoneParameterToContext(remote, IntPool.get(40));
+        this.addZoneParameterToContext(remote, IntPool.get(42));
         Integer id;
         for (int n = 0; n < 9; n++) {
             id = IntPool.get(44 + n);
-            this.addZoneParameterToContext(remote,id);
+            this.addZoneParameterToContext(remote, id);
         }
     }
 
@@ -178,11 +180,11 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         Integer id;
         for (int n = 0; n < 146; n++) {
             id = IntPool.get(37 + n);
-            this.addVoiceParameterToContext(remote,id);
+            this.addVoiceParameterToContext(remote, id);
         }
     }
 
-    protected void addMasterParameterToContext(Remotable remote,Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
+    protected void addMasterParameterToContext(Remotable remote, Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
         GeneralParameterDescriptor pd = null;
         try {
             pd = ParameterTables.generateParameterDescriptor(id, DeviceParameterContext.MASTER);
@@ -230,7 +232,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         masterPDs.add(pd);
     }
 
-    protected void addPresetParameterToContext(Remotable remote,Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
+    protected void addPresetParameterToContext(Remotable remote, Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
         GeneralParameterDescriptor pd = null;
         try {
             pd = ParameterTables.generateParameterDescriptor(id, DeviceParameterContext.PRESET);
@@ -248,7 +250,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         presetPDs.add(pd);
     }
 
-    protected void addVoiceParameterToContext(Remotable remote,Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
+    protected void addVoiceParameterToContext(Remotable remote, Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
         GeneralParameterDescriptor pd = null;
         try {
             pd = ParameterTables.generateParameterDescriptor(id, DeviceParameterContext.VOICE);
@@ -368,19 +370,19 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         Integer lastVal = IntPool.get(0);
         Object o;
         Integer io;
-        for (int i = min,j = max; i <= j; i++) {
+        for (int i = min, j = max; i <= j; i++) {
             io = IntPool.get(i);
             try {
                 o = pd.getStringForValue(io);
-                try {
-                    Integer.valueOf(o.toString());
+                if (o == null)
                     tMap.put(io, lastVal);
-                } catch (NumberFormatException e) {
+                else {
                     tMap.put(io, io);
                     lastVal = io;
                 }
             } catch (ParameterValueOutOfRangeException e) {
                 tMap.put(io, lastVal);  // should never happen
+                SystemErrors.internal(e);
             }
         }
     }
@@ -416,6 +418,10 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
 
         public String getReferenceString() {
             return pd.getReferenceString();
+        }
+
+        public String getUnits() {
+            return pd.getUnits();
         }
 
         public Integer getMinValue() {
@@ -455,12 +461,10 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         {
             Integer nv = IntPool.get(v.intValue() + 1);
             try {
-                try {
-                    Integer.parseInt(pd.getUnitlessStringForValue(nv));
+                if (pd.getUnitlessStringForValue(nv) == null)
                     return getNextValue(nv);
-                } catch (NumberFormatException e) {
+                else
                     return nv;
-                }
             } catch (ParameterValueOutOfRangeException e) {
             }
             return null;
@@ -470,12 +474,10 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         {
             Integer pv = IntPool.get(v.intValue() - 1);
             try {
-                try {
-                    Integer.parseInt(pd.getUnitlessStringForValue(pv));
+                if (pd.getUnitlessStringForValue(pv) == null)
                     return getPreviousValue(pv);
-                } catch (NumberFormatException e) {
+                else
                     return pv;
-                }
             } catch (ParameterValueOutOfRangeException e) {
             }
             return null;
@@ -489,63 +491,40 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
             return pd.getCategory();
         }
 
-        public String getCollaboration() {
-            return pd.getCollaboration();
-        }
+        public List<String> getStringList() {
+            if (getUnits() == null)
+                return getUnitlessStringList();
 
-        public List getStringForValueList() {
-            List l = pd.getStringForValueList();
-            ArrayList nl = new ArrayList();
-            Object o;
+            List<String> l = pd.getStringList();
+            ArrayList<String> nl = new ArrayList<String>();
+            String s;
 
-            for (int i = 0,j = l.size(); i < j; i++) {
-                o = l.get(i);
+            for (int i = 0, j = l.size(); i < j; i++) {
+                s = l.get(i);
                 if (srcCord && devVer < DeviceContext.BASE_ULTRA_VERSION && (i >= 40 && i <= 43))
                     continue;
-                try {
-                    Integer.valueOf(o.toString());
-                } catch (NumberFormatException e) {
-                    nl.add(o);
-                }
+                if (s != null)
+                    nl.add(s + getUnits());
             }
             return nl;
         }
 
-        public List getUnitlessStringForValueList() {
-            List l = pd.getUnitlessStringForValueList();
-            ArrayList nl = new ArrayList();
-            Object o;
-            for (int i = 0,j = l.size(); i < j; i++) {
-                o = l.get(i);
+        public List<String> getUnitlessStringList() {
+            List<String> l = pd.getUnitlessStringList();
+            ArrayList<String> nl = new ArrayList<String>();
+            String s;
+            for (int i = 0, j = l.size(); i < j; i++) {
+                s = l.get(i);
                 if (srcCord && devVer < DeviceContext.BASE_ULTRA_VERSION && (i >= 40 && i <= 43))
                     continue;
-                try {
-                    Integer.valueOf(o.toString());
-                } catch (NumberFormatException e) {
-                    nl.add(o);
-                }
+                if (s != null)
+                    nl.add(s);
             }
             return nl;
         }
 
         public String getTipForValue(Integer value) throws ParameterValueOutOfRangeException {
             return pd.getTipForValue(value);
-        }
-
-        public Map getTipForValueMap() {
-            return pd.getTipForValueMap();
-        }
-
-        public boolean hasImagesForValues() {
-            return pd.hasImagesForValues();
-        }
-
-        public Image getImageForValue(Integer value) throws ParameterValueOutOfRangeException {
-            return pd.getImageForValue(value);
-        }
-
-        public Map getImageForValueMap() {
-            return pd.getImageForValueMap();
         }
 
         public boolean shouldUseSpinner() {
@@ -565,7 +544,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         }
     }
 
-    protected void addLinkParameterToContext(Remotable remote,Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
+    protected void addLinkParameterToContext(Remotable remote, Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
         GeneralParameterDescriptor pd = null;
         try {
             pd = ParameterTables.generateParameterDescriptor(id, DeviceParameterContext.LINK);
@@ -583,7 +562,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         linkPDs.add(pd);
     }
 
-    protected void addMultiModeParameterToContext(Remotable remote,Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
+    protected void addMultiModeParameterToContext(Remotable remote, Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
         GeneralParameterDescriptor pd = null;
         try {
             pd = ParameterTables.generateParameterDescriptor(id, DeviceParameterContext.MULTIMODE);
@@ -601,7 +580,7 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
         multimodePDs.add(pd);
     }
 
-    protected void addZoneParameterToContext(Remotable remote,Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
+    protected void addZoneParameterToContext(Remotable remote, Integer id) throws RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteDeviceDidNotRespondException {
         GeneralParameterDescriptor pd = null;
         try {
             pd = ParameterTables.generateParameterDescriptor(id, DeviceParameterContext.ZONE);
@@ -669,6 +648,25 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
 
     public Integer getNearestCordDestValue(Integer value) {
         return (Integer) cordDestValueTranslationMap.get(value);
+    }
+
+    public Integer discontinuousOffset(final GeneralParameterDescriptor pd, final Integer value, final int offset, final boolean constrain) {
+        Integer next = value;
+        Integer curr = value;
+        int absOffset = Math.abs(offset);
+        if (offset < 0)
+            while (absOffset-- > 0) {
+                next = pd.getPreviousValue(next);
+                if (next == null)
+                    return (constrain ? curr : null);
+            }
+        else
+            while (absOffset-- > 0) {
+                next = pd.getNextValue(next);
+                if (next == null)
+                    return (constrain ? curr : null);
+            }
+        return next;
     }
 
     // EOS 3.2 amd 3.00 (<EOS 4.0?) seem to only have 28 link words and no word for number of voices in dump
@@ -744,10 +742,11 @@ class Impl_DeviceParameterContext implements DeviceParameterContext, Serializabl
             return new TreeMap(ids);
         }
 
-        public Set getIds()               // returns Set of Integer ids
+        public Set<Integer> getIds()               // returns Set of Integer ids
         {
-            return (new TreeMap(ids)).keySet();
+            return new TreeSet<Integer>(ids.keySet());
         }
+
         public int size() {
             return ids.size();
         }

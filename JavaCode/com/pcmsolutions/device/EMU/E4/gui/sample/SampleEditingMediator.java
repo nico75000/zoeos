@@ -22,7 +22,7 @@ public class SampleEditingMediator {
                  public void run() {
                      try {
                          desktop.addDesktopElement(new SampleInternalFrame(p, ep));
-                     } catch (NoSuchSampleException e) {
+                     } catch (DeviceException e) {
                          e.printStackTrace();
                      }
                  }

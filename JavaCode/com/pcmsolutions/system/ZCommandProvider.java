@@ -11,5 +11,7 @@ package com.pcmsolutions.system;
  * @author  pmeehan
  */
 public interface ZCommandProvider {
-    public ZCommand[] getZCommands();
+    public ZCommand[] getZCommands(Class markerClass);
+    // most capable/super first
+    public Class[] getZCommandMarkers();
 }

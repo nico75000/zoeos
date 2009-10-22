@@ -8,5 +8,5 @@ package com.pcmsolutions.device.EMU.E4.parameter;
  * To change this template use Options | File Templates.
  */
 public interface EditableParameterModelProvider extends ParameterModelProvider {
-    public EditableParameterModel getEditableParameterModel(Integer id) throws IllegalParameterIdException;
+    public EditableParameterModel getEditableParameterModel(Integer id) throws ParameterException;
 }

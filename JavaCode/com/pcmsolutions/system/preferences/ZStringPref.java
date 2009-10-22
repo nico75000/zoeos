@@ -7,7 +7,8 @@ package com.pcmsolutions.system.preferences;
  * Time: 05:31:35
  * To change this template use Options | File Templates.
  */
-public interface ZStringPref extends ZPref{
+public interface ZStringPref extends ZPref {
     public void putValue(String s);
+
     public String getValue();
 }

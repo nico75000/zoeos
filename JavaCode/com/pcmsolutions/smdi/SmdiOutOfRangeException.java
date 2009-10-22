@@ -13,6 +13,6 @@ public class SmdiOutOfRangeException extends Exception {
     }
 
     public SmdiOutOfRangeException() {
-        super("sample index outside supported range");
+        super("Sample index outside supported range");
     }
 }

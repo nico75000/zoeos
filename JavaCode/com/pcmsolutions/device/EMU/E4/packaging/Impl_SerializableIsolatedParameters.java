@@ -16,7 +16,7 @@ import java.util.TreeMap;
  * Time: 16:07:25
  * To change this template use Options | File Templates.
  */
-public class Impl_SerializableIsolatedParameters implements IsolatedParameters, Serializable {
+class Impl_SerializableIsolatedParameters implements IsolatedParameters, Serializable {
     static final long serialVersionUID = 1;
 
     private TreeMap params;

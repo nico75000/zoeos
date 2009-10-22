@@ -1,9 +1,11 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.envelope;
 
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.VoiceEnvelopePanel;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.system.IntPool;
@@ -20,15 +22,16 @@ import java.util.Arrays;
  */
 public class EditableVoiceEnvelopePanel extends VoiceEnvelopePanel {
     protected ContextEditablePreset.EditableVoice[] voices;
-    public EditableVoiceEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, String category, EditableParameterModel[] models, String title, Action toggleAction) {
+
+    public EditableVoiceEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc, String category, EditableParameterModel[] models, String title, Action toggleAction) {
         this.voices = voices;
-        super.init(voices[0], category, models, title, toggleAction);
+        super.init(voices[0], tsc,category, models, title, toggleAction);
         return this;
     }
 
-    public EditableVoiceEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, String category, Integer startId, String title, Action toggleAction) throws IllegalParameterIdException {
+    public EditableVoiceEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc, String category, Integer startId, String title, Action toggleAction) throws ParameterException {
         this.voices = voices;
-        super.init(voices[0], category, startId, title, toggleAction);
+        super.init(voices[0], tsc,category, startId, title, toggleAction);
         return this;
     }
 
@@ -37,7 +40,7 @@ public class EditableVoiceEnvelopePanel extends VoiceEnvelopePanel {
         envTable = new EditableVoiceEnvelopeTable(voices, category, (EditableVoiceEnvelopeTableModel) envTableModel, title);
     }
 
-    protected void generateParameterModels(ReadablePreset.ReadableVoice voice, Integer startId, ReadableParameterModel[] models) throws IllegalParameterIdException {
+    protected void generateParameterModels(ReadablePreset.ReadableVoice voice, Integer startId, ReadableParameterModel[] models) throws ParameterException {
         for (int i = 0; i < 12; i++)
             try {
                 models[i] = ((ContextEditablePreset.EditableVoice) voice).getEditableParameterModel(IntPool.get(startId.intValue() + i));

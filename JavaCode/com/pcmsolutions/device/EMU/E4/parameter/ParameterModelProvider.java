@@ -8,5 +8,5 @@ package com.pcmsolutions.device.EMU.E4.parameter;
  * To change this template use Options | File Templates.
  */
 public interface ParameterModelProvider {
-    public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException;
+    public ReadableParameterModel getParameterModel(Integer id) throws ParameterException;
 }

@@ -85,9 +85,9 @@ public class Impl_SampleDescriptor implements SampleDescriptor {
         return (double) 1000000 / (double) hdr.getPeriodInNS();
     }
 
+    private static final DecimalFormat rateFormatter = new DecimalFormat("0.##");
     public String getFormattedSampleRateInKhz() {
-        DecimalFormat df = new DecimalFormat("0.#");
-        return df.format(getSampleRateInKhz()) + " Khz";
+        return rateFormatter.format(getSampleRateInKhz()) + " Khz";
     }
 
     public String getFormattedDurationInSeconds() {
@@ -103,5 +103,9 @@ public class Impl_SampleDescriptor implements SampleDescriptor {
             return "Stereo";
         else
             return chnls + " channel";
+    }
+
+    public String getName() {
+        return hdr.getName();
     }
 }

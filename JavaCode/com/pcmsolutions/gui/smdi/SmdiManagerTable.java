@@ -4,6 +4,7 @@ import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedT
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.MouseEvent;
 
 /**
@@ -18,22 +19,22 @@ public class SmdiManagerTable extends AbstractRowHeaderedAndSectionedTable {
         super(new SmdiManagerTableModel().init(), null, "SMDI Manager");
         this.setColumnSelectionAllowed(false);
         this.getSelectionModel().setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        this.hidingSelectionOnFocusLost = false;
+        this.getRowHeader().setSelectionModel(this.getSelectionModel());
     }
 
     public String getTableTitle() {
         return "";
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
+    protected Component[] getCustomMenuItems() {
         /*JMenuItem[] items = new JMenuItem[2];
         items[0] = new JMenuItem(new AbstractAction("Ignore port") {
             public void actionPerformed(ActionEvent e) {
                 int[] selRows = getSelectedRows();
                 for (int i = 0,j = selRows.length; i < j; i++) {
-                    Object tok = getModel().getValueAt(selRows[i], 0);
+                    Object tok = getName().getValueAt(selRows[i], 0);
                     if (tok != null && !tok.equals(""))
-                        MidiSystemFacade.getInstance().addIgnoreToken(tok);
+                        ZMidiSystem.getInstance().addIgnoreToken(tok);
                 }
             }
         });
@@ -41,9 +42,9 @@ public class SmdiManagerTable extends AbstractRowHeaderedAndSectionedTable {
             public void actionPerformed(ActionEvent e) {
                 int[] selRows = getSelectedRows();
                 for (int i = 0,j = selRows.length; i < j; i++) {
-                    Object tok = getModel().getValueAt(selRows[i], 0);
+                    Object tok = getName().getValueAt(selRows[i], 0);
                     if (tok != null && !tok.equals(""))
-                        MidiSystemFacade.getInstance().removeIgnoreToken(tok);
+                        ZMidiSystem.getInstance().removeIgnoreToken(tok);
                 }
             }
         });
@@ -55,10 +56,6 @@ public class SmdiManagerTable extends AbstractRowHeaderedAndSectionedTable {
 
     protected DragAndDropTable generateRowHeaderTable() {
         DragAndDropTable t = new DragAndDropTable(popupName, null, null) {
-            {
-                this.hidingSelectionOnFocusLost = false;
-            }
-
             public void zDispose() {
             }
 
@@ -68,9 +65,9 @@ public class SmdiManagerTable extends AbstractRowHeaderedAndSectionedTable {
                     public void actionPerformed(ActionEvent e) {
                         int[] selRows = getSelectedRows();
                         for (int i = 0,j = selRows.length; i < j; i++) {
-                            Object tok = getModel().getValueAt(selRows[i], 0);
+                            Object tok = getName().getValueAt(selRows[i], 0);
                             if (tok != null && !tok.equals(""))
-                                MidiSystemFacade.getInstance().addIgnoreToken(tok);
+                                ZMidiSystem.getInstance().addIgnoreToken(tok);
                         }
                     }
                 });
@@ -78,9 +75,9 @@ public class SmdiManagerTable extends AbstractRowHeaderedAndSectionedTable {
                     public void actionPerformed(ActionEvent e) {
                         int[] selRows = getSelectedRows();
                         for (int i = 0,j = selRows.length; i < j; i++) {
-                            Object tok = getModel().getValueAt(selRows[i], 0);
+                            Object tok = getName().getValueAt(selRows[i], 0);
                             if (tok != null && !tok.equals(""))
-                                MidiSystemFacade.getInstance().removeIgnoreToken(tok);
+                                ZMidiSystem.getInstance().removeIgnoreToken(tok);
                         }
                     }
                 });

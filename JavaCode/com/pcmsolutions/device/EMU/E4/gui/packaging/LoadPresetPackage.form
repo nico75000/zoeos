@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form xmlns="http://www.intellij.com/uidesigner/form/" version="1" bind-to-class="com.pcmsolutions.device.EMU.E4.gui.packaging.LoadPresetPackageDialog">
+  <grid id="a9ee7" binding="mainPanel" row-count="10" column-count="5" hgap="-1" vgap="-1">
+    <margin top="0" left="0" bottom="0" right="0"/>
+    <constraints>
+      <xy x="26" y="30" width="621" height="705"/>
+      <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+    </constraints>
+    <properties/>
+    <border type="none"/>
+    <children>
+      <xy id="f2bcc" binding="packageHeaderPanel" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="26" y="30" width="621" height="150"/>
+          <grid row="0" column="0" row-span="1" col-span="5" vsize-policy="3" hsize-policy="3" anchor="0" fill="3">
+            <preferred-size width="300" height="150"/>
+          </grid>
+        </constraints>
+        <properties>
+          <enabled value="false"/>
+        </properties>
+        <border type="none"/>
+        <children/>
+      </xy>
+      <grid id="ac9d2" row-count="1" column-count="2" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="26" y="185" width="621" height="120"/>
+          <grid row="1" column="0" row-span="1" col-span="5" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <scrollpane id="633e2" binding="basePresetLocationScroll">
+            <constraints>
+              <xy x="0" y="0" width="306" height="120"/>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="7" hsize-policy="7" anchor="0" fill="3">
+                <preferred-size width="150" height="120"/>
+              </grid>
+            </constraints>
+            <properties>
+              <verticalScrollBarPolicy value="22"/>
+            </properties>
+            <border type="none"/>
+            <children>
+              <component id="f09b" class="javax.swing.JList" binding="basePresetLocationList">
+                <constraints/>
+                <properties>
+                  <fixedCellHeight value="-1"/>
+                </properties>
+              </component>
+            </children>
+          </scrollpane>
+          <scrollpane id="e35f5" binding="targetPresetLocationScroll">
+            <constraints>
+              <xy x="316" y="0" width="305" height="120"/>
+              <grid row="0" column="1" row-span="1" col-span="1" vsize-policy="7" hsize-policy="7" anchor="0" fill="3">
+                <preferred-size width="150" height="120"/>
+              </grid>
+            </constraints>
+            <properties>
+              <verticalScrollBarPolicy value="22"/>
+            </properties>
+            <border type="none"/>
+            <children>
+              <component id="bc07d" class="javax.swing.JList" binding="targetPresetLocationList">
+                <constraints/>
+                <properties>
+                  <enabled value="false"/>
+                  <fixedCellHeight value="-1"/>
+                </properties>
+              </component>
+            </children>
+          </scrollpane>
+        </children>
+      </grid>
+      <grid id="3a3d3" row-count="1" column-count="2" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="26" y="412" width="621" height="120"/>
+          <grid row="4" column="0" row-span="1" col-span="5" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <scrollpane id="eb6c5" binding="baseSampleLocationScroll">
+            <constraints>
+              <xy x="0" y="0" width="306" height="120"/>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="7" hsize-policy="7" anchor="0" fill="3">
+                <preferred-size width="150" height="120"/>
+              </grid>
+            </constraints>
+            <properties>
+              <horizontalScrollBarPolicy value="31"/>
+              <verticalScrollBarPolicy value="22"/>
+            </properties>
+            <border type="none"/>
+            <children>
+              <component id="d11d9" class="javax.swing.JList" binding="baseSampleLocationList">
+                <constraints/>
+                <properties>
+                  <fixedCellHeight value="-1"/>
+                  <selectionMode value="0"/>
+                </properties>
+              </component>
+            </children>
+          </scrollpane>
+          <scrollpane id="155ad" binding="targetSampleLocationScroll">
+            <constraints>
+              <xy x="316" y="0" width="305" height="120"/>
+              <grid row="0" column="1" row-span="1" col-span="1" vsize-policy="7" hsize-policy="7" anchor="0" fill="3">
+                <preferred-size width="150" height="120"/>
+              </grid>
+            </constraints>
+            <properties>
+              <horizontalScrollBarPolicy value="31"/>
+              <verticalScrollBarPolicy value="22"/>
+            </properties>
+            <border type="none"/>
+            <children>
+              <component id="e8c30" class="javax.swing.JList" binding="targetSampleLocationList">
+                <constraints/>
+                <properties>
+                  <enabled value="false"/>
+                  <fixedCellHeight value="-1"/>
+                  <selectionMode value="0"/>
+                </properties>
+              </component>
+            </children>
+          </scrollpane>
+        </children>
+      </grid>
+      <grid id="e6707" row-count="2" column-count="1" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="26" y="310" width="201" height="47"/>
+          <grid row="2" column="0" row-span="1" col-span="1" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <component id="2d744" class="javax.swing.JCheckBox" binding="useEmptyPresetsCheck">
+            <constraints>
+              <xy x="0" y="0" width="198" height="21"/>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+            </constraints>
+            <properties>
+              <text value="Search for and only use empty presets"/>
+            </properties>
+          </component>
+          <component id="49fbf" class="javax.swing.JCheckBox" binding="addToFilterCheck">
+            <constraints>
+              <xy x="0" y="26" width="175" height="21"/>
+              <grid row="1" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+            </constraints>
+            <properties>
+              <text value="Add loaded presets to preset filter"/>
+            </properties>
+          </component>
+        </children>
+      </grid>
+      <vspacer id="deee5">
+        <constraints>
+          <xy x="631" y="362" width="11" height="50"/>
+          <grid row="3" column="4" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2"/>
+        </constraints>
+      </vspacer>
+      <vspacer id="4d372">
+        <constraints>
+          <xy x="121" y="362" width="11" height="50"/>
+          <grid row="3" column="0" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2"/>
+        </constraints>
+      </vspacer>
+      <grid id="2fbb0" row-count="1" column-count="3" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="26" y="712" width="601" height="23"/>
+          <grid row="9" column="0" row-span="1" col-span="4" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <component id="ff6f6" class="javax.swing.JButton" binding="proceedButton">
+            <constraints>
+              <xy x="0" y="0" width="201" height="23"/>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1"/>
+            </constraints>
+            <properties>
+              <text value="Proceed"/>
+            </properties>
+          </component>
+          <component id="e160e" class="javax.swing.JButton" binding="resetButton">
+            <constraints>
+              <xy x="211" y="0" width="187" height="23"/>
+              <grid row="0" column="1" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1"/>
+            </constraints>
+            <properties>
+              <text value="Reset"/>
+            </properties>
+          </component>
+          <component id="efb78" class="javax.swing.JButton" binding="cancelButton">
+            <constraints>
+              <xy x="408" y="0" width="193" height="23"/>
+              <grid row="0" column="2" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1"/>
+            </constraints>
+            <properties>
+              <horizontalTextPosition value="2"/>
+              <text value="Cancel"/>
+            </properties>
+          </component>
+        </children>
+      </grid>
+      <component id="65d0f" class="javax.swing.JTextField" binding="statusTextField">
+        <constraints>
+          <xy x="26" y="638" width="621" height="20"/>
+          <grid row="7" column="0" row-span="1" col-span="5" vsize-policy="0" hsize-policy="6" anchor="8" fill="1">
+            <preferred-size width="150" height="-1"/>
+          </grid>
+        </constraints>
+        <properties>
+          <editable value="false"/>
+          <enabled value="true"/>
+        </properties>
+      </component>
+      <grid id="b2791" row-count="2" column-count="1" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="466" y="310" width="161" height="47"/>
+          <grid row="2" column="3" row-span="1" col-span="1" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <component id="d2bcd" class="javax.swing.JCheckBox" binding="zeroMissingCheck">
+            <constraints>
+              <xy x="0" y="0" width="140" height="21"/>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+            </constraints>
+            <properties>
+              <text value="Zero missing user samples"/>
+            </properties>
+          </component>
+          <component id="2c881" class="javax.swing.JCheckBox" binding="zeroBrokenRomCheck">
+            <constraints>
+              <xy x="0" y="26" width="161" height="21"/>
+              <grid row="1" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+            </constraints>
+            <properties>
+              <text value="Zero unmatched ROM samples"/>
+            </properties>
+          </component>
+        </children>
+      </grid>
+      <vspacer id="9d300">
+        <constraints>
+          <xy x="289" y="663" width="11" height="49"/>
+          <grid row="8" column="1" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2"/>
+        </constraints>
+      </vspacer>
+      <vspacer id="98538">
+        <constraints>
+          <xy x="541" y="537" width="11" height="49"/>
+          <grid row="5" column="3" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2"/>
+        </constraints>
+      </vspacer>
+      <vspacer id="d76f0">
+        <constraints>
+          <xy x="121" y="537" width="11" height="49"/>
+          <grid row="5" column="0" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2"/>
+        </constraints>
+      </vspacer>
+      <hspacer id="e5d41">
+        <constraints>
+          <xy x="237" y="328" width="115" height="11"/>
+          <grid row="2" column="1" row-span="1" col-span="1" vsize-policy="1" hsize-policy="6" anchor="0" fill="1"/>
+        </constraints>
+      </hspacer>
+      <hspacer id="565b7">
+        <constraints>
+          <xy x="352" y="328" width="114" height="11"/>
+          <grid row="2" column="2" row-span="1" col-span="1" vsize-policy="1" hsize-policy="6" anchor="0" fill="1"/>
+        </constraints>
+      </hspacer>
+      <grid id="e73c0" row-count="2" column-count="1" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <xy x="466" y="586" width="161" height="47"/>
+          <grid row="6" column="3" row-span="1" col-span="1" vsize-policy="3" hsize-policy="3" anchor="0" fill="3"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <component id="2c5e8" class="javax.swing.JCheckBox" binding="applyMultimodeCheck">
+            <constraints>
+              <xy x="0" y="0" width="137" height="21"/>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+            </constraints>
+            <properties>
+              <text value="Apply multimode settings"/>
+            </properties>
+          </component>
+          <component id="62cab" class="javax.swing.JCheckBox" binding="applyMasterCheck">
+            <constraints>
+              <xy x="0" y="26" width="120" height="21"/>
+              <grid row="1" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+            </constraints>
+            <properties>
+              <text value="Apply master settings"/>
+            </properties>
+          </component>
+        </children>
+      </grid>
+      <component id="2c1bf" class="javax.swing.JCheckBox" binding="useEmptySamplesCheck">
+        <constraints>
+          <xy x="26" y="599" width="201" height="21"/>
+          <grid row="6" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="8" fill="0"/>
+        </constraints>
+        <properties>
+          <text value="Search for and only use empty samples"/>
+          <toolTipText value="r"/>
+        </properties>
+      </component>
+      <hspacer id="a3477">
+        <constraints>
+          <xy x="237" y="604" width="229" height="11"/>
+          <grid row="6" column="1" row-span="1" col-span="2" vsize-policy="1" hsize-policy="6" anchor="0" fill="1"/>
+        </constraints>
+      </hspacer>
+    </children>
+  </grid>
+</form>

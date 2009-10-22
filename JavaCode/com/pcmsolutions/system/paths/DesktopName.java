@@ -33,41 +33,42 @@ public class DesktopName implements Serializable {
     }
 
     public String toString() {
-        String s = viewClass.toString();
+        StringBuffer s = new StringBuffer(viewClass.toString());
         for (int i = 0; i < logicalPaths.length; i++)
-            s += logicalPaths[i].toString();
-        return s;
+            s.append(logicalPaths[i].toString());
+        return s.toString();
     }
 
+    // can't put multiple logical paths under multiple logical paths
     public boolean isLogicalDescendant(DesktopName name) {
-        /*
-         LogicalPath[] paths = name.getLogicalPaths();
-         for (int i = 0; i < logicalPaths.length; i++)
-             for (int j = 0; j < paths.length; j++)
-                 if (!(logicalPaths[i].isDescendant(paths[j])))
-                     return false;
-         return true;
-         */
-        LogicalPath[] paths = name.getLogicalPaths();
-        int comapreLength = Math.min(logicalPaths.length, paths.length);
-        for (int i = 0; i < comapreLength; i++)
-            if (!(logicalPaths[i].isDescendant(paths[i])))
-                return false;
+        LogicalPath[] inPaths = name.getLogicalPaths();
+        if (logicalPaths.length == 1) {
+            for (int i = 0; i < inPaths.length; i++)
+                if (!(logicalPaths[0].isDescendant(inPaths[i])))
+                    return false;
+        } else {
+            if (inPaths.length == 1) {
+                for (int i = 0; i < logicalPaths.length; i++)
+                    if (!(logicalPaths[i].isDescendant(inPaths[0])))
+                        return false;
+            } //else
+                //return false;
+        }
         return true;
     }
 
-   /* public boolean equals(Object obj) {
-        if (obj instanceof DesktopName) {
-            DesktopName de = (DesktopName) obj;
-            if (de.viewClass == viewClass && de.logicalPaths.length == logicalPaths.length) {
-                for (int i = 0; i < logicalPaths.length; i++)
-                    if (!de.logicalPaths[i].equals(logicalPaths[i]))
-                        return false;
-                return true;
-            }
-        }
-        return false;
-    }*/
+    /* public boolean equals(Object obj) {
+         if (obj instanceof DesktopName) {
+             DesktopName de = (DesktopName) obj;
+             if (de.viewClass == viewClass && de.logicalPaths.length == logicalPaths.length) {
+                 for (int i = 0; i < logicalPaths.length; i++)
+                     if (!de.logicalPaths[i].equals(logicalPaths[i]))
+                         return false;
+                 return true;
+             }
+         }
+         return false;
+     }*/
     public boolean equals(Object obj) {
         return toString().equals(obj.toString());
     }

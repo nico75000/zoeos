@@ -1,14 +1,17 @@
 package com.pcmsolutions.system.audio;
 
+import com.pcmsolutions.smdi.SmdiSampleHeader;
 import com.pcmsolutions.system.ZUtilities;
+import org.tritonus.zuonics.sampled.AbstractAudioChunk;
+import org.tritonus.zuonics.sampled.aiff.AiffINSTChunk;
+import org.tritonus.zuonics.sampled.aiff.AiffMARKChunk;
+import org.tritonus.zuonics.sampled.wave.WaveSmplChunk;
 
 import javax.sound.sampled.AudioFileFormat;
-import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.AudioFormat;
 import java.io.File;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -19,10 +22,12 @@ import java.util.regex.Pattern;
  * To change this template use Options | File Templates.
  */
 public class AudioUtilities {
-   // public static final ZStringPref ZPREF_defaultPlaybackDevice = new Impl_ZStringPref(preferences.userNodeForPackage(AudioUtilities.class), "defaultPlaybackDevice", "");
+    // public static final ZStringPref ZPREF_defaultPlaybackDevice = new Impl_ZStringPref(preferences.userNodeForPackage(AudioUtilities.class), "defaultPlaybackDevice", "");
     public static AudioFileFormat.Type defaultAudioFormat = AudioFileFormat.Type.WAVE;
 
     public static final int maxClipLen = 1024 * 1204 * 16;
+
+    public static final String WAV_EXTENSION = "wav";
 
     public static final String SAMPLE_NAMING_MODE_SIN = "SIN";
     public static final String SAMPLE_NAMING_MODE_IN = "IN";
@@ -37,7 +42,10 @@ public class AudioUtilities {
     public static final String sampleIndexPrefix = "s";
     private static final DecimalFormat snFormatter = new DecimalFormat("0000");
 
-    private static final AudioFileFormat.Type[] types = AudioSystem.getAudioFileTypes();
+
+    public static AudioFormat applyPropertiesToFormat(AudioFormat af, Map<String, Object> props) {
+        return new AudioFormat(af.getEncoding(), af.getSampleRate(), af.getSampleSizeInBits(), af.getChannels(), af.getFrameSize(), af.getFrameRate(), af.isBigEndian(), props);
+    }
 
     public static String makeLocalSampleName(Integer sample, String mode) {
         if (mode.equals(SAMPLE_NAMING_MODE_SI))
@@ -52,24 +60,38 @@ public class AudioUtilities {
         return isLegalAudioExtension(ZUtilities.getExtension(name));
     }
 
-   /* public static int getDefaultMixerIndex() {
-        return ZUtilities.getIndexForString(AudioSystem.getMixerInfo(), ZPREF_defaultPlaybackDevice.getValue());
+    private static DecimalFormat sizeFormatter = new DecimalFormat(".##");
+
+    public static String getFormattedSize(double bytes) {
+        if (bytes < 1024)
+            return (int) bytes + " bytes";
+        else {
+            if (bytes < 1048576)
+                return sizeFormatter.format(bytes / 1024) + " Kb";
+            else
+                return sizeFormatter.format(bytes / 1048576) + " MB";
+        }
     }
 
-    public static Mixer.Info getDefaultMixer() {
-        Mixer.Info[] infos = AudioSystem.getMixerInfo();
-        int i = getDefaultMixerIndex();
+    /* public static int getDefaultMixerIndex() {
+         return ZUtilities.getIndexForString(AudioSystem.getMixerInfo(), ZPREF_defaultPlaybackDevice.getValue());
+     }
 
-        if (i != -1)
-            return infos[i];
+     public static Mixer.Info getDefaultMixer() {
+         Mixer.Info[] infos = AudioSystem.getMixerInfo();
+         int i = getDefaultMixerIndex();
 
-        if (infos.length > 0)
-            return AudioSystem.getMixerInfo()[0];
+         if (i != -1)
+             return infos[i];
 
-        return null;
-    }
-     */
+         if (infos.length > 0)
+             return AudioSystem.getMixerInfo()[0];
+
+         return null;
+     }
+      */
     public static boolean isLegalAudioExtension(String ext) {
+        AudioFileFormat.Type[] types = ZAudioSystem.getAudioTypes();
         for (int i = 0; i < types.length; i++)
             if (types[i].getExtension().toLowerCase().equals(ext.toLowerCase()))
                 return true;
@@ -93,6 +115,7 @@ public class AudioUtilities {
 
     public static String getLegalAudioExtensionsString(String sep) {
         String outStr = "";
+        AudioFileFormat.Type[] types = ZAudioSystem.getAudioTypes();
         for (int i = 0; i < types.length; i++)
             if (outStr.equals(""))
                 outStr = types[i].getExtension();
@@ -102,6 +125,7 @@ public class AudioUtilities {
     }
 
     public static String makeLocalSampleName(Integer sample, String name, String mode) {
+        name = ZUtilities.getExternalName(name);
         if (mode.equals(SAMPLE_NAMING_MODE_N))
             return name;
         else if (mode.equals(SAMPLE_NAMING_MODE_SIN))
@@ -117,6 +141,7 @@ public class AudioUtilities {
     }
 
     public static int getAudioTypeIndexForExtension(String ext) {
+        AudioFileFormat.Type[] types = ZAudioSystem.getAudioTypes();
         for (int i = 0; i < types.length; i++)
             if (types[i].getExtension().equals(ext))
                 return i;
@@ -124,9 +149,289 @@ public class AudioUtilities {
     }
 
     public static AudioFileFormat.Type getAudioTypeForExtension(String ext) {
+        AudioFileFormat.Type[] types = ZAudioSystem.getAudioTypes();
         for (int i = 0; i < types.length; i++)
             if (types[i].getExtension().equals(ext))
                 return types[i];
         return null;
+    }
+
+    public interface AudioSampleLoop {
+        int LOOP_FORWARD = 0;
+        int LOOP_ALTERNATING = 1;
+        int LOOP_BACKWARD = 2;
+
+        int getLoopStart();
+
+        int getLoopEnd();
+
+        int getLoopControl();
+    }
+
+    public static AiffMARKChunk.Marker findMarker(AiffMARKChunk mark, int id) {
+        AiffMARKChunk.Marker[] markers = mark.getMarkers();
+        for (int i = 0; i < markers.length; i++) {
+            if (markers[i].getID() == id)
+                return markers[i];
+        }
+        return null;
+    }
+
+    public static Map<String, Object> getChunkPropertiesMap(AbstractAudioChunk[] chunks) {
+        Map<String, Object> map = new HashMap<String, Object>();
+        for (int i = 0; i < chunks.length; i++)
+            if (chunks[i].getAudioFormatPropertyKey() != null)
+                map.put(chunks[i].getAudioFormatPropertyKey(), chunks[i]);
+        return map;
+    }
+
+    public static AbstractAudioChunk[] getSMDIHeaderChunks(final SmdiSampleHeader hdr, AudioFileFormat.Type type) {
+        if (type.equals(AudioFileFormat.Type.WAVE)) {
+            WaveSmplChunk smpl = new WaveSmplChunk() {
+                public int getManufacturer() {
+                    return 0;
+                }
+
+                public int getProduct() {
+                    return 0;
+                }
+
+                public int getSamplePeriod() {
+                    return hdr.getPeriodInNS();
+                }
+
+                public int getMidiUnityNote() {
+                    return 60;
+                }
+
+                public int getMidiPitchFraction() {
+                    return 0;
+                }
+
+                public int getSMPTEFormat() {
+                    return WaveSmplChunk.SMPTE_FORMAT_NONE;
+                }
+
+                public int getSMPTEOffset() {
+                    return 0;
+                }
+
+                public int getNumSampleLoops() {
+                    return 1;
+                }
+
+                public WaveSmplChunk.Loop[] getSampleLoops() {
+                    return new WaveSmplChunk.Loop[]{new WaveSmplChunk.Loop() {
+                        public int getIdentifier() {
+                            return 0;
+                        }
+
+                        public int getType() {
+                            return 0;
+                        }
+
+                        public int getStart() {
+                            return hdr.getLoopStart();
+                        }
+
+                        public int getEnd() {
+                            return hdr.getLoopEnd();
+                        }
+
+                        public int getFraction() {
+                            return 0;
+                        }
+
+                        public int getPlayCount() {
+                            return 0;
+                        }
+                    }};
+                }
+
+                public byte[] getSamplerData() {
+                    return new byte[0];
+                }
+
+                // return value of null indicates the chunk should not be exposed as an audio format property (e.g wave 'fmt' and 'data' chunks)
+                public String getAudioFormatPropertyKey() {
+                    return WaveSmplChunk.AUDIO_FORMAT_PROPERTIES_KEY;
+                }
+            };
+            return new AbstractAudioChunk[]{smpl};
+        }
+        if (type.equals(AudioFileFormat.Type.AIFF) || type.equals(AudioFileFormat.Type.AIFC)) {
+            AiffMARKChunk mark = new AiffMARKChunk() {
+                public int getNumMarkers() {
+                    return 2;
+                }
+
+                Marker[] markers = new Marker[]{new Marker() {
+                    public int getID() {
+                        return 1;
+                    }
+
+                    public int getPosition() {
+                        return hdr.getLoopStart();
+                    }
+
+                    public String getName() {
+                        return "begin loop";
+                    }
+                }, new Marker() {
+                    public int getID() {
+                        return 2;
+                    }
+
+                    public int getPosition() {
+                        return hdr.getLoopEnd();
+                    }
+
+                    public String getName() {
+                        return "end loop";
+                    }
+                }};
+
+                public AiffMARKChunk.Marker[] getMarkers() {
+                    return markers;
+                }
+
+                // return value of null indicates the chunk should not be exposed as an audio format property (e.g wave 'fmt' and 'data' chunks)
+                public String getAudioFormatPropertyKey() {
+                    return AiffMARKChunk.AUDIO_FORMAT_PROPERTIES_KEY;
+                }
+            };
+            AiffINSTChunk inst = new AiffINSTChunk() {
+                public int getBaseNote() {
+                    return 60;
+                }
+
+                public int getDetune() {
+                    return 0;
+                }
+
+                public int getLowNote() {
+                    return 0;
+                }
+
+                public int getHighNote() {
+                    return 127;
+                }
+
+                public int getlowVelocity() {
+                    return 1;
+                }
+
+                public int getHighVelocity() {
+                    return 127;
+                }
+
+                public int getGain() {
+                    return 0;
+                }
+
+                Loop sustainLoop = new Loop() {
+                    public int getPlayMode() {
+                        return Loop.PLAY_MODE_FORWARD_LOOPING;
+                    }
+
+                    public int getBeginMarkerId() {
+                        return 1;
+                    }
+
+                    public int getEndMarkerId() {
+                        return 2;
+                    }
+                };
+
+                public AiffINSTChunk.Loop getSustainLoop() {
+                    return sustainLoop;
+                }
+
+                public AiffINSTChunk.Loop getReleaseLoop() {
+                    return sustainLoop;
+                }
+
+                // return value of null indicates the chunk should not be exposed as an audio format property (e.g wave 'fmt' and 'data' chunks)
+                public String getAudioFormatPropertyKey() {
+                    return AiffINSTChunk.AUDIO_FORMAT_PROPERTIES_KEY;
+                }
+            };
+            return new AbstractAudioChunk[]{mark, inst};
+        } else
+            return new AbstractAudioChunk[0];
+    }
+
+    public static AudioSampleLoop getFirstLoop(AudioFormat f, final int lengthInFrames/*, final boolean preferNoLoop*/) {
+        Map props = f.properties();
+        Object smpl = props.get(WaveSmplChunk.AUDIO_FORMAT_PROPERTIES_KEY);
+        if (smpl instanceof WaveSmplChunk) {
+            WaveSmplChunk s = (WaveSmplChunk) smpl;
+            // take first loop
+            if (s.getNumSampleLoops() > 0) {
+                WaveSmplChunk.Loop[] loops = s.getSampleLoops();
+                final int start = loops[0].getStart();
+                final int end = loops[0].getEnd();
+                final int control = WaveSmplChunk.Loop.TYPE_LOOP_FORWARD; // Emulator only supports forward
+                return new AudioSampleLoop() {
+                    public int getLoopStart() {
+                        return start;
+                    }
+
+                    public int getLoopEnd() {
+                        return end;
+                    }
+
+                    public int getLoopControl() {
+                        return control;
+                    }
+                };
+            }
+        } else {
+            Object inst = props.get(AiffINSTChunk.AUDIO_FORMAT_PROPERTIES_KEY);
+            Object mark = props.get(AiffMARKChunk.AUDIO_FORMAT_PROPERTIES_KEY);
+            if (inst instanceof AiffINSTChunk && mark instanceof AiffMARKChunk) {
+                AiffINSTChunk i = (AiffINSTChunk) inst;
+                AiffMARKChunk m = (AiffMARKChunk) mark;
+                // take sustain loop
+                AiffINSTChunk.Loop loop = i.getSustainLoop();
+                final AiffMARKChunk.Marker begin = findMarker(m, loop.getBeginMarkerId());
+                final AiffMARKChunk.Marker end = findMarker(m, loop.getEndMarkerId());
+                final int control;
+                if (loop.getPlayMode() == AiffINSTChunk.Loop.PLAY_MODE_BACKWARD_LOOPING)
+                    control = AudioSampleLoop.LOOP_BACKWARD;
+                else
+                    control = AudioSampleLoop.LOOP_FORWARD;
+
+                if (begin != null && end != null) {
+                    return new AudioSampleLoop() {
+                        public int getLoopStart() {
+                            return begin.getPosition();
+                        }
+
+                        public int getLoopEnd() {
+                            return end.getPosition();
+                        }
+
+                        public int getLoopControl() {
+                            return control;
+                        }
+                    };
+                }
+            }
+        }
+
+        return new AudioSampleLoop() {
+            public int getLoopStart() {
+                return 0;
+            }
+
+            public int getLoopEnd() {
+                return 0;
+            }
+
+            public int getLoopControl() {
+                return 0x7F;//(preferNoLoop?0x7F:lengthInFrames);
+            }
+        };
     }
 }

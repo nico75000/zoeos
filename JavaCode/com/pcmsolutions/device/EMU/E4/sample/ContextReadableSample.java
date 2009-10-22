@@ -6,7 +6,11 @@
 
 package com.pcmsolutions.device.EMU.E4.sample;
 
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.E4.zcommands.E4ContextReadableSampleZCommandMarker;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.system.ZCommandProviderHelper;
 
 import java.util.Map;
 import java.util.Set;
@@ -17,16 +21,9 @@ import java.util.Set;
  * @author  pmeehan
  */
 public interface ContextReadableSample extends ReadableSample {
+    final ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ContextReadableSampleZCommandMarker.class, ReadableSample.cmdProviderHelper);
 
-    public Set getSampleIndexesInContext();
-
-    public Map getSampleNamesInContext();
-
-    public Map getUserSampleNamesInContext();
-
-    public java.util.List findEmptySamples(int reqd) throws NoSuchContextException;
-
-    public boolean sampleEmpty(Integer sample) throws NoSuchSampleException;
+    public Map<Integer, String> getUserSampleNamesInContext() throws DeviceException;
 
     public SampleContext getSampleContext();
 }

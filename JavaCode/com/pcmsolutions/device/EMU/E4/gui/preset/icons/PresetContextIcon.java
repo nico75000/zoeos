@@ -7,6 +7,7 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.icons;
 
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
+import com.pcmsolutions.system.Zoeos;
 
 import javax.swing.*;
 import java.awt.*;
@@ -40,6 +41,8 @@ public class PresetContextIcon implements Icon {
 
     public void paintIcon(Component component, Graphics graphics, int x, int y) {
         Graphics2D g2d = ((Graphics2D) graphics);
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
 
         Arc2D arc = new Arc2D.Double(x, y, w, h, 270, 180, Arc2D.CHORD);
         GradientPaint gp = new GradientPaint(x, y, gradient, x + w, y + h, c1, false);
@@ -50,5 +53,6 @@ public class PresetContextIcon implements Icon {
         gp = new GradientPaint(x, y, gradient, x + w, y + h, c2, false);
         g2d.setPaint(gp);
         g2d.fill(arc);
+        g2d.setRenderingHints(hints);
     }
 }

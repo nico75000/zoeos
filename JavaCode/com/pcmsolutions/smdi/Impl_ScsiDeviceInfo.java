@@ -1,5 +1,7 @@
 package com.pcmsolutions.smdi;
 
+import com.pcmsolutions.aspi.SCSI;
+
 /**
  * Created by IntelliJ IDEA.
  * User: pmeehan
@@ -8,10 +10,22 @@ package com.pcmsolutions.smdi;
  * To change this template use Options | File Templates.
  */
 class Impl_ScsiDeviceInfo {
+    public static final String NO_DEVICE = "No Device";
+    public static final String NO_MANUFACTURER = " ";
     private boolean isSMDI;
-    private String name;
-    private String manufacturer;
-    private byte deviceType;
+    private String name = NO_DEVICE;
+    private String manufacturer = NO_MANUFACTURER;
+    private byte deviceType = (byte) SCSI.DTYPE_UNKNOWN;
+
+    public Impl_ScsiDeviceInfo() {
+    }
+
+    public Impl_ScsiDeviceInfo(SMDILogic.DeviceInfo di) {
+        isSMDI = di.isSMDI();
+        name = di.getName();
+        manufacturer = di.getManufacturer();
+        deviceType = (byte) di.getDeviceType();
+    }
 
     public byte getDeviceType() {
         return deviceType;
@@ -41,9 +55,14 @@ class Impl_ScsiDeviceInfo {
         return name;
     }
 
+    public boolean isDevice() {
+        return name != NO_DEVICE && manufacturer != NO_MANUFACTURER;
+    }
+
     public void setName(String name) {
         this.name = name;
-    }    /*typedef struct SCSI_DevInfo
+    }
+    /*typedef struct SCSI_DevInfo
     {
       DWORD dwStructSize;                   // (00)
       BOOL bSMDI;                           // (04)

@@ -27,9 +27,12 @@ public class FlashMsg extends ZWindow {
     //private Color fgColor;
     private long displayTime;
     private JLabel j;
-    //private boolean flashOn;
+    private volatile boolean terminate = false;
+    private Thread flashThread = null;
 
     public static volatile boolean globalDisable = false;
+
+    static final Font msgFont = new Font("Arial", Font.PLAIN, 16);
 
     public FlashMsg(Frame owner, Component centreAboutComponent, long displayTime, long flashInterval, Color color, String message) throws HeadlessException {
         super(owner, centreAboutComponent);
@@ -73,7 +76,8 @@ public class FlashMsg extends ZWindow {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 j = new JLabel(message);
-                j.setFont(new Font("MONOSPACED", Font.BOLD, 18));
+                //j.setFont(new Font("MONOSPACED", Font.BOLD, 18));
+                j.setFont(msgFont);
                 //j.setOpaque(false);
                 j.setForeground(color);
                 j.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -83,7 +87,8 @@ public class FlashMsg extends ZWindow {
                 pack();
                 if (!globalDisable)
                     show();
-                new FlashThread().start();
+                flashThread = new FlashThread();
+                flashThread.start();
             }
         });
     }
@@ -91,16 +96,28 @@ public class FlashMsg extends ZWindow {
     private class FlashThread extends Thread {
         public void run() {
             long beginTime = Zoeos.getZoeosTime();
-            while (Zoeos.getZoeosTime() < beginTime + displayTime) {
+            while (Zoeos.getZoeosTime() < beginTime + displayTime && terminate == false) {
                 try {
                     Thread.sleep(flashInterval);
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
                 }
                 switchState();
             }
             FlashMsg.this.dispose();
         }
+    }
+
+    public void terminate() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                terminate = true;
+                try {
+                    flashThread.interrupt();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
     }
 
     private void switchState() {

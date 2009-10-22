@@ -8,14 +8,16 @@ package com.pcmsolutions.device.EMU.E4.preset;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
 import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
-import com.pcmsolutions.device.EMU.E4.sample.SampleEmptyException;
+import com.pcmsolutions.device.EMU.database.*;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.preferences.Impl_ZBoolPref;
 import com.pcmsolutions.system.preferences.ZBoolPref;
+import com.pcmsolutions.system.tasking.Ticket;
 import com.pcmsolutions.util.IntegerUseMap;
+import com.pcmsolutions.gui.ProgressCallback;
 
 import java.util.List;
 import java.util.Map;
@@ -26,107 +28,62 @@ import java.util.prefs.Preferences;
  *
  * @author  pmeehan
  */
-public interface PresetContext {
-    public static final Preferences prefs = Preferences.userNodeForPackage(PresetContext.class).node("PresetContext");
+public interface PresetContext extends Context<ReadablePreset, PresetContext, PresetListener, IsolatedPreset>{
+    public static final Preferences prefs = Preferences.userNodeForPackage(PresetContext.class.getClass()).node("PresetContext");
     public static final String PREF_autoGroup = "autoGroup";
     public static final String PREF_autoGroupAtTail = "autoGroupAtTail";
     public static final String PREF_tryMatchAppliedSamples = "tryMatchAppliedSamples";
     public static final ZBoolPref ZPREF_tryMatchAppliedSamples = new Impl_ZBoolPref(prefs, PREF_tryMatchAppliedSamples, true);
 
-    public PresetContext getDelegatingPresetContext();
-
-    public String getDeviceString();
-
-    public DeviceParameterContext getDeviceParameterContext();
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException;
 
     public DeviceContext getDeviceContext();
 
     public SampleContext getRootSampleContext();
 
     // EVENTS
-    public void addPresetContextListener(PresetContextListener pl);
+    // AUDITION
+    public Ticket auditionSamples(Integer[] sample, boolean consecutive) ;
 
-    public void removePresetContextListener(PresetContextListener pl);
+    public Ticket auditionPreset(Integer preset);
 
-    public void addPresetListener(PresetListener pl, Integer[] presets);
-
-    public void removePresetListener(PresetListener pl, Integer[] presets);
+    public Ticket auditionVoices(Integer preset, Integer[] voices, boolean consecutive);
 
     // PRESET COLLECTION
     // returns Set of Integer
-    public Set getPresetIndexesInContext() throws NoSuchContextException;
+    public ContextEditablePreset[] getEditablePresets() throws DeviceException;
 
     // returns List of ContextReadablePreset/ReadablePreset (e.g FLASH/ROM samples returned as ReadablePreset)
-    public List getContextPresets() throws NoSuchContextException;
+    public List<ReadablePreset> getContextPresets() throws DeviceException;
 
     // returns List of ReadablePreset or better ( e.g FLASH/ROM and out of context samples returned as ReadablePreset)
-    public List getDatabasePresets() throws NoSuchContextException;
+    public List<ReadablePreset> getDatabasePresets() throws DeviceException;
 
-    // set of integers
-    public Set getDatabaseIndexes() throws NoSuchContextException;
+    public double getInitializationStatus(Integer preset) throws  DeviceException;
 
-    // returns Map of Integer -> String
-    public Map getPresetNamesInContext() throws NoSuchContextException;
+    public Ticket newContent(Integer index, String name) ;
 
-    public boolean isPresetInContext(Integer preset);
+    // returns true if was originally empty but newed succesfully, false if not empty
+    public boolean newIfEmpty(Integer index, String name) throws DeviceException, ContentUnavailableException;
 
-    public int size();
+    // if empty refreshes to check for content, if still empty a new is performed, returns true if forced content actually performed
+    public boolean newIfReallyEmpty(Integer index, String name) throws DeviceException, ContentUnavailableException;
 
-    public boolean isPresetEmpty(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket dropContent(IsolatedPreset ip, Integer preset, String name, ProgressCallback prog);
 
-    public void expandContext(PresetContext pc, Integer[] presets) throws NoSuchContextException, NoSuchPresetException;
+    public Ticket dropContent(IsolatedPreset ip, Integer preset, String name, Map sampleTranslationMap, Integer defaultSampleTranslation, Map linkTranslationMap, ProgressCallback prog);
 
-    public List expandContextWithEmptyPresets(PresetContext pc, Integer reqd) throws NoSuchContextException;
+    public Ticket offsetLinkIndexes(Integer preset, Integer offset, boolean user);
 
-    public int numEmpties(Integer[] presets) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket offsetSampleIndexes(Integer preset, Integer offset, boolean user) ;
 
-    public int numEmpties(Integer lowPreset, int num) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket remapLinkIndexes(Integer preset, Map translationMap);
 
-    public List findEmptyPresetsInContext(Integer reqd, Integer beginIndex, Integer maxIndex) throws NoSuchContextException;
+    public Ticket remapSampleIndexes(Integer preset, Map translationMap, Integer defaultSampleTranslation);
 
-    public Integer firstEmptyPresetInContext() throws NoSuchContextException, NoSuchPresetException;
+    public Ticket refreshPresetSamples(Integer preset);
 
-    public Integer firstEmptyPresetInDatabaseRange(Integer lowPreset, Integer highPreset) throws NoSuchContextException, NoSuchPresetException;
-
-    public PresetContext newContext(String name, Integer[] presets) throws NoSuchPresetException, NoSuchContextException;
-
-    public void release() throws NoSuchContextException;
-
-
-    /* public boolean presetExists(Integer preset);
-     public boolean voiceExists(Integer preset, Integer voice);
-     public boolean zoneExists(Integer preset, Integer voice, Integer zone);
-     public boolean linkExists(Integer preset, Integer link);
-      */
-
-    // PRESET
-    // value between 0 and 1 representing fraction of dump completed
-    // value < 0 means no dump in progress
-    public IntegerUseMap getSampleIndexesInUseForUserPresets() throws NoSuchContextException;
-
-    public IntegerUseMap getSampleIndexesInUseForFlashPresets() throws NoSuchContextException;
-
-    public IntegerUseMap getSampleIndexesInUseForAllPresets() throws NoSuchContextException;
-
-    public double getInitializationStatus(Integer preset) throws NoSuchPresetException, NoSuchContextException;
-
-    public void newPreset(Integer preset, String name) throws NoSuchPresetException, NoSuchContextException;
-
-    public void newPreset(IsolatedPreset ip, Integer preset, String name) throws NoSuchPresetException, NoSuchContextException;
-
-   public void newPreset(IsolatedPreset ip, Integer preset, String name, Map sampleTranslationMap, Integer defaultSampleTranslation, Map linkTranslationMap) throws NoSuchPresetException, NoSuchContextException;
-
-    // public void newPreset(IsolatedPreset[] isoPresets, Integer basePreset, boolean findEmpties) throws NoSuchPresetException, NoSuchContextException;
-
-    public Map offsetLinkIndexes(Integer preset, Integer offset, boolean user) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException;
-
-    public Map offsetSampleIndexes(Integer preset, Integer offset, boolean user) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException;
-
-    public Map remapLinkIndexes(Integer preset, Map translationMap) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException;
-
-    public Map remapSampleIndexes(Integer preset, Map translationMap, Integer defaultSampleTranslation) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException;
-
-    public IsolatedPreset getIsolatedPreset(Integer preset) throws NoSuchContextException, NoSuchPresetException, PresetEmptyException;
+    public IsolatedPreset getIsolatedPreset(Integer preset, boolean refreshSamples) throws DeviceException, EmptyException, ContentUnavailableException;
 
     public static final int PRESET_VOICES_SELECTOR = 0;
     public static final int PRESET_ZONES_SELECTOR = 1;
@@ -140,193 +97,152 @@ public interface PresetContext {
     public static final int MODE_APPLY_SAMPLES_TO_NEW_VOICES = 20;
     public static final int MODE_APPLY_SAMPLES_TO_NEW_VOICE_AND_ZONES = 21;
 
-    public void applySampleToPreset(Integer preset, Integer sample, int mode) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, ParameterValueOutOfRangeException, TooManyVoicesException;
+    public Ticket applySampleToPreset(Integer preset, Integer sample, int mode) ;
 
-    public void applySamplesToPreset(Integer preset, Integer[] samples, int mode) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, ParameterValueOutOfRangeException, TooManyVoicesException, TooManyZonesException;
+    public Ticket applySamplesToPreset(Integer preset, Integer[] samples, int mode) ;
 
-    public void lockPresetWrite(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket assertRemote(Integer preset) ;
 
-    public void unlockPreset(Integer preset);
+    public String getPresetSummary(Integer preset) throws DeviceException;
 
-    public boolean isPresetInitialized(Integer preset) throws NoSuchPresetException;
+    public Set getPresetsDeepSet(Integer[] presets) throws DeviceException, ContentUnavailableException;
 
-    public void assertPresetInitialized(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Set<Integer> getPresetDeepSet(Integer preset) throws DeviceException, ContentUnavailableException;
 
-    public void assertPresetRemote(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket copy(Integer srcPreset, Integer destPreset, Map presetLinkTranslationMap);
 
-    public void assertPresetNamed(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Integer[] getPresetParams(Integer preset, Integer[] ids) throws EmptyException, ParameterException, DeviceException, ContentUnavailableException;
 
-    public int getPresetState(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket setPresetParam(Integer preset, Integer id, Integer value) ;
 
-    public String getPresetSummary(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket offsetPresetParam(Integer preset, Integer id, Integer offset) ;
 
-    public boolean isPresetWriteLocked(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket offsetPresetParam(Integer preset, Integer id, Double offsetAsFOR) throws IllegalParameterIdException;
 
-    public boolean isPresetWritable(Integer preset);
+    public Ticket combineVoices(Integer preset, Integer group) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public Set getPresetSet(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Set getUsedGroupIndexes(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public String getPresetName(Integer preset) throws NoSuchPresetException, PresetEmptyException;
+    public Integer getNextAvailableGroup(Integer preset, boolean atTail) throws DeviceException, EmptyException, ContentUnavailableException;
 
-    public void setPresetName(Integer preset, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public Ticket purgeZones(Integer preset);
 
-    public void copyPreset(Integer srcPreset, Integer destPreset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public Ticket purgeLinks(Integer preset);
 
-    public void copyPreset(Integer srcPreset, Integer destPreset, Map presetLinkTranslationMap) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public Ticket purgeEmpties(Integer preset);
 
-    public void copyPreset(Integer srcPreset, Integer destPreset, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public int numPresetZones(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public void erasePreset(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public int numPresetSamples(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public void refreshPreset(Integer preset) throws NoSuchPresetException, NoSuchContextException;
+    public Set presetSampleSet(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public Integer[] getPresetParams(Integer preset, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchContextException;
+    public IntegerUseMap presetSampleUsage(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public Integer[] setPresetParams(Integer preset, Integer[] ids, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchContextException, ParameterValueOutOfRangeException;
+    public int numPresetLinkPresets(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public void combineVoices(Integer preset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public Set presetLinkPresetSet(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public Set getUsedGroupIndexes(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public IntegerUseMap presetLinkPresetUsage(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public Integer getNextAvailableGroup(Integer preset, boolean atTail) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public ContextReadablePreset getContextPreset(Integer preset) throws DeviceException;
 
-    public void purgeZones(Integer preset) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException;
+    public ReadablePreset getReadablePreset(Integer preset) throws  DeviceException;
 
-    public int numPresetZones(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public Ticket sortVoices(Integer preset, Integer[] ids);
 
-    public int numPresetSamples(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public Ticket sortLinks(Integer preset, Integer[] ids) ;
 
-    public Set presetSampleSet(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
-
-    public com.pcmsolutions.util.IntegerUseMap presetSampleUsage(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
-
-    public int numPresetLinkPresets(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
-
-    public Set presetLinkPresetSet(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
-
-    public com.pcmsolutions.util.IntegerUseMap presetLinkPresetUsage(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
-
-    public ContextReadablePreset getContextPreset(Integer preset) throws NoSuchPresetException;
-
-    public ReadablePreset getReadablePreset(Integer preset) throws NoSuchPresetException;
-
-    public ContextEditablePreset getEditablePreset(Integer preset) throws NoSuchPresetException;
-
-    public void sortVoices(Integer preset, Integer[] ids) throws PresetEmptyException, NoSuchPresetException, NoSuchContextException;
-
-    public void sortLinks(Integer preset, Integer[] ids) throws PresetEmptyException, NoSuchPresetException, NoSuchContextException;
-
-    public void sortZones(Integer preset, Integer[] ids) throws PresetEmptyException, NoSuchPresetException, NoSuchContextException;
+    public Ticket sortZones(Integer preset, Integer[] ids);
 
     // VOICE
-    public void splitVoice(Integer preset, Integer voice, int splitKey) throws NoSuchContextException, NoSuchPresetException, PresetEmptyException, TooManyVoicesException, ParameterValueOutOfRangeException, NoSuchVoiceException;
+    public Ticket splitVoice(Integer preset, Integer voice, int splitKey) ;
 
-    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer preset, Integer voice) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, NoSuchVoiceException;
+    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer preset, Integer voice) throws DeviceException, EmptyException, ContentUnavailableException, PresetException;
 
-    public Integer newVoice(Integer preset, IsolatedPreset.IsolatedVoice iv) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException, TooManyVoicesException, TooManyZonesException;
+    public Ticket newVoice(Integer preset, IsolatedPreset.IsolatedVoice iv) ;
 
-    public Integer newVoices(Integer preset, Integer num, Integer[] sampleNums) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException, NoSuchContextException;
+    public Ticket newVoices(Integer preset, Integer[] sampleNums) ;
 
-    public void rmvVoices(Integer preset, Integer[] voices) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException, CannotRemoveLastVoiceException;
+    public Ticket rmvVoices(Integer preset, Integer[] voices);
 
-    public void copyVoice(Integer srcPreset, Integer srcVoice, Integer destPreset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyVoicesException, NoSuchContextException;
+    public Ticket copyVoice(Integer srcPreset, Integer srcVoice, Integer destPreset) ;
 
-    public int numVoices(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public int numVoices(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public Integer[] getGroupParams(Integer preset, Integer group, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException, NoSuchContextException;
+    public Integer[] getGroupParams(Integer preset, Integer group, Integer[] ids) throws EmptyException, ParameterException, PresetException, DeviceException, ContentUnavailableException;
 
-    public Integer[] getVoiceParams(Integer preset, Integer voice, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException;
+    public Integer[] getVoiceParams(Integer preset, Integer voice, Integer[] ids) throws EmptyException, ParameterException, PresetException, DeviceException, ContentUnavailableException;
 
-    public Integer[] setGroupParamFromVoice(Integer preset, Integer voice, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException, ParameterValueOutOfRangeException;
+    public Integer[] getVoicesParam(Integer preset, Integer[] voices, Integer id) throws EmptyException, ParameterException, PresetException, DeviceException, ContentUnavailableException;
 
-    public Integer[] setGroupParam(Integer preset, Integer group, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException, NoSuchContextException, ParameterValueOutOfRangeException;
+    public Ticket setGroupParamFromVoice(Integer preset, Integer voice, Integer id, Integer value) ;
 
-    public Integer[] setVoicesParam(Integer preset, Integer[] voices, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException, ParameterValueOutOfRangeException;
+    public Ticket offsetGroupParamFromVoice(Integer preset, Integer voice, Integer id, Integer offset) ;
 
-    public void expandVoice(Integer preset, Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException, TooManyVoicesException;
+    public Ticket offsetGroupParamFromVoice(Integer preset, Integer voice, Integer id, Double offsetAsFOR) ;
 
-    public boolean trySetOriginalKeyFromName(Integer preset, Integer voice, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException;
+    public Ticket setGroupParam(Integer preset, Integer group, Integer id, Integer value) ;
 
-    public boolean trySetOriginalKeyFromName(Integer preset, Integer voice, Integer zone, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchZoneException;
+    public Ticket setVoiceParam(Integer preset, Integer voice, Integer id, Integer value) ;
 
-    public boolean trySetOriginalKeyFromSampleName(Integer preset, Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException, SampleEmptyException, NoSuchSampleException;
+    public Ticket offsetVoiceParam(Integer preset, Integer voice, Integer id, Integer offset);
 
-    public boolean trySetOriginalKeyFromSampleName(Integer preset, Integer voice, Integer zone) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchZoneException, SampleEmptyException, NoSuchSampleException;
-    //public void getPresetPackHeader()
+    public Ticket offsetVoiceParam(Integer preset, Integer voice, Integer id, Double offsetAsFOR) throws IllegalParameterIdException;
 
-    //public void combineVoices(Integer preset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException, TooManyVoicesException;
+    public Ticket expandVoice(Integer preset, Integer voice);
 
-    public void getVoiceMultiSample(Integer srcPreset, Integer srcVoice, Integer destPreset, Integer destVoice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException;
+    public Ticket trySetOriginalKeyFromName(Integer preset, Integer voice, String name);
 
-    public void refreshVoiceParameters(Integer preset, Integer voice, Integer[] ids) throws NoSuchContextException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException, ParameterValueOutOfRangeException, IllegalParameterIdException;
+    public Ticket trySetOriginalKeyFromName(Integer preset, Integer voice, Integer zone, String name) ;
 
-    public Integer[] getVoiceIndexesInGroupFromVoice(Integer preset, Integer voice) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException, NoSuchVoiceException;
+    public Ticket trySetOriginalKeyFromSampleName(Integer preset, Integer voice) ;
 
-    public Integer[] getVoiceIndexesInGroup(Integer preset, Integer group) throws NoSuchGroupException, PresetEmptyException, NoSuchContextException, NoSuchPresetException;
+    public Ticket trySetOriginalKeyFromSampleName(Integer preset, Integer voice, Integer zone) ;
+
+    public Ticket refreshVoiceParameters(Integer preset, Integer voice, Integer[] ids) ;
+
+    public Integer[] getVoiceIndexesInGroupFromVoice(Integer preset, Integer voice) throws EmptyException, DeviceException, PresetException, ContentUnavailableException;
+
+    public Integer[] getVoiceIndexesInGroup(Integer preset, Integer group) throws PresetException, EmptyException, DeviceException, ContentUnavailableException;
 
     // LINK
-    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer preset, Integer link) throws NoSuchLinkException, NoSuchPresetException, NoSuchContextException, PresetEmptyException;
+    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer preset, Integer link) throws PresetException, DeviceException, EmptyException, ContentUnavailableException;
 
-    public Integer newLink(Integer preset, IsolatedPreset.IsolatedLink il) throws TooManyVoicesException, PresetEmptyException, NoSuchContextException, NoSuchPresetException;
+    public Ticket newLink(Integer preset, IsolatedPreset.IsolatedLink il);
 
-    public Integer newLinks(Integer preset, Integer num, Integer[] presetNums) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException, NoSuchContextException;
+    public Ticket newLinks(Integer preset, Integer[] presetNums);
 
-    public void rmvLinks(Integer preset, Integer[] links) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, NoSuchContextException;
+    public Ticket rmvLinks(Integer preset, Integer[] links) ;
 
-    public int numLinks(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException;
+    public int numLinks(Integer preset) throws EmptyException, DeviceException, ContentUnavailableException;
 
-    public void copyLink(Integer srcPreset, Integer srcLink, Integer destPreset) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, TooManyVoicesException, NoSuchContextException;
+    public Ticket copyLink(Integer srcPreset, Integer srcLink, Integer destPreset) ;
 
-    public Integer[] getLinkParams(Integer preset, Integer link, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, NoSuchContextException;
+    public Integer[] getLinkParams(Integer preset, Integer link, Integer[] ids) throws EmptyException, ParameterException, PresetException, DeviceException, ContentUnavailableException;
 
-    public Integer[] setLinksParam(Integer preset, Integer[] links, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, NoSuchContextException, ParameterValueOutOfRangeException;
+    public Ticket setLinkParam(Integer preset, Integer link, Integer id, Integer value);
+
+    public Ticket offsetLinkParam(Integer preset, Integer link, Integer id, Integer offset);
+
+    public Ticket offsetLinkParam(Integer preset, Integer link, Integer id, Double offsetAsFOR) throws IllegalParameterIdException;
 
     // ZONE
-    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer preset, Integer voice, Integer zone) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, NoSuchVoiceException, NoSuchZoneException;
+    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer preset, Integer voice, Integer zone) throws DeviceException, PresetException, ContentUnavailableException, EmptyException;
 
-    public Integer newZone(Integer preset, Integer voice, IsolatedPreset.IsolatedVoice.IsolatedZone iz) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException, NoSuchVoiceException, TooManyZonesException;
+    public Ticket newZone(Integer preset, Integer voice, IsolatedPreset.IsolatedVoice.IsolatedZone iz) ;
 
-    public Integer newZones(Integer preset, Integer voice, Integer num) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyZonesException, NoSuchContextException;
+    public Ticket newZones(Integer preset, Integer voice, Integer num) ;
 
-    public void rmvZones(Integer preset, Integer voice, Integer[] zones) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextException;
+    public Ticket rmvZones(Integer preset, Integer voice, Integer[] zones) ;
 
-    public int numZones(Integer preset, Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException;
+    public int numZones(Integer preset, Integer voice) throws EmptyException, PresetException, DeviceException, ContentUnavailableException;
 
-    public Integer[] getZoneParams(Integer preset, Integer voice, Integer zone, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextException;
+    public Integer[] getZoneParams(Integer preset, Integer voice, Integer zone, Integer[] ids) throws EmptyException, ParameterException, DeviceException, PresetException,  ContentUnavailableException;
 
-    public Integer[] setZonesParam(Integer preset, Integer voice, Integer[] zones, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextException, ParameterValueOutOfRangeException;
+    public Ticket setZoneParam(Integer preset, Integer voice, Integer zone, Integer id, Integer value) ;
 
-    public void setDiversePresetParams(AbstractPresetParameterProfile[] paramProfiles) throws NoSuchPresetException, NoSuchContextException;
+    public Ticket offsetZoneParam(final Integer preset, final Integer voice, final Integer zone, final Integer id, final Integer offset);
 
-    public abstract interface AbstractPresetParameterProfile {
-        public Integer getId();
-
-        public Integer getValue();
-
-        //public void setNewValues(PresetContext pc); // returns actual values after setting, some elements might be null if the target didn't exist
-
-        //public Integer[] getSetIds();
-
-        //public Integer[] getSetValues();
-    }
-
-    public interface PresetParameterProfile extends AbstractPresetParameterProfile {
-        public Integer getPreset();
-    }
-
-    public interface VoiceParameterProfile extends PresetParameterProfile {
-        public Integer getVoice();
-    }
-
-    public interface LinkParameterProfile extends PresetParameterProfile {
-        public Integer getLink();
-    }
-
-    public interface GroupParameterProfile extends PresetParameterProfile {
-        public Integer getGroup();
-    }
-
-    public interface ZoneParameterProfile extends VoiceParameterProfile {
-        public Integer getZone();
-    }
+    public Ticket offsetZoneParam(final Integer preset, final Integer voice, final Integer zone, final Integer id, final Double offsetAsFOR) throws IllegalParameterIdException;
 }

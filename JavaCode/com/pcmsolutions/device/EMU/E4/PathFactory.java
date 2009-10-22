@@ -12,6 +12,7 @@ import com.pcmsolutions.system.paths.LogicalPath;
 public class PathFactory {
     private static final String PATH_ELEMENT_DEVICE = "e4device";
     private static final String PATH_ELEMENT_PRESETS = "presets";
+    private static final String PATH_ELEMENT_PRESET_USER = "user";
     private static final String PATH_ELEMENT_PROPERTIES = "properties";
     private static final String PATH_ELEMENT_SAMPLES = "samples";
     private static final String PATH_ELEMENT_MULTIMODE = "multimode";
@@ -22,6 +23,7 @@ public class PathFactory {
     private static final String PATH_ELEMENT_VOICE_SECTIONS = "sections";
     private static final String PATH_ELEMENT_LINKS = "links";
     private static final String PATH_ELEMENT_PARAMETERS = "parameters";
+    private static final String PATH_ELEMENT_PIANO = "piano";
 
     /*
     private static final Object[] LOGICAL_PATH_DEVICE = new Object[]{PATH_ELEMENT_DEVICE};
@@ -30,6 +32,12 @@ public class PathFactory {
     private static final Object[] LOGICAL_PATH_PRESETS = new Object[]{PATH_ELEMENT_DEVICE, PATH_ELEMENT_PRESETS};
     private static final Object[] LOGICAL_PATH_SAMPLES = new Object[]{PATH_ELEMENT_DEVICE, PATH_ELEMENT_SAMPLES};
     */
+
+
+    public static LogicalPath providePianoPath(DeviceContext dc) {
+        return new LogicalPath(dc.getSystemEntryPoint(), new Object[]{PATH_ELEMENT_DEVICE, dc.getStaticName(), PATH_ELEMENT_PIANO});
+    }
+
 
     public static LogicalPath provideDevicePath(DeviceContext dc) {
         return new LogicalPath(dc.getSystemEntryPoint(), new Object[]{PATH_ELEMENT_DEVICE, dc.getStaticName()});
@@ -42,7 +50,6 @@ public class PathFactory {
     public static LogicalPath providePresetsPath(DeviceContext dc) {
         return new LogicalPath(dc.getSystemEntryPoint(), new Object[]{PATH_ELEMENT_DEVICE, dc.getStaticName(), PATH_ELEMENT_PRESETS});
     }
-
     public static LogicalPath provideSamplesPath(DeviceContext dc) {
         return new LogicalPath(dc.getSystemEntryPoint(), new Object[]{PATH_ELEMENT_DEVICE, dc.getStaticName(), PATH_ELEMENT_SAMPLES});
     }
@@ -58,14 +65,21 @@ public class PathFactory {
     public static LogicalPath providePresetPath(ReadablePreset preset) {
         return providePresetPaths(new ReadablePreset[]{preset})[0];
     }
-
+    public static LogicalPath providePresetUserPath(ReadablePreset preset) {
+        return providePresetUserPaths(new ReadablePreset[]{preset})[0];
+    }
     public static LogicalPath[] providePresetPaths(ReadablePreset[] presets) {
         LogicalPath[] paths = new LogicalPath[presets.length];
         for (int i = 0; i < presets.length; i++)
-            paths[i] = providePresetsPath(presets[i].getDeviceContext()).append(presets[i].getPresetNumber());
+            paths[i] = providePresetsPath(presets[i].getDeviceContext()).append(presets[i].getIndex());
         return paths;
     }
-
+     public static LogicalPath[] providePresetUserPaths(ReadablePreset[] presets) {
+        LogicalPath[] paths = new LogicalPath[presets.length];
+        for (int i = 0; i < presets.length; i++)
+            paths[i] = providePresetPath(presets[i]).append(PATH_ELEMENT_PRESET_USER);
+        return paths;
+    }
     public static LogicalPath provideVoicePath(ReadablePreset.ReadableVoice voice) {
         return provideVoicePaths(new ReadablePreset.ReadableVoice[]{voice})[0];
     }

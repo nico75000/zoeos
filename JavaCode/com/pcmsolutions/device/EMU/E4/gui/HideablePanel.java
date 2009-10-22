@@ -1,7 +1,6 @@
 package com.pcmsolutions.device.EMU.E4.gui;
 
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
@@ -16,7 +15,9 @@ public class HideablePanel extends JPanel implements ActionListener, ZDisposable
     private JButton hideButton;
     private String showButtonText;
 
-    public HideablePanel(Hideable c, boolean initiallyHidden) throws ZDeviceNotRunningException {
+    private boolean hidden = false;
+
+    public HideablePanel(Hideable c, boolean initiallyHidden) {
         this.hideableComp = c;
         this.hideButton = c.getHideButton();
         this.showButtonText = c.getShowButtonText();
@@ -37,8 +38,10 @@ public class HideablePanel extends JPanel implements ActionListener, ZDisposable
 
         this.setBackground(UIColors.getDefaultBG());
 
+        hidden = initiallyHidden;
+
         // TODO !! decide on this
-        com.incors.plaf.alloy.AlloyCommonUtilities.set3DBackground(showButton, UIColors.getUtilityButtonBG());
+        //com.incors.plaf.alloy.AlloyCommonUtilities.set3DBackground(showButton, UIColors.getUtilityButtonBG());
         //showButton.setBackground(UIColors.getUtilityButtonBG());
 
         // addDesktopElement component to panel
@@ -49,10 +52,22 @@ public class HideablePanel extends JPanel implements ActionListener, ZDisposable
     }
 
     public void actionPerformed(ActionEvent e) {
-        if (e.getSource() == hideButton) {
+        if (e.getSource() == hideButton)
+            setHidden(true);
+        else if (e.getSource() == showButton)
+            setHidden(false);
+    }
+
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
+        if (hidden) {
             remove(hideableComp.getComponent());
             add(showButton);
-        } else if (e.getSource() == showButton) {
+        } else {
             add(hideableComp.getComponent());
             remove(showButton);
         }

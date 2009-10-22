@@ -35,8 +35,8 @@ public class VoiceEnvelopeTableModel extends AbstractParameterModelTableModel {
         columnData[2] = new ColumnData("Rate", 60, JLabel.LEFT, 1, ReadableParameterModel.class, null, null);
         columnData[3] = new ColumnData("Level", 60, JLabel.LEFT, 1, ReadableParameterModel.class, null, null);
         sectionData = new SectionData[2];
-        sectionData[0] = new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), 120, "SEG 1");
-        sectionData[1] = new SectionData(UIColors.getTableSecondSectionBG(), UIColors.getTableSecondSectionFG(), 120, "SEG 2");
+        sectionData[0] = new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionHeaderBG(),UIColors.getTableFirstSectionFG(), 120, "SEG 1");
+        sectionData[1] = new SectionData(UIColors.getTableSecondSectionBG(),UIColors.getTableSecondSectionHeaderBG(), UIColors.getTableSecondSectionFG(), 120, "SEG 2");
     }
 
     protected void doRefresh() {

@@ -9,19 +9,21 @@ import com.pcmsolutions.system.Zoeos;
  * Time: 10:07:36
  * To change this template use Options | File Templates.
  */
-public class ZDefaultThread extends ZWaitThread {
+public abstract class ZDefaultThread extends Impl_ZThread {
     public static volatile int defaultPriority = 4;
-    public ZDefaultThread() {
+
+    protected ZDefaultThread() {
         this("Unknown com.pcmsolutions.system.threads.ZDefaultThread");
     }
 
-    public ZDefaultThread(String name) {
-        super(Zoeos.defaultTG, name);
+    protected ZDefaultThread(String name) {
+        super(name);
         //setPriority(defaultPriority);
+        //setPriority(8);
     }
 /*    public static final ThreadGroup defaultTG = new ThreadGroup("Ddefault Group");
-    public static final ThreadGroup DBModifyTG = new ThreadGroup("Database Modifier Group");
-    public static final ThreadGroup DBEventDispatchTG = new ThreadGroup("Database Event Dispatch Group");
+    public static final ThreadGroup DBModifyTG = new ThreadGroup("AbstractDatabase Modifier Group");
+    public static final ThreadGroup DBEventDispatchTG = new ThreadGroup("AbstractDatabase Event Dispatch Group");
     public static final ThreadGroup BackgroundRemoterTG = new ThreadGroup("Background Remoting Group");
     public static final ThreadGroup UIRefreshHandlerTG = new ThreadGroup("UI ComponentRefresh Handler Group");
   */

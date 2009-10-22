@@ -1,5 +1,14 @@
 package com.pcmsolutions.smdi;
 
+import com.pcmsolutions.gui.ProgressCallback;
+
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.UnsupportedAudioFileException;
+import javax.sound.midi.MidiMessage;
+import java.io.IOException;
+import java.io.OutputStream;
+
 
 /**
  * Created by IntelliJ IDEA.
@@ -10,19 +19,17 @@ package com.pcmsolutions.smdi;
  */
 public interface SmdiTarget extends ScsiTarget {
 
-    public void sendSync(String fileName, int sampleNum, String sampleName) throws SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException;
+    public void sendSync(AudioInputStream ais, int sampleNum, String sampleName, int packetSize,ProgressCallback prog) throws SmdiUnknownFileFormatException, SmdiFileOpenException, SmdiUnsupportedSampleBitsException, SmdiNoMemoryException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, UnsupportedAudioFileException, IOException, SmdiUnsupportedConversionException,  SmdiSampleEmptyException, SmdiTransferAbortedException;
 
-    public void sendAsync(String fileName, int sampleNum, String sampleName) throws SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException;
+    //public void recvSync(OutputStream os,AudioFileFormat.Type fileType, int sampleNum,int packetSize,  ProgressCallback prog) throws SmdiFileOpenException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, SmdiSampleEmptyException, SmdiNoMemoryException, SmdiTransferAbortedException, IOException;
 
-    public void recvSync(String fileName, int sampleNum) throws SmdiFileOpenException, SmdiNoSampleException, SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException;
+    public void recvSync(SMDIAgent.SampleInputStreamHandler ish,AudioFileFormat.Type fileType, int sampleNum,int packetSize,  ProgressCallback prog) throws SmdiOutOfRangeException, TargetNotSMDIException, SmdiGeneralException, SmdiNoMemoryException, SmdiSampleEmptyException;
 
-    public void recvAsync(String fileName, int sampleNum) throws SmdiGeneralException, TargetNotSMDIException, SmdiOutOfRangeException;
+    public byte[] sendMidiMessage(MidiMessage m) throws TargetNotSMDIException, SmdiGeneralException;
 
     //public boolean deleteSample(int sampleNum);
 
-    public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiOutOfRangeException, SmdiNoSampleException, SmdiGeneralException, TargetNotSMDIException;
-
-    public SmdiSampleHeader getSampleHeader(String fileName) throws SmdiFileOpenException, SmdiUnknownFileFormatException, SmdiGeneralException, TargetNotSMDIException;
+    public SmdiSampleHeader getSampleHeader(int sampleNum) throws SmdiOutOfRangeException, SmdiGeneralException, TargetNotSMDIException, SmdiSampleEmptyException, SmdiNoMemoryException;
 
     public boolean isCoupled();
 

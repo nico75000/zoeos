@@ -18,8 +18,9 @@ public interface SamplePackage {
     public Header getHeader();
 
     public static interface Header extends PackageHeader {
-       // may return 0
+        // may return 0
         public int getSampleCount();
+
         public int getPhysicalSampleCount();
     }
 }

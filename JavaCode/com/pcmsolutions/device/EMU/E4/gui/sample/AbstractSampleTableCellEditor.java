@@ -1,8 +1,8 @@
 package com.pcmsolutions.device.EMU.E4.gui.sample;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
@@ -33,7 +33,7 @@ public abstract class AbstractSampleTableCellEditor extends AbstractCellEditor i
     public static final String ADAT_7_8 = "ADAT chan 7-8";
 
 
-    public AbstractSampleTableCellEditor(DeviceContext d, Color bg, Color fg) throws ZDeviceNotRunningException {
+    public AbstractSampleTableCellEditor(DeviceContext d, Color bg, Color fg) throws DeviceException {
         this.deviceContext = d;
         buildSampleItemsList(d);
 
@@ -80,7 +80,7 @@ public abstract class AbstractSampleTableCellEditor extends AbstractCellEditor i
         return Integer.MIN_VALUE;
     }
 
-    protected void buildSampleItemsList(DeviceContext d) throws ZDeviceNotRunningException {
+    protected void buildSampleItemsList(DeviceContext d) throws  DeviceException {
         try {
             sampleItems = new ArrayList();
             sampleItems.addAll(d.getDefaultSampleContext().getDatabaseSamples());

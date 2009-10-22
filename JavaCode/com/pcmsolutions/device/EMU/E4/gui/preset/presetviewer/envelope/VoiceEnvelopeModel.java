@@ -1,8 +1,12 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope;
 
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 import com.pcmsolutions.system.IntPool;
 
 /**
@@ -18,7 +22,7 @@ public class VoiceEnvelopeModel extends DefaultRatesEnvelopeModel implements Pre
 
     public VoiceEnvelopeModel(ReadablePreset.ReadableVoice voice, Integer startId) {
         this.voice = voice;
-        voice.getPreset().addPresetListener(this);
+        voice.getPreset().addListener(this);
         ids = new Integer[12];
         for (int i = 0,j = 12; i < j; i++)
             ids[i] = IntPool.get(startId.intValue() + i);
@@ -47,25 +51,17 @@ public class VoiceEnvelopeModel extends DefaultRatesEnvelopeModel implements Pre
             rls2Level = vals[11].intValue();
             this.fireModelChanged();
 
-        } catch (NoSuchPresetException e) {
-            //e.printStackTrace();
-        } catch (PresetEmptyException e) {
-            //e.printStackTrace();
+        } catch (EmptyException e) {
         } catch (IllegalParameterIdException e) {
-            //e.printStackTrace();
-        } catch (NoSuchVoiceException e) {
-            //e.printStackTrace();
+        } catch (ParameterException e) {
+        } catch (PresetException e) {
         }
-    }
-
-    public void presetInitialized(PresetInitializeEvent ev) {
-        updateParameters();
     }
 
     public void presetInitializationStatusChanged(PresetInitializationStatusChangedEvent ev) {
     }
 
-    public void presetRefreshed(PresetRefreshEvent ev) {
+    public void presetRefreshed(PresetInitializeEvent ev) {
         updateParameters();
     }
 
@@ -84,7 +80,7 @@ public class VoiceEnvelopeModel extends DefaultRatesEnvelopeModel implements Pre
     }
 
     public void voiceChanged(VoiceChangeEvent ev) {
-        Integer[] params = ev.getParameters();
+        Integer[] params = ev.getIds();
         for (int i = 0,j = params.length; i < j; i++)
             if (params[i].intValue() >= ids[0].intValue() && params[i].intValue() < ids[0].intValue() + 12) {
                 updateParameters();
@@ -111,7 +107,7 @@ public class VoiceEnvelopeModel extends DefaultRatesEnvelopeModel implements Pre
     }
 
     public void zDispose() {
-        voice.getPreset().removePresetListener(this);
+        voice.getPreset().removeListener(this);
         voice = null;
     }
 }

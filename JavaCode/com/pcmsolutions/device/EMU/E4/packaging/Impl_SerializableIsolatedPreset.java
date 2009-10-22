@@ -1,9 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.packaging;
 
 import com.pcmsolutions.device.EMU.E4.preset.IsolatedPreset;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchLinkException;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchVoiceException;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchZoneException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.system.IntPool;
 import com.pcmsolutions.util.IntegerUseMap;
 
@@ -16,7 +14,7 @@ import java.io.Serializable;
  * Time: 16:05:09
  * To change this template use Options | File Templates.
  */
-public class Impl_SerializableIsolatedPreset extends Impl_SerializableIsolatedParameters implements IsolatedPreset, Serializable {
+class Impl_SerializableIsolatedPreset extends Impl_SerializableIsolatedParameters implements IsolatedPreset, Serializable {
     static final long serialVersionUID = 1;
 
     private Impl_SerializableIsolatedVoice[] voices;
@@ -28,7 +26,7 @@ public class Impl_SerializableIsolatedPreset extends Impl_SerializableIsolatedPa
     private IntegerUseMap refSampleUsage;
     private IntegerUseMap refPresetUsage;
 
-    public Impl_SerializableIsolatedPreset(IsolatedPreset ip) throws NoSuchVoiceException, NoSuchLinkException, NoSuchZoneException {
+    public Impl_SerializableIsolatedPreset(IsolatedPreset ip) throws PresetException {
         super(ip.getIdValMap());
         presetIndex = ip.getOriginalIndex();
         name = ip.getName();
@@ -51,18 +49,18 @@ public class Impl_SerializableIsolatedPreset extends Impl_SerializableIsolatedPa
         return voices.length;
     }
 
-    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer v) throws NoSuchVoiceException {
+    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer v) throws PresetException {
         int vi = v.intValue();
         if (vi >= 0 && vi < voices.length)
             return voices[vi];
-        throw new NoSuchVoiceException(v.toString());
+        throw new PresetException(v.toString());
     }
 
-    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer l) throws NoSuchLinkException {
+    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer l) throws PresetException {
         int li = l.intValue();
         if (li >= 0 && li < links.length)
             return links[li];
-        throw new NoSuchLinkException(l.toString());
+        throw new PresetException(l.toString());
     }
 
     public String getName() {
@@ -93,7 +91,7 @@ public class Impl_SerializableIsolatedPreset extends Impl_SerializableIsolatedPa
         private Integer voiceIndex;
         private IntegerUseMap refSampleUsage;
 
-        public Impl_SerializableIsolatedVoice(IsolatedPreset.IsolatedVoice iv) throws NoSuchZoneException {
+        public Impl_SerializableIsolatedVoice(IsolatedPreset.IsolatedVoice iv) throws PresetException {
             super(iv.getIdValMap());
             voiceIndex = iv.getOriginalIndex();
             refSampleUsage = iv.getReferencedSampleUsage();
@@ -106,11 +104,11 @@ public class Impl_SerializableIsolatedPreset extends Impl_SerializableIsolatedPa
             return zones.length;
         }
 
-        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer z) throws NoSuchZoneException {
+        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer z) throws PresetException {
             int zi = z.intValue();
             if (zi >= 0 && zi < zones.length)
                 return zones[zi];
-            throw new NoSuchZoneException(z.toString());
+            throw new PresetException(z.toString());
         }
 
         public Integer getOriginalIndex() {

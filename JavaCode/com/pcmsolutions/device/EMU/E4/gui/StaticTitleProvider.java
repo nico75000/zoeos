@@ -7,7 +7,7 @@ import javax.swing.*;
  * Date: 10-Feb-2004
  * Time: 18:57:55
  */
-public class StaticTitleProvider implements TitleProvider{
+public class StaticTitleProvider implements TitleProvider {
     private final String title;
     private final String reducedTitle;
     private final Icon icon;

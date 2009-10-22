@@ -15,7 +15,7 @@ import java.util.*;
 public class IntegerUseMap implements Serializable {
     static final long serialVersionUID = 1;
 
-    protected final TreeMap useMap = new TreeMap();
+    protected final TreeMap<Integer,Integer> useMap = new TreeMap<Integer,Integer>();
 
     public void addIntegerReference(Integer i) {
         addIntegerReference(i, 1);
@@ -33,8 +33,7 @@ public class IntegerUseMap implements Serializable {
     public void addIntegerReference(Integer i, int numRefs) {
         if (i == null)
             return;
-        Integer count;
-        count = (Integer) useMap.get(i);
+        Integer count = useMap.get(i);
         if (count == null)
             useMap.put(i, IntPool.get(numRefs));
         else
@@ -54,7 +53,7 @@ public class IntegerUseMap implements Serializable {
     }
 
     public Set getUsedIntegerSet() {
-        return new HashMap(useMap).keySet();
+        return ((TreeMap)useMap.clone()).keySet();
     }
 
     public boolean containsAnyOf(Integer[] ints) {
@@ -71,15 +70,15 @@ public class IntegerUseMap implements Serializable {
         return c.intValue();
     }
 
-    public Map getUseMap() {
-        return (TreeMap) useMap.clone();
+    public Map<Integer,Integer> getUseMap() {
+        return (TreeMap<Integer,Integer>) useMap.clone();
     }
 
     public IntegerUseMap mergeUseMap(IntegerUseMap mergingUseMap) {
-        Map.Entry me;
-        for (Iterator i = mergingUseMap.getUseMap().entrySet().iterator(); i.hasNext();) {
-            me = (Map.Entry) i.next();
-            addIntegerReference((Integer) me.getKey(), ((Integer) me.getValue()).intValue());
+        Map.Entry<Integer,Integer> me;
+        for (Iterator <Map.Entry<Integer,Integer>> i = mergingUseMap.getUseMap().entrySet().iterator(); i.hasNext();) {
+            me = i.next();
+            addIntegerReference(me.getKey(), me.getValue().intValue());
         }
         return this;
     }

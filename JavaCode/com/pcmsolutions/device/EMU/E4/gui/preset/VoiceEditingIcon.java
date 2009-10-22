@@ -52,6 +52,8 @@ public class VoiceEditingIcon implements Icon {
 
     public void paintIcon(Component component, Graphics graphics, int x, int y) {
         Graphics2D g2d = ((Graphics2D) graphics);
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
         Shape c;
         if (pi != null) {
             pi.paintIcon(component, graphics, x, y);
@@ -64,9 +66,10 @@ public class VoiceEditingIcon implements Icon {
         //c = new RoundRectangle2D.Double(x + Math.round(w / 3.0), y, Math.round(w / 3.0), h, 2, 2);
         g2d.setColor(UIColors.applyAlpha(c1, 175));
         Ellipse2D.Double e = new Ellipse2D.Double();
-        e.setFrame(x + w / 2 - 1, y + h / 2 - 1, w / 2, h / 2);
+        e.setFrame(x + w / 2.0 , y + h / 2.0 , w / 2.0, h / 2.0);
         g2d.fill(e);
-        e.setFrame(x + 1, y + 1, w / 2, h / 2);
+        e.setFrame(x , y , w / 2.0, h / 2.0);
         g2d.fill(e);
+        g2d.setRenderingHints(hints);
     }
 }

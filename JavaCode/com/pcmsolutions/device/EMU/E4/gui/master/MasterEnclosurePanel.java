@@ -3,7 +3,9 @@ package com.pcmsolutions.device.EMU.E4.gui.master;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.gui.device.DefaultDeviceEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
+import com.pcmsolutions.gui.desktop.SessionableComponent;
 import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.ZUtilities;
 
 import javax.swing.*;
 
@@ -21,6 +23,5 @@ public class MasterEnclosurePanel extends DefaultDeviceEnclosurePanel implements
         mp = new MasterPanel().init(device);
         super.init(device, mp);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-    }
-
+    }   
 }

@@ -1,7 +1,9 @@
 package com.pcmsolutions.device.EMU.E4.multimode;
 
-import com.pcmsolutions.device.EMU.E4.events.MultiModeChannelChangedEvent;
-import com.pcmsolutions.device.EMU.E4.events.MultiModeRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeChannelChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeChannelChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeRefreshedEvent;
 
 /**
  * Created by IntelliJ IDEA.

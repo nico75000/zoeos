@@ -5,7 +5,7 @@ import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import javax.swing.*;
 import java.io.Serializable;
 
-public class DesktopEditingMediator implements Serializable{
+public class DesktopEditingMediator implements Serializable {
 
     public DesktopEditingMediator() {
     }

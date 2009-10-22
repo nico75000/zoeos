@@ -1,14 +1,17 @@
 package com.pcmsolutions.device.EMU.E4.selections;
 
-import com.pcmsolutions.device.EMU.E4.PresetContextMacros;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.parameter.ParameterUtilities;
 import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
-import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
+import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -108,11 +111,11 @@ public class VoiceParameterSelection extends AbstractE4Selection {
         return "General";
     }
 
-    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids, Integer[] vals) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException {
+    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids, Integer[] vals) throws DeviceException {
         this(voice, ids, vals, determineVoiceParameterSelectionCategory(voice.getPreset().getDeviceContext().getDeviceParameterContext(), ids));
     }
 
-    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids, Integer[] vals, int category) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException {
+    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids, Integer[] vals, int category) {
         super(voice.getPreset().getDeviceContext());
         //this.ids = new Integer[ids.length];
         //this.vals = new Integer[ids.length];
@@ -122,17 +125,17 @@ public class VoiceParameterSelection extends AbstractE4Selection {
         this.vals = (Integer[]) vals.clone();
     }
 
-    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids, int category) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException {
+    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids, int category) throws ParameterException, PresetException, EmptyException {
         this(voice, ids, voice.getVoiceParams(ids), category);
     }
 
-    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException {
+    public VoiceParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids) throws ParameterException, PresetException, EmptyException, DeviceException {
         this(voice, ids, voice.getVoiceParams(ids), determineVoiceParameterSelectionCategory(voice.getPreset().getDeviceContext().getDeviceParameterContext(), ids));
     }
 
     public static int determineVoiceParameterSelectionCategory(DeviceParameterContext dpc, Integer[] ids) {
         Set cats = new HashSet();
-        for (int i = 0,j = ids.length; i < j; i++) {
+        for (int i = 0, j = ids.length; i < j; i++) {
             try {
                 cats.add(IntPool.get(voiceCategoryStringToEnum(dpc.getParameterDescriptor(ids[i]).getCategory())));
             } catch (IllegalParameterIdException e) {
@@ -157,7 +160,7 @@ public class VoiceParameterSelection extends AbstractE4Selection {
         return category;
     }
 
-    public boolean containsOnlySampleZoneIds() throws ZDeviceNotRunningException {
+    public boolean containsOnlySampleZoneIds() throws DeviceException {
         return ParameterUtilities.containsOnlySampleZoneIds(this);
     }
 
@@ -170,50 +173,42 @@ public class VoiceParameterSelection extends AbstractE4Selection {
     }
 
     public void render(ContextEditablePreset.EditableVoice[] voices) {
-      /*  for (int v = 0,x = voices.length; v < x; v++)
-            for (int i = 0, n = ids.length; i < n; i++) {
-                try {
-                    voices[v].setVoicesParam(ids[i], vals[i]);
-                } catch (IllegalParameterIdException e) {
-                    e.printStackTrace();
-                } catch (ParameterValueOutOfRangeException e) {
-                    e.printStackTrace();
-                } catch (NoSuchPresetException e) {
-                    e.printStackTrace();
-                } catch (PresetEmptyException e) {
-                    e.printStackTrace();
-                } catch (NoSuchVoiceException e) {
-                    e.printStackTrace();
-                }
-            }*/
+        /*  for (int v = 0,x = voices.length; v < x; v++)
+              for (int i = 0, n = ids.length; i < n; i++) {
+                  try {
+                      voices[v].setVoicesParam(ids[i], vals[i]);
+                  } catch (IllegalParameterIdException e) {
+                      e.printStackTrace();
+                  } catch (ParameterValueOutOfRangeException e) {
+                      e.printStackTrace();
+                  } catch (DeviceException e) {
+                      e.printStackTrace();
+                  } catch (EmptyException e) {
+                      e.printStackTrace();
+                  } catch (NoSuchVoiceException e) {
+                      e.printStackTrace();
+                  }
+              }*/
         try {
-            PresetContextMacros.setContextVoicesParam(voices,ids,vals );
-        } catch (NoSuchPresetException e) {
-            e.printStackTrace();
-        } catch (NoSuchContextException e) {
+            PresetContextMacros.setContextVoicesParam(voices, ids, vals);
+        } catch (PresetException e) {
             e.printStackTrace();
         }
     }
 
     public void render(ContextEditablePreset.EditableVoice.EditableZone[] zones) {
         int iv;
-        for (int z = 0,x = zones.length; z < x; z++)
+        for (int z = 0, x = zones.length; z < x; z++)
             for (int i = 0, n = ids.length; i < n; i++) {
                 iv = ids[i].intValue();
                 if (((iv >= 38 && iv <= 40) || iv == 42 || (iv >= 44 && iv <= 52)))
                     try {
-                        zones[z].setZonesParam(ids[i], vals[i]);
-                    } catch (IllegalParameterIdException e) {
+                        zones[z].setZoneParam(ids[i], vals[i]);
+                    } catch (EmptyException e) {
                         e.printStackTrace();
-                    } catch (ParameterValueOutOfRangeException e) {
+                    } catch (ParameterException e) {
                         e.printStackTrace();
-                    } catch (NoSuchPresetException e) {
-                        e.printStackTrace();
-                    } catch (PresetEmptyException e) {
-                        e.printStackTrace();
-                    } catch (NoSuchVoiceException e) {
-                        e.printStackTrace();
-                    } catch (NoSuchZoneException e) {
+                    } catch (PresetException e) {
                         e.printStackTrace();
                     }
             }
@@ -232,7 +227,7 @@ public class VoiceParameterSelection extends AbstractE4Selection {
     }
 
     public boolean containsId(Integer id) {
-        for (int i = 0,j = ids.length; i < j; i++)
+        for (int i = 0, j = ids.length; i < j; i++)
             if (ids[i].equals(id))
                 return true;
         return false;

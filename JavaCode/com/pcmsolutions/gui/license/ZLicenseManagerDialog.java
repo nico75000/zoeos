@@ -6,7 +6,10 @@ import com.pcmsolutions.gui.ZDialog;
 import com.pcmsolutions.gui.ZoeosFrame;
 import com.pcmsolutions.license.InvalidLicenseKeyException;
 import com.pcmsolutions.license.LicenseKeyManager;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.Zoeos;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -103,23 +106,31 @@ public class ZLicenseManagerDialog extends ZDialog implements ComponentListener,
             public void actionPerformed(final ActionEvent e) {
                 if (e.getSource() instanceof Component) {
                     ((Component) e.getSource()).setEnabled(false);
-                    new ZDefaultThread("Refresh License Keys") {
-                        public void run() {
-                            try {
-                                LicenseKeyManager.refreshLicenseKeys();
-                            } finally {
+                    try {
+                        Zoeos.getInstance().getSystemQ().getPostableTicket(new TicketRunnable() {
+                            public void run() throws Exception {
+                                try {
+                                    LicenseKeyManager.refreshLicenseKeys();
+                                } finally {
+                                }
+                            }
+                        }, "refreshLicenseKeys").post(new Callback() {
+                            public void result(Exception e1, boolean wasCancelled) {
                                 SwingUtilities.invokeLater(new Runnable() {
                                     public void run() {
                                         ((Component) e.getSource()).setEnabled(true);
                                     }
                                 });
                             }
-                        }
-                    }.start();
+                        });
+                    } catch (Exception e1) {
+                        e1.printStackTrace();
+                        ((Component) e.getSource()).setEnabled(true);
+                    }
                 }
             }
         };
-        ract.putValue("tip", "Refresh License Keys");
+        ract.putValue("tip", "Refresh license keys");
 
 
         licenseManagerTable = new LicenseManagerTable();

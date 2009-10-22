@@ -1,13 +1,11 @@
 package com.pcmsolutions.device.EMU.E4.selections;
 
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
-import com.pcmsolutions.device.EMU.E4.preset.PresetEmptyException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 
 public class PresetParameterSelection extends AbstractE4Selection {
     private Integer[] ids;
@@ -29,7 +27,7 @@ public class PresetParameterSelection extends AbstractE4Selection {
         return PRESET_GENERAL;
     }
 
-    public PresetParameterSelection(ReadablePreset p, Integer[] ids, int category) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException {
+    public PresetParameterSelection(ReadablePreset p, Integer[] ids, int category) throws ParameterException, PresetException, EmptyException {
         super(p.getDeviceContext());
         this.ids = new Integer[ids.length];
         this.vals = new Integer[ids.length];
@@ -47,17 +45,12 @@ public class PresetParameterSelection extends AbstractE4Selection {
     }
 
     public void render(ContextEditablePreset p) {
-        try {
-            p.setPresetParams(ids, vals);
-        } catch (NoSuchPresetException e) {
-            e.printStackTrace();
-        } catch (PresetEmptyException e) {
-            e.printStackTrace();
-        } catch (IllegalParameterIdException e) {
-            e.printStackTrace();
-        } catch (ParameterValueOutOfRangeException e) {
-            e.printStackTrace();
-        }
+        for (int i = 0; i < ids.length; i++)
+            try {
+                p.setPresetParam(ids[i], vals[i]);
+            } catch (PresetException e) {
+                e.printStackTrace();
+            }
     }
 
     public Integer[] getIds() {
@@ -69,7 +62,7 @@ public class PresetParameterSelection extends AbstractE4Selection {
     }
 
     public boolean containsId(Integer id) {
-        for (int i = 0,j = ids.length; i < j; i++)
+        for (int i = 0, j = ids.length; i < j; i++)
             if (ids[i].equals(id))
                 return true;
         return false;

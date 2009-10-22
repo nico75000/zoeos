@@ -13,6 +13,6 @@ public class SmdiNoMemoryException extends Exception {
     }
 
     public SmdiNoMemoryException() {
-        super("out of sample memory");
+        super("Device out of sample memory");
     }
 }

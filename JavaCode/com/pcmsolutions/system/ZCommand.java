@@ -11,32 +11,33 @@ import javax.swing.*;
  * To change this template use Options | File Templates.
  */
 public interface ZCommand extends Comparable {
+    public String getPresentationCategory();
 
     public int getMnemonic();
 
-    public boolean isSuitableAsLaunchButton();
+    public boolean isSuitableAsButton();
 
-    public void setTarget(Object t) throws IllegalArgumentException;
+    public boolean isSuitableInToolbar();
+
+    public boolean overrides(ZCommand cmd);
+
+    public boolean isSortable();
+
+    public boolean isTargeted();
+
+    public void setTargets(Object target) throws ZCommandTargetsNotSuitableException;
+
+    public void setTargets(Object[] targets) throws ZCommandTargetsNotSuitableException;
+
+    public int getMinNumTargets();
+
+    public int getMaxNumTargets();
 
     public String getPresentationString();
 
     public String getDescriptiveString();
 
-    public int getNumberOfArguments();              // arguments are all strings
-
-    public String[] getArgumentPresentationStrings();
-
-    public String[] getArgumentDescriptiveStrings();
-
-    // currently supporting JCombo and JTextField
-    public JComponent getComponentForArgument(int index) throws IllegalArgumentException;  // exception for index out of range
-
-    public String getSummaryString(Object[] arguments) throws IllegalArgumentException;
-
     public Icon getIcon();
-
-    // if returns null no verification of command required
-    public String getVerificationString();
 
     // preceed each new path element with ";", do not place ";" after last path element
     // "" means root menu
@@ -47,6 +48,5 @@ public interface ZCommand extends Comparable {
 
     public boolean isSuitableForSorting();
 
-    public void execute(Object invoker, Object[] arguments) throws IllegalArgumentException, CommandFailedException;  // IllegalArgumentException thrown for insufficient number of arguments
-
+    public void execute() throws CommandFailedException, ZCommandTargetsNotSpecifiedException;  // IllegalArgumentException thrown for insufficient number of arguments
 }

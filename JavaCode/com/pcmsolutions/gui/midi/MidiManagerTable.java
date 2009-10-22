@@ -1,10 +1,13 @@
 package com.pcmsolutions.gui.midi;
 
-import com.pcmsolutions.comms.MidiSystemFacade;
+import com.pcmsolutions.comms.ZMidiSystem;
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTable;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 
+import javax.sound.midi.MidiDevice;
+import javax.sound.midi.MidiUnavailableException;
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseEvent;
 
@@ -19,7 +22,7 @@ public class MidiManagerTable extends AbstractRowHeaderedAndSectionedTable {
     public MidiManagerTable() {
         super(new MidiManagerTableModel().init(), null, "Midi Manager");
         this.setColumnSelectionAllowed(false);
-        this.hidingSelectionOnFocusLost = false;
+        this.getRowHeader().setSelectionModel(this.getSelectionModel());
     }
 
 
@@ -27,62 +30,36 @@ public class MidiManagerTable extends AbstractRowHeaderedAndSectionedTable {
         return "";
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
-        JMenuItem[] items = new JMenuItem[2];
-        items[0] = new JMenuItem(new AbstractAction("Ignore port") {
-            public void actionPerformed(ActionEvent e) {
-                int[] selRows = getSelectedRows();
-                for (int i = 0,j = selRows.length; i < j; i++) {
-                    Object tok = getModel().getValueAt(selRows[i], 0);
-                    if (tok != null && !tok.equals(""))
-                        MidiSystemFacade.getInstance().addIgnoreToken(tok);
-                }
+    final Action togglePermission = new AbstractAction("Toggle permission") {
+        public void actionPerformed(ActionEvent e) {
+            int[] selRows = getSelectedRows();
+            for (int i = 0, j = selRows.length; i < j; i++) {
+                MidiDevice.Info dev = (MidiDevice.Info) getModel().getValueAt(selRows[i], 0);
+                if (dev != null)
+                    try {
+                        ZMidiSystem.getInstance().setPortPermitted(dev, false);
+                    } catch (MidiUnavailableException e1) {
+                        e1.printStackTrace();
+                    }
             }
-        });
-        items[1] = new JMenuItem(new AbstractAction("Permit port") {
-            public void actionPerformed(ActionEvent e) {
-                int[] selRows = getSelectedRows();
-                for (int i = 0,j = selRows.length; i < j; i++) {
-                    Object tok = getModel().getValueAt(selRows[i], 0);
-                    if (tok != null && !tok.equals(""))
-                        MidiSystemFacade.getInstance().removeIgnoreToken(tok);
-                }
-            }
-        });
+        }
+    };
+
+    protected Component[] getCustomMenuItems() {
+        JMenuItem[] items = new JMenuItem[1];
+        items[0] = new JMenuItem(togglePermission);
         return items;
     }
 
     protected DragAndDropTable generateRowHeaderTable() {
         DragAndDropTable t = new DragAndDropTable(popupName, null, null) {
-            {
-                this.hidingSelectionOnFocusLost = false;
-            }
 
             public void zDispose() {
             }
 
-            protected JMenuItem[] getCustomMenuItems() {
-                JMenuItem[] items = new JMenuItem[2];
-                items[0] = new JMenuItem(new AbstractAction("Ignore port") {
-                    public void actionPerformed(ActionEvent e) {
-                        int[] selRows = getSelectedRows();
-                        for (int i = 0,j = selRows.length; i < j; i++) {
-                            Object tok = getModel().getValueAt(selRows[i], 0);
-                            if (tok != null && !tok.equals(""))
-                                MidiSystemFacade.getInstance().addIgnoreToken(tok);
-                        }
-                    }
-                });
-                items[1] = new JMenuItem(new AbstractAction("Permit port") {
-                    public void actionPerformed(ActionEvent e) {
-                        int[] selRows = getSelectedRows();
-                        for (int i = 0,j = selRows.length; i < j; i++) {
-                            Object tok = getModel().getValueAt(selRows[i], 0);
-                            if (tok != null && !tok.equals(""))
-                                MidiSystemFacade.getInstance().removeIgnoreToken(tok);
-                        }
-                    }
-                });
+            protected Component[] getCustomMenuItems() {
+                JMenuItem[] items = new JMenuItem[1];
+                items[0] = new JMenuItem(togglePermission);
                 return items;
             }
 
@@ -96,5 +73,4 @@ public class MidiManagerTable extends AbstractRowHeaderedAndSectionedTable {
         //t.setTransferHandler(null);
         return t;
     }
-
 }

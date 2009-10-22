@@ -14,15 +14,16 @@ import java.awt.geom.GeneralPath;
 import java.awt.geom.Rectangle2D;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 public class DeviceIcon implements Icon {
     private int w, h;
     private Color c1, c2;
     private boolean empty;
 
-    /** Creates a new instance of SampleIcon */
+    /**
+     * Creates a new instance of SampleIcon
+     */
     public DeviceIcon(int w, int h) {
         this(w, h, Color.white, Color.darkGray, false);
     }
@@ -49,40 +50,44 @@ public class DeviceIcon implements Icon {
 
     public void paintIcon(Component component, Graphics graphics, int x, int y) {
         Graphics2D g2d = ((Graphics2D) graphics);
-        //Shape c = new Ellipse2D.Double(x, y, w, h);
-        //Shape c = new Rectangle2D.Double(x,y, w, h);
-        GeneralPath c = new GeneralPath();
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
+        try {
+            GeneralPath c = new GeneralPath();
 
-        if (empty) {
-            int eh = h - 2;
-            int ew = w - 2;
-            int ex = x + 1;
-            int ey = y + 1;
-            c.moveTo(ex, ey + eh);
-            c.lineTo(ex + ew, ey + eh);
-            c.lineTo(ex + ew, ey);
-            c.lineTo(ex, ey);
+            if (empty) {
+                int eh = h - 2;
+                int ew = w - 2;
+                int ex = x + 1;
+                int ey = y + 1;
+                c.moveTo(ex, ey + eh);
+                c.lineTo(ex + ew, ey + eh);
+                c.lineTo(ex + ew, ey);
+                c.lineTo(ex, ey);
+                c.closePath();
+                g2d.setColor(c1);
+                g2d.draw(c);
+                return;
+            }
+            c.moveTo(x, y + h);
+            c.lineTo(x + w, y + h);
+            c.lineTo(x + w, y);
+            c.lineTo(x, y);
             c.closePath();
-            g2d.setColor(c1);
-            g2d.draw(c);
-            return;
+
+            GradientPaint gp = new GradientPaint(x, y, c1, x + w, y, c2, false);
+            g2d.setPaint(gp);
+            g2d.fill(c);
+            // Shape s = new Ellipse2D.Double(x + (w * 5) / 8, y + h / 4, (w * 3) / 8, h / 2);
+            g2d.setColor(UIColors.applyAlpha(c2, 75));
+
+            Shape s;
+            s = new Rectangle2D.Double(x + w / 8, y + h / 8, w / 2, h / 4);
+            g2d.fill(s);
+            s = new Rectangle2D.Double(x + w / 8, y + (h * 5) / 8, w / 2, h / 4);
+            g2d.fill(s);
+        } finally {
+            g2d.setRenderingHints(hints);
         }
-        c.moveTo(x, y + h);
-        c.lineTo(x + w, y + h);
-        c.lineTo(x + w, y);
-        c.lineTo(x, y);
-        c.closePath();
-
-        GradientPaint gp = new GradientPaint(x, y, c1, x + w, y, c2, false);
-        g2d.setPaint(gp);
-        g2d.fill(c);
-        // Shape s = new Ellipse2D.Double(x + (w * 5) / 8, y + h / 4, (w * 3) / 8, h / 2);
-        g2d.setColor(UIColors.applyAlpha(c2, 75));
-
-        Shape s;
-        s = new Rectangle2D.Double(x + w / 8, y + h / 8, w / 2, h / 4);
-        g2d.fill(s);
-        s = new Rectangle2D.Double(x + w / 8, y + (h * 5) / 8, w / 2, h / 4);
-        g2d.fill(s);
     }
 }

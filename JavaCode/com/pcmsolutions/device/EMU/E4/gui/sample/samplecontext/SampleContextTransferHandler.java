@@ -1,22 +1,21 @@
 package com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext;
 
-import com.pcmsolutions.device.EMU.E4.RemoteUnreachableException;
 import com.pcmsolutions.device.EMU.E4.SampleContextMacros;
+import com.pcmsolutions.device.EMU.E4.gui.packaging.PackagingGUIFactory;
 import com.pcmsolutions.device.EMU.E4.preset.IsolatedSample;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
 import com.pcmsolutions.device.EMU.E4.sample.ContextEditableSample;
 import com.pcmsolutions.device.EMU.E4.sample.IsolatedSampleUnavailableException;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
 import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
 import com.pcmsolutions.device.EMU.E4.selections.ContextSampleSelection;
 import com.pcmsolutions.device.EMU.E4.selections.DataFlavorGrid;
-import com.pcmsolutions.device.EMU.E4.zcommands.LoadContextSamplesZMTC;
+import com.pcmsolutions.gui.ProgressCallback;
+import com.pcmsolutions.gui.ProgressCallbackTree;
+import com.pcmsolutions.gui.UserMessaging;
 import com.pcmsolutions.gui.ZoeosFrame;
-import com.pcmsolutions.system.CommandFailedException;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
-import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.Zoeos;
 import com.pcmsolutions.system.audio.AudioUtilities;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
 import javax.swing.*;
 import java.awt.datatransfer.DataFlavor;
@@ -25,6 +24,7 @@ import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.event.InputEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,21 +53,21 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
                 final SampleContextTable sct = (SampleContextTable) comp;
                 int row = sct.getSelectedRow();
                 try {
-                    ContextSampleSelection ips = ((ContextSampleSelection) t.getTransferData(SampleContextTransferHandler.sampleContextFlavor));
+                    final ContextSampleSelection ips = ((ContextSampleSelection) t.getTransferData(SampleContextTransferHandler.sampleContextFlavor));
 
                     final ReadableSample[] sourceReadableSamples = ips.getReadableSamples();
                     final Object[] destRowObjects = new Object[sourceReadableSamples.length];
-                    for (int i = 0,j = sourceReadableSamples.length; i < j; i++)
+                    for (int i = 0, j = sourceReadableSamples.length; i < j; i++)
                         destRowObjects[i] = sct.getValueAt(row + i, 0);
 
-                    Integer[] destIndexes = new Integer[destRowObjects.length];
+                    final Integer[] destIndexes = new Integer[destRowObjects.length];
 
                     for (int i = 0; i < destIndexes.length; i++)
-                        destIndexes[i] = ((ReadableSample) destRowObjects[i]).getSampleNumber();
+                        destIndexes[i] = ((ReadableSample) destRowObjects[i]).getIndex();
 
                     String confirmStr = SampleContextMacros.getOverwriteConfirmationString(((ReadableSample) destRowObjects[0]).getSampleContext(), destIndexes);
 
-                    int ok = JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), confirmStr, "Confirm Sample Bulk Copy", JOptionPane.YES_NO_OPTION);
+                    int ok = JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), confirmStr, "Confirm sample bulk copy", JOptionPane.YES_NO_OPTION);
                     if (ok == 0)
                         dropIsolatedSamples(ips, destRowObjects);
                     return true;
@@ -83,7 +83,7 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
                     final List files = (List) t.getTransferData(DataFlavor.javaFileListFlavor);
                     final List legalFiles = AudioUtilities.filterLegalAudioFiles(files);
                     if (legalFiles.size() == 0) {
-                        JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), (files.size() == 1 ? "The File is not in a legal format for ZoeOS" : "None of the files are  in a legal format for ZoeOS"), "Problem", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), (files.size() == 1 ? "The file is not in a legal format for ZoeOS" : "None of the files are  in a legal format for ZoeOS"), "Problem", JOptionPane.ERROR_MESSAGE);
                         return false;
                     }
                     if (legalFiles.size() != files.size())
@@ -93,15 +93,12 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
                     if (r >= 0) {
                         final Object o = ((SampleContextTable) comp).getValueAt(r, 0);
                         if (o instanceof ContextEditableSample)
-                            new ZDBModifyThread("Drop sample File list") {
-                                public void run() {
-                                    try {
-                                        LoadContextSamplesZMTC.loadFilesToContext((ContextEditableSample) o, (File[]) legalFiles.toArray(new File[legalFiles.size()]));
-                                    } catch (CommandFailedException e) {
-                                        JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), e.getMessage(), "Command Failed", JOptionPane.ERROR_MESSAGE);
-                                    }
-                                }
-                            }.start();
+                            try {
+                                PackagingGUIFactory.loadSampleFiles((File[]) legalFiles.toArray(new File[legalFiles.size()]), (ContextEditableSample) o);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                UserMessaging.showError(e.getMessage());
+                            }
                         return true;
                     }
                 } catch (UnsupportedFlavorException e) {
@@ -114,84 +111,67 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
         return false;
     }
 
-
-    private static int progressLabelWidth = 72;
-
     private void dropIsolatedSamples(final ContextSampleSelection ips, final Object[] destRowObjects) {
-        final Object progressOwner = new Object();
-        final Thread mt = new ZDBModifyThread("D&D: Transfer IsolatedSamples") {
-            public void run() {
-                final Zoeos z = Zoeos.getInstance();
-                z.beginProgressElement(progressOwner, ZUtilities.makeExactLengthString("Copying Samples", progressLabelWidth), destRowObjects.length * 2);
-                int errors = 0;
-                try {
-                    final int j = destRowObjects.length;
-                    for (int i = j - 1; i >= 0; i--) {
-                        final int f_i = i;
-                        final Object sobj = destRowObjects[i];
-                        if (sobj instanceof ContextEditableSample) {
-                            IsolatedSample is = null;
-                            try {
-                                if (i == 0)
-                                    is = ips.getIsolatedSample(i);
-                                else
-                                    is = ips.getIsolatedSample(i);
-                                is.ZoeAssert();
-                            } catch (IsolatedSampleUnavailableException e) {
-                                e.printStackTrace();
-                            } finally {
-                                z.updateProgressElement(progressOwner);
-                                if (is == null) {
-                                    z.updateProgressElement(progressOwner);
-                                    if (i >= j - 1)
-                                        z.endProgressElement(progressOwner);
-                                    errors++;
-                                    continue;
-                                }
-                            }
-                            final IsolatedSample f_is = is;
-                            // new ZDBModifyThread("D&D: New Samples from IsolatedSamples") {
-                            //   public void run() {
-                            // TODO!! should use a signal here to achieve correct ordering of threads
-                            try {
-                                z.setProgressElementIndeterminate(progressOwner, true);
-                                z.updateProgressElementTitle(progressOwner, "Copying " + f_is.getName() + " to " + ((ContextEditableSample) sobj).getSampleDisplayName());
-                                ((ContextEditableSample) sobj).newSample(f_is, f_is.getName());
-                                f_is.zDispose();
-                            } catch (NoSuchSampleException e) {
-                                JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), e.getMessage(), "Problem", JOptionPane.ERROR_MESSAGE);
-                                errors++;
-                                continue;
-                            } catch (IsolatedSampleUnavailableException e) {
-                                JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), e.getMessage(), "Problem", JOptionPane.ERROR_MESSAGE);
-                                errors++;
-                                continue;
-                            } finally {
-                                z.setProgressElementIndeterminate(progressOwner, false);
-                                z.updateProgressElement(progressOwner);
-                                if (f_i >= j - 1)
-                                    z.endProgressElement(progressOwner);
-                            }
-                            //  }
-                            // }.stateStart();
-
-                        } else {
-                            z.updateProgressElement(progressOwner);
-                            z.updateProgressElement(progressOwner);
-                            if (i >= j - 1)
-                                z.endProgressElement(progressOwner);
-                            errors++;
-                        }
+        try {
+            ips.getSampleContext().getDeviceContext().getQueues().ddQ().getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    final List<ContextEditableSample> validSamples = new ArrayList<ContextEditableSample>();
+                    for (Object o : destRowObjects)
+                        if (o instanceof ContextEditableSample)
+                            validSamples.add((ContextEditableSample) o);
+                    if (validSamples.size() < 1)
+                        return;
+                    int errors = destRowObjects.length - validSamples.size();
+                    if ( SampleContextMacros.getNonEmpty(ips.getReadableSamples()).length <ips.getReadableSamples().length ){
+                        UserMessaging.showCommandFailed("Cannot drop empty samples.");
+                        return;
                     }
-                } finally {
-                    if (errors == destRowObjects.length)
-                        JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), (destRowObjects.length > 1 ? "None of the source samples could be copied" : "The source sample could not be copied"), "Problem", JOptionPane.ERROR_MESSAGE);
-                    else if (errors > 0)
-                        JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), errors + " of " + destRowObjects.length + " source samples could not be copied", "Problem", JOptionPane.ERROR_MESSAGE);
+                    ProgressCallback prog = new ProgressCallbackTree("Sample drop", false);
+                    ProgressCallback[] progs = prog.splitTask(validSamples.size() * 2, false);
+                    int pi = 0;
+                    try {
+                        for (IsolatedSample is : ips.getIsolatedSamples()) {
+                            if ( prog.isCancelled()){
+                                errors = 0;
+                                return;
+                            }
+                            try {
+                                is.assertSample(progs[pi]);
+                            } catch (Exception e) {
+                                is = null;
+                                e.printStackTrace();
+                                errors++;
+                            } finally {
+                                progs[pi++].updateProgress(1);
+                            }
+                        }
+                        int i = 0;
+                        for (IsolatedSample is : ips.getIsolatedSamples()) {
+                            if ( prog.isCancelled()){
+                                errors = 0;
+                                return;
+                            }
+                            try {
+                                validSamples.get(i++).newContent(is, is.getName(), progs[pi++]);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                errors++;
+                            }
+                        }
+                    } catch (Exception e) {
+                        UserMessaging.showCommandFailed(e.getMessage());
+                        prog.updateProgress(1);
+                    } finally {
+                        if (errors == destRowObjects.length)
+                            UserMessaging.showCommandFailed((destRowObjects.length > 1 ? "None of the source samples could be copied" : "The source sample could not be copied"));
+                        else if (errors > 0)
+                            UserMessaging.showCommandFailed(errors + " of " + destRowObjects.length + " source samples could not be copied");
+                    }
                 }
-            }
-        };
-        mt.start();
+            }, "sampleDrop").post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
     }
 
 
@@ -228,8 +208,7 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
                 return null;
             sampleContextFlavor.clearGrid();
             sampleContextFlavor.setDefCols(new int[]{0});
-
-            for (int i = 0,j = sampleIndexes.length; i < j; i++)
+            for (int i = 0, j = sampleIndexes.length; i < j; i++)
                 sampleContextFlavor.addRow(sampleIndexes[i].intValue());
 
             //if (c instanceof DragAndDropTable)
@@ -251,27 +230,56 @@ public class SampleContextTransferHandler extends TransferHandler implements Tra
         if (flavor.equals(sampleContextFlavor))
             return ss;
         else if (flavor.equals(DataFlavor.javaFileListFlavor)) {
+            if (SampleContextMacros.extractRomIndexes(ss.getSampleIndexes()).length > 0)
+                return null;
             ss.setUseTempNames(false);
+            return new AbstractList() {
+                // FlashMsg msg;
+
+                public Object get(int index) {
+                    // if (index == 0)
+                    //   msg = new FlashMsg(ZoeosFrame.getInstance(), FlashMsg.colorInfo, "Downloading samples to dekstop", Integer.MAX_VALUE);
+                    ProgressCallbackTree prog = new ProgressCallbackTree("Sample download to desktop", false);
+                    try {
+                        IsolatedSample is;
+                        is = ss.getIsolatedSample(index);
+                        is.assertSample(prog);
+                        return is.getLocalFile();
+                    } catch (IsolatedSampleUnavailableException e) {
+                        return null;
+                    } finally {
+                        prog.updateProgress(1);
+                        // if (index == size() - 1)
+                        //   msg.terminate();
+                    }
+                }
+
+                public int size() {
+                    return ss.getSampleCount();
+                }
+            };
+            /*
             ArrayList fl = new ArrayList();
+            ProgressCallbackTree prog = new ProgressCallbackTree("Sample download to desktop", false);
             try {
+                ProgressCallback[] progs = prog.splitTask(ss.getSampleCount(), false);
                 for (int i = 0, j = ss.getSampleCount(); i < j; i++) {
                     try {
                         IsolatedSample is;
                         is = ss.getIsolatedSample(i);
-                        is.ZoeAssert();
+                        is.assertSample(progs[i]);
                         fl.add(is.getLocalFile());
+                        //List x = new AbstractList(){};
                     } catch (IsolatedSampleUnavailableException e) {
                         return null;
+                    } finally {
+                        progs[i].updateProgress(1);
                     }
                 }
-                return fl;
-            } finally {
-                try {
-                    ss.getSampleContext().getDeviceContext().sampleMemoryDefrag(false);
-                } catch (ZDeviceNotRunningException e) {
-                } catch (RemoteUnreachableException e) {
-                }
+           } finally {
+                prog.updateProgress(1);
             }
+        */
         }
         return null;
     }

@@ -1,17 +1,16 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor;
 
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTablePanel;
-import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
+import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
 
 import javax.swing.*;
 import java.awt.*;
@@ -29,7 +28,7 @@ import java.util.List;
 public class EditableFilterPanel extends JPanel implements ZDisposable {
     EditableParameterModel[] filterModels;
 
-    public EditableFilterPanel init(final ContextEditablePreset.EditableVoice[] voices) throws ZDeviceNotRunningException, IllegalParameterIdException {
+    public EditableFilterPanel init(final ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc) throws ParameterException, DeviceException {
         if (voices == null || voices.length < 1)
             throw new IllegalArgumentException("Need at least one voice for am EditableFilterPanel");
 
@@ -40,32 +39,19 @@ public class EditableFilterPanel extends JPanel implements ZDisposable {
 
         Action ra = new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Refresh Filter") {
-                    public void run() {
                         try {
                             voices[0].getPreset().refreshVoiceParameters(voices[0].getVoiceNumber(), (Integer[]) filterIds.toArray(new Integer[filterIds.size()]));
-                        } catch (NoSuchContextException e1) {
-                            e1.printStackTrace();
-                        } catch (PresetEmptyException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchPresetException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchVoiceException e1) {
-                            e1.printStackTrace();
-                        } catch (ParameterValueOutOfRangeException e1) {
-                            e1.printStackTrace();
-                        } catch (IllegalParameterIdException e1) {
+                        } catch (PresetException e1) {
                             e1.printStackTrace();
                         }
-                    }
-                }.start();
             }
         };
         ra.putValue("tip", "Refresh Filter");
         RowHeaderedAndSectionedTablePanel ampPanel;
         EditableFilterParameterTableModel model = new EditableFilterParameterTableModel(filterModels);
-
-        ampPanel = new RowHeaderedAndSectionedTablePanel().init(new EditableVoiceParameterTable(voices, ParameterCategories.VOICE_FILTER, model, "Filter"), "Show Filter", UIColors.getTableBorder(), ra);
+        EditableVoiceParameterTable evpt =new EditableVoiceParameterTable(voices, ParameterCategories.VOICE_FILTER, model, "Filter");
+        tsc.addTableToContext(evpt);
+        ampPanel = new RowHeaderedAndSectionedTablePanel().init(evpt, "Show Filter", UIColors.getTableBorder(), ra);
         this.add(ampPanel);
         return this;
     }

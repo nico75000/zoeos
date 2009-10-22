@@ -1,6 +1,6 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.envelope;
 
-import com.pcmsolutions.device.EMU.E4.PresetContextMacros;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
 import com.pcmsolutions.device.EMU.E4.gui.parameter.ParameterUtilities;
 import com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.VoiceParameterSelectionAcceptor;
@@ -10,11 +10,10 @@ import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceParameterSelection;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 
 /**
  * Created by IntelliJ IDEA.
@@ -51,7 +50,7 @@ public class EditableVoiceEnvelopeTable extends VoiceEnvelopeTable implements Vo
         dropOverExtent = -1;
     }
 
-    public void setSelection(VoiceParameterSelection sel) {
+    public void setSelection(final VoiceParameterSelection sel) {
         try {
             DeviceParameterContext dpc = voices[0].getPreset().getDeviceParameterContext();
             Integer[] ids = sel.getIds();
@@ -59,24 +58,21 @@ public class EditableVoiceEnvelopeTable extends VoiceEnvelopeTable implements Vo
             int thisCat = VoiceParameterSelection.voiceCategoryStringToEnum(category);
             int selCat = sel.getCategory();
             if (thisCat != selCat) {
-                for (int i = 0,j = ids.length; i < j; i++) {
+                for (int i = 0, j = ids.length; i < j; i++) {
                     // need convert ids first
                     ids[i] = ParameterUtilities.convertVoiceEnvelopeId(thisCat, selCat, ids[i]);
                     vals[i] = dpc.getParameterDescriptor(ids[i]).constrainValue(vals[i]);
                 }
             }
-
             try {
                 PresetContextMacros.setContextVoicesParam(voices, ids, vals);
-            } catch (NoSuchPresetException e) {
-                e.printStackTrace();
-            } catch (NoSuchContextException e) {
+            } catch (PresetException e) {
                 e.printStackTrace();
             }
 
-        } catch (ZDeviceNotRunningException e) {
-            e.printStackTrace();
         } catch (IllegalParameterIdException e) {
+            e.printStackTrace();
+        } catch (DeviceException e) {
             e.printStackTrace();
         }
     }

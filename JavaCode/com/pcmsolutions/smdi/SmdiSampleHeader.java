@@ -1,5 +1,7 @@
 package com.pcmsolutions.smdi;
 
+import com.pcmsolutions.device.EMU.E4.remote.SampleHeader;
+
 import java.io.Serializable;
 
 /**
@@ -9,24 +11,12 @@ import java.io.Serializable;
  * Time: 15:19:49
  * To change this template use Options | File Templates.
  */
-public interface SmdiSampleHeader extends Serializable {
+public interface SmdiSampleHeader extends SampleHeader, Serializable {
     public boolean isDoesExist();
-
-    public byte getBitsPerWord();           //
-
-    public byte getNumChannels();      // 1 or 2 usually
 
     public byte getLoopControl();           // Specifies if and how the defined loop between LoopStart and LoopEnd should be played
 
     public byte getNameLengthInBytes();
-
-    public int getPeriodInNS();    // 10^9 % period = sample frequency
-
-    public int getLengthInSampleFrames();   // Number of frames in sample (one sample frame's elementCount is ( NumberOfChannels*BitsPerWord)/8 Bytes)
-
-    public int getLoopStart();              // sample frame where sample starts
-
-    public int getLoopEnd();                // sample frame where sample ends
 
     public short getPitch();                  // (0..127) 60 is middle C
 

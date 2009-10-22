@@ -1,8 +1,9 @@
 package com.pcmsolutions.device.EMU.E4.packaging;
 
-import com.pcmsolutions.device.EMU.E4.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeMap;
 import com.pcmsolutions.device.EMU.E4.preset.IsolatedPreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
 import com.pcmsolutions.util.ClassUtility;
 import com.pcmsolutions.util.IntegerUseMap;
 

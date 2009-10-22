@@ -1,10 +1,13 @@
 package com.pcmsolutions.device.EMU.E4.selections;
 
-import com.pcmsolutions.device.EMU.E4.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,7 +27,7 @@ public class CordParameterSelection extends VoiceParameterSelection {
     //protected Integer[] normalIds;
     HashMap row2NormalRow = new HashMap();
 
-    public CordParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException {
+    public CordParameterSelection(ReadablePreset.ReadableVoice voice, Integer[] ids) throws ParameterException, PresetException, EmptyException {
         super(voice, ids, VoiceParameterSelection.VOICE_CORDS);
         determineSelectionConfiguration();
     }
@@ -87,9 +90,9 @@ public class CordParameterSelection extends VoiceParameterSelection {
                          e.printStackTrace();
                      } catch (ParameterValueOutOfRangeException e) {
                          e.printStackTrace();
-                     } catch (NoSuchPresetException e) {
+                     } catch (DeviceException e) {
                          e.printStackTrace();
-                     } catch (PresetEmptyException e) {
+                     } catch (EmptyException e) {
                          e.printStackTrace();
                      } catch (NoSuchVoiceException e) {
                          e.printStackTrace();
@@ -98,9 +101,7 @@ public class CordParameterSelection extends VoiceParameterSelection {
              */
         try {
             PresetContextMacros.setContextVoicesParam(voices, finalIds, vals);
-        } catch (NoSuchPresetException e) {
-            e.printStackTrace();
-        } catch (NoSuchContextException e) {
+        }catch (PresetException e) {
             e.printStackTrace();
         }
     }

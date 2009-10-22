@@ -14,6 +14,7 @@ import java.awt.*;
  */
 public class FadeLabel extends JLabel {
     protected boolean fadingIn = false;
+
     public FadeLabel(String text, Icon icon, int horizontalAlignment) {
         super(text, icon, horizontalAlignment);
     }
@@ -47,15 +48,6 @@ public class FadeLabel extends JLabel {
 
     public void setFadingIn(boolean fadingIn) {
         this.fadingIn = fadingIn;
-    }
-
-    {
-        //setOpaque(true);
-    }
-
-    public void setOpaque(boolean isOpaque) {
-        // disable
-        //super.setOpaque(isOpaque);
     }
 
     protected void paintComponent(Graphics g) {

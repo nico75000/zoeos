@@ -1,19 +1,22 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
 import com.pcmsolutions.device.EMU.E4.gui.parameter2.ParameterModelTableCellEditor;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.VoiceOverviewTable;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.VoiceOverviewTableTransferHandler;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
-import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.IsolatedPreset;
+import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
 import com.pcmsolutions.device.EMU.E4.selections.*;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.EventObject;
 
 /**
@@ -28,8 +31,8 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
 
     protected static EditableVoiceOverviewTableTransferHandler editableVoiceOverviewTableTransferHandler = new EditableVoiceOverviewTableTransferHandler();
 
-    public EditableVoiceOverviewTable(ContextEditablePreset p) throws ZDeviceNotRunningException {
-        super(new EditableVoiceOverviewTableModel(p, p.getDeviceContext().getDeviceParameterContext()));
+    public EditableVoiceOverviewTable(ContextEditablePreset p, int mode) throws DeviceException {
+        super(new EditableVoiceOverviewTableModel(p, p.getDeviceContext().getDeviceParameterContext(), mode));
         this.preset = p;
         this.setTransferHandler(editableVoiceOverviewTableTransferHandler);
         setDropChecker(new DragAndDropTable.DropChecker() {
@@ -70,7 +73,7 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
 
     protected int getNumberOfMultisampleVoicesInRange(int dropRow, int row) {
         int count = 0;
-        for (int k = dropRow,l = row; k <= l; k++)
+        for (int k = dropRow, l = row; k <= l; k++)
             if (((EditableVoiceOverviewTableModel) EditableVoiceOverviewTable.this.getModel()).isRowMultisampleVoice(k))
                 count++;
 
@@ -82,12 +85,24 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
     }
 
     public void setSelection(VoiceParameterSelectionCollection vpsc) {
-        int row = getSelectedRow();
+        final int row = getSelectedRow();
+        final int rc = getRowCount();
         Object val;
-        VoiceParameterSelection[] sels = vpsc.getSelections();
-        for (int i = 0,j = sels.length; i < j; i++) {
-            if (row + i < getRowCount()) {
+        final VoiceParameterSelection[] sels = vpsc.getSelections();
+        final ArrayList rowObjects = new ArrayList();
+        for (int i = 0, j = sels.length; i < j; i++) {
+            if (row + i < rc) {
                 val = getModel().getValueAt(row + i, 0);
+                rowObjects.add(val);
+            } else {
+                break;
+            }
+        }
+        //  Impl_ZThread.ddTQ.postTask(new Impl_ZThread.Task(){
+        //    public void doTask() {
+        for (int i = 0, j = sels.length; i < j; i++) {
+            if (row + i < rc) {
+                val = rowObjects.get(i);
                 if (val instanceof ContextEditablePreset.EditableVoice)
                     sels[i].render(new ContextEditablePreset.EditableVoice[]{(ContextEditablePreset.EditableVoice) val});
                 else if (val instanceof ContextEditablePreset.EditableVoice.EditableZone) {
@@ -96,6 +111,9 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
             } else
                 break;
         }
+        //      }
+        //  });
+
     }
 
     public interface VoiceSelectionAcceptor {
@@ -117,7 +135,7 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
             public void zDispose() {
             }
 
-            protected JMenuItem[] getCustomMenuItems() {
+            protected Component[] getCustomMenuItems() {
                 return customRowHeaderMenuItems;
             }
 
@@ -172,20 +190,14 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
         public void zDispose() {
         }
 
-        public void setSelection(VoiceSelection vs) {
+        public void setSelection(final VoiceSelection vs) {
             IsolatedPreset.IsolatedVoice[] voices;
             voices = vs.getIsolatedVoices();
-            for (int i = 0,j = voices.length; i < j; i++) {
+            for (int i = 0, j = voices.length; i < j; i++) {
                 if (voices[i] != null)
                     try {
-                        ((ContextEditablePreset)preset).newVoice(voices[i]);
-                    } catch (NoSuchPresetException e) {
-                        e.printStackTrace();
-                    } catch (TooManyZonesException e) {
-                        e.printStackTrace();
-                    } catch (TooManyVoicesException e) {
-                        e.printStackTrace();
-                    } catch (PresetEmptyException e) {
+                        ((ContextEditablePreset) preset).newVoice(voices[i]);
+                    } catch (Exception e) {
                         e.printStackTrace();
                     }
             }
@@ -200,19 +212,13 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
             else
                 voice = ((ReadablePreset.ReadableVoice.ReadableZone) valueAt).getVoiceNumber();
 
-            IsolatedPreset.IsolatedVoice.IsolatedZone[] zones;
-            zones = zs.getIsolatedZones();
-            for (int i = 0,j = zones.length; i < j; i++) {
+            final IsolatedPreset.IsolatedVoice.IsolatedZone[] zones = zs.getIsolatedZones();
+            final Integer f_voice = voice;
+            for (int i = 0, j = zones.length; i < j; i++) {
                 if (zones[i] != null)
                     try {
-                        ((ContextEditablePreset) preset).newZone(voice, zones[i]);
-                    } catch (NoSuchPresetException e) {
-                        e.printStackTrace();
-                    } catch (TooManyZonesException e) {
-                        e.printStackTrace();
-                    } catch (PresetEmptyException e) {
-                        e.printStackTrace();
-                    } catch (NoSuchVoiceException e) {
+                        ((ContextEditablePreset) preset).newZone(f_voice, zones[i]);
+                    } catch (Exception e) {
                         e.printStackTrace();
                     }
             }
@@ -244,25 +250,25 @@ public class EditableVoiceOverviewTable extends VoiceOverviewTable {
                        mstr = samples[0].getSampleDisplayName();
                    else
                        mstr = "Selected samples";
-                   smi = ZCommandInvocationHelper.getMenu(samples, null, null, mstr);
+                   smi = ZCommandFactory.getMenu(samples, null, null, mstr);
                }
            }
        } catch (ZDeviceNotRunningException e) {
            e.printStackTrace();
-       } catch (NoSuchSampleException e) {
+       } catch (DeviceException e) {
            e.printStackTrace();
        } catch (ParameterUnavailableException e) {
            e.printStackTrace();
        }
        try {
            ArrayList menuItems = new ArrayList();
-           menuItems.addDesktopElement(ZCommandInvocationHelper.getMenu(new Object[]{preset}, null, null, preset.getPresetDisplayName()));
+           menuItems.addDesktopElement(ZCommandFactory.getMenu(new Object[]{preset}, null, null, preset.getPresetDisplayName()));
            if (smi != null)
                menuItems.addDesktopElement(smi);
            if (customAction != null)
                menuItems.addDesktopElement(new JMenuItem(customAction));
            return (JMenuItem[]) menuItems.toArray(new JMenuItem[menuItems.size()]);
-       } catch (NoSuchPresetException e) {
+       } catch (DeviceException e) {
            e.printStackTrace();
        }
        return null;

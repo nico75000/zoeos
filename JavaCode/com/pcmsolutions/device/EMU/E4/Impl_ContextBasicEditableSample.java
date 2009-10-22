@@ -1,16 +1,18 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.sample.ContextBasicEditableSample;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
-import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
-import com.pcmsolutions.device.EMU.E4.sample.SampleEmptyException;
+import com.pcmsolutions.device.EMU.E4.sample.*;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4ContextBasicEditableSampleZCommandMarker;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.gui.IconAndTipCarrier;
 import com.pcmsolutions.system.ZCommandProviderHelper;
+import com.pcmsolutions.system.ZCommand;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 
 class Impl_ContextBasicEditableSample extends Impl_ContextReadableSample implements ContextBasicEditableSample, IconAndTipCarrier, Comparable {
-    private static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ContextBasicEditableSampleZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.EraseSampleZMTC;com.pcmsolutions.device.EMU.E4.zcommands.RenameSampleZC;com.pcmsolutions.device.EMU.E4.zcommands.RenameSampleAllZMTC;com.pcmsolutions.device.EMU.E4.zcommands.SpecialSampleNamingZMTC");
 
     static {
         SampleClassManager.addSampleClass(Impl_ContextBasicEditableSample.class, null);
@@ -37,32 +39,29 @@ class Impl_ContextBasicEditableSample extends Impl_ContextReadableSample impleme
         return false;
     }
 
-    public void eraseSample() throws NoSuchSampleException, SampleEmptyException {
+    public void eraseSample() throws SampleException {
         try {
-            sc.eraseSample(sample);
-        } catch (com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException e) {
-            throw new NoSuchSampleException(sample);
+            sc.erase(sample).post();
+        } catch (ResourceUnavailableException e) {
+            throw new SampleException(sample);
         }
     }
 
-    public void setSampleName(String name) throws NoSuchSampleException, SampleEmptyException {
+    public void setSampleName(String name) throws SampleException {
         try {
-            sc.setSampleName(sample, name);
-        } catch (com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException e) {
-            throw new NoSuchSampleException(sample);
+            sc.setName(sample, name).post();
+        } catch (ResourceUnavailableException e) {
+            throw new SampleException(sample, e.getMessage());
         }
     }
 
-    public void lockSampleWrite() throws NoSuchSampleException, com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException {
-        sc.lockSampleWrite(sample);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return ContextBasicEditableSample.cmdProviderHelper.getCommandObjects(markerClass, this);
     }
 
-    public com.pcmsolutions.system.ZCommand[] getZCommands() {
-        com.pcmsolutions.system.ZCommand[] superCmdObjects = super.getZCommands();
-
-        com.pcmsolutions.system.ZCommand[] cmdObjects = cmdProviderHelper.getCommandObjects(this);
-
-        return com.pcmsolutions.system.ZUtilities.concatZCommands(superCmdObjects, cmdObjects);
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return ContextBasicEditableSample.cmdProviderHelper.getSupportedMarkers();
     }
 }
 

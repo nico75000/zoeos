@@ -19,7 +19,4 @@ public interface SampleModel {
 
     public Integer getSample();
 
-    public void setSampleEditingMediator(SampleEditingMediator pem);
-
-    public SampleEditingMediator getSampleEditingMediator();
 }

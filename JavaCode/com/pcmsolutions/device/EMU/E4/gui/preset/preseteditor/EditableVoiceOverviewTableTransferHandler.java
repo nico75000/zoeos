@@ -6,11 +6,15 @@ import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 import com.pcmsolutions.device.EMU.E4.parameter.ID;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.*;
 import com.pcmsolutions.device.EMU.E4.selections.ContextSampleSelection;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceParameterSelectionCollection;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceSelection;
 import com.pcmsolutions.device.EMU.E4.selections.ZoneSelection;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.system.threads.Impl_ZThread;
 
 import javax.swing.*;
 import java.awt.datatransfer.DataFlavor;
@@ -35,8 +39,8 @@ public class EditableVoiceOverviewTableTransferHandler extends VoiceOverviewTabl
             if (t.isDataFlavorSupported(SampleContextTransferHandler.sampleContextFlavor)) {
                 int sr = ((EditableVoiceOverviewTable) comp).getSelectedRow();
                 try {
-                    Integer[] sampleIndexes = ((ContextSampleSelection) t.getTransferData(SampleContextTransferHandler.sampleContextFlavor)).getSampleIndexes();
-                    int h = 0,i = 0,j = sampleIndexes.length;
+                    final Integer[] sampleIndexes = ((ContextSampleSelection) t.getTransferData(SampleContextTransferHandler.sampleContextFlavor)).getSampleIndexes();
+                    int h = 0, i = 0, j = sampleIndexes.length;
                     EditableVoiceOverviewTableModel evotm = (EditableVoiceOverviewTableModel) evot.getModel();
                     while (i < j) {
                         if (!(sr + h < evot.getRowCount()))
@@ -45,25 +49,26 @@ public class EditableVoiceOverviewTableTransferHandler extends VoiceOverviewTabl
                             h++;
                             continue;
                         }
-                        try {
-                            Object robj = evotm.getValueAt(sr + h, 0);
-                            if (robj instanceof ContextEditablePreset.EditableVoice)
-                                ((ContextEditablePreset.EditableVoice) robj).setVoicesParam(ID.sample, sampleIndexes[i]);
-                            else if (robj instanceof ContextEditablePreset.EditableVoice.EditableZone)
-                                ((ContextEditablePreset.EditableVoice.EditableZone) robj).setZonesParam(ID.sample, sampleIndexes[i]);
-                        } catch (NoSuchPresetException e) {
-                            e.printStackTrace();
-                        } catch (PresetEmptyException e) {
-                            e.printStackTrace();
-                        } catch (IllegalParameterIdException e) {
-                            e.printStackTrace();
-                        } catch (ParameterValueOutOfRangeException e) {
-                            e.printStackTrace();
-                        } catch (NoSuchVoiceException e) {
-                            e.printStackTrace();
-                        } catch (NoSuchZoneException e) {
-                            e.printStackTrace();
-                        }
+
+                        final Object robj = evotm.getValueAt(sr + h, 0);
+                        final int f_i = i;
+                  //      Impl_ZThread.ddTQ.postTask(new Impl_ZThread.Task(){
+                    //        public void doTask() {
+                                try {
+                                    if (robj instanceof ContextEditablePreset.EditableVoice)
+                                        ((ContextEditablePreset.EditableVoice) robj).setVoiceParam(ID.sample, sampleIndexes[f_i]);
+                                    else if (robj instanceof ContextEditablePreset.EditableVoice.EditableZone)
+                                        ((ContextEditablePreset.EditableVoice.EditableZone) robj).setZoneParam(ID.sample, sampleIndexes[f_i]);
+                                } catch (EmptyException e) {
+                                    e.printStackTrace();
+                                } catch (ParameterException e) {
+                                    e.printStackTrace();
+                                } catch (PresetException e) {
+                                    e.printStackTrace();
+                                }
+                 //           }
+                   //     });
+
                         h++;
                         i++;
                     }

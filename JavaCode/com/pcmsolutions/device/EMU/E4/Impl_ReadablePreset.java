@@ -1,71 +1,78 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.events.PresetChangeEvent;
-import com.pcmsolutions.device.EMU.E4.events.PresetInitializeEvent;
-import com.pcmsolutions.device.EMU.E4.events.PresetRefreshEvent;
-import com.pcmsolutions.device.EMU.E4.events.VoiceChangeEvent;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
-import com.pcmsolutions.device.EMU.E4.gui.preset.DesktopEditingMediator;
 import com.pcmsolutions.device.EMU.E4.gui.preset.icons.PresetIcon;
-import com.pcmsolutions.device.EMU.E4.multimode.IllegalMidiChannelException;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.device.EMU.E4.zcommands.E4ReadablePresetZCommandMarker;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
 import com.pcmsolutions.gui.IconAndTipCarrier;
-import com.pcmsolutions.system.*;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
+import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.system.ZCommand;
+import com.pcmsolutions.system.ZCommandProvider;
+import com.pcmsolutions.system.ZUtilities;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.Ticket;
 import com.pcmsolutions.util.IntegerUseMap;
 
 import javax.swing.*;
+import javax.swing.border.BevelBorder;
 import java.awt.*;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.text.DecimalFormat;
-import java.util.List;
 import java.util.Set;
 
 
 class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarrier, Comparable, ZCommandProvider {
-    private static final int iconWidth = 10;
-    private static final int iconHeight = 10;
+    private static final int iconWidth = 9;
+    private static final int iconHeight = 9;
 
-    private static final Icon flashPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetFlashIcon());
-    private static final Icon pendingFlashPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetFlashIcon(), UIColors.getPresetPendingIcon());
-    private static final Icon emptyFlashPresetIcon = new PresetIcon(iconWidth, iconHeight, UIColors.getPresetFlashIcon(), Color.white, true);
+    //public static final Icon flashPresetUserIcon = new PresetUserIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetFlashIcon());
+    //public static final Icon initializedPresetUserIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetInitializedIcon());
+    //public static final Icon emptyPresetUserIcon = new PresetIcon(iconWidth, iconHeight, UIColors.getPresetInitializedIcon(), Color.white, true);
+    static final Color offset =  Color.white;//ZUtilities.invert(UIColors.getDefaultBG());
+    private static final Icon flashPresetIcon = new PresetIcon(iconWidth, iconHeight, offset, UIColors.getPresetFlashIcon());
+    //private static final Icon pendingFlashPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetFlashIcon(), UIColors.getPresetPendingIcon());
+    private static final Icon namedFlashPresetIcon = new PresetIcon(iconWidth, iconHeight, offset, UIColors.getPresetFlashIcon(), UIColors.getPresetPendingIcon());
+    private static final Icon emptyFlashPresetIcon = new PresetIcon(iconWidth, iconHeight, UIColors.getPresetFlashIcon(), offset, true);
 
-    private static final Icon initializingPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetInitializingIcon());
+    private static final Icon initializingPresetIcon = new PresetIcon(iconWidth, iconHeight, offset, UIColors.getPresetInitializingIcon());
 
-    private static final Icon pendingPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetPendingIcon());
-    private static final Icon namedPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetInitializedIcon(), UIColors.getPresetPendingIcon());
-    private static final Icon initializedPresetIcon = new PresetIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetInitializedIcon());
-    private static final Icon emptyPresetIcon = new PresetIcon(iconWidth, iconHeight, UIColors.getPresetInitializedIcon(), Color.white, true);
+    private static final Icon pendingPresetIcon = new PresetIcon(iconWidth, iconHeight, offset, UIColors.getPresetPendingIcon());
+    private static final Icon namedPresetIcon = new PresetIcon(iconWidth, iconHeight, offset, UIColors.getPresetInitializedIcon(), UIColors.getPresetPendingIcon());
+    private static final Icon initializedPresetIcon = new PresetIcon(iconWidth, iconHeight, offset, UIColors.getPresetInitializedIcon());
+    private static final Icon emptyPresetIcon = new PresetIcon(iconWidth, iconHeight, UIColors.getPresetInitializedIcon(), UIColors.getDefaultBG(), true);
 
-    private static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadablePresetZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.RefreshPresetZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ReadablePresetToMultiModeZMTC;com.pcmsolutions.device.EMU.E4.zcommands.OpenPresetZMTC;com.pcmsolutions.device.EMU.E4.zcommands.NewPresetPackageZMTC;");
 
     private static final String TIP_ERROR = "== NO INFO ==";
 
-    protected DesktopEditingMediator dem;
     protected Integer preset;
     protected PresetContext pc;
     protected boolean stringFormatExtended = true;
 
     static {
-        PresetClassManager.addPresetClass(Impl_ReadablePreset.class, null, "Database Preset");
-    }
-
-    public Impl_ReadablePreset(PresetContext pc, Integer preset, DesktopEditingMediator dem) {
-        this.preset = preset;
-        this.pc = pc;
-        this.dem = dem;
+        PresetClassManager.addPresetClass(Impl_ReadablePreset.class, null, "AbstractDatabase Preset");
     }
 
     public Impl_ReadablePreset(PresetContext pc, Integer preset) {
-        this(pc, preset, null);
+        this.preset = preset;
+        this.pc = pc;
     }
 
     public boolean equals(Object o) {
         ReadablePreset p;
         if (o instanceof ReadablePreset) {
             p = (ReadablePreset) o;
-            if (p.getPresetNumber().equals(preset) && p.getPresetContext().equals(pc))
+            if (p.getIndex().equals(preset) && p.getPresetContext().equals(pc))
                 return true;
         } else    // try and compare using just preset number
             if (o instanceof Integer && o.equals(preset))
@@ -74,14 +81,40 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
         return false;
     }
 
+    public boolean isUser() {
+        return preset.intValue() <= DeviceContext.MAX_USER_PRESET;
+    }
+
+    public boolean isEmpty() throws PresetException {
+        try {
+            return pc.isEmpty(preset);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public boolean isPending() throws PresetException {
+        try {
+            return pc.isPending(preset);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public boolean isInitializing() throws PresetException {
+        try {
+            return pc.isInitializing(preset);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
     public String toString() {
         String name;
         try {
-            name = getPresetName();
-        } catch (PresetEmptyException e) {
-            name = DeviceContext.EMPTY_PRESET;
-        } catch (NoSuchPresetException e) {
-            name = "Unknown Preset";
+            name = pc.getString(preset);
+        } catch (DeviceException e) {
+            name = "unknown";
         }
         if (stringFormatExtended)
             return " " + new DecimalFormat("0000").format(preset) + "  " + name;
@@ -91,29 +124,51 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
 
     public ReadablePreset getReadablePresetDowngrade() {
         Impl_ReadablePreset np = new Impl_ReadablePreset(pc, preset);
-        np.dem = dem;
         np.stringFormatExtended = stringFormatExtended;
         return np;
     }
 
-    public ReadablePreset getMostCapableNonContextEditablePresetDowngrade() {
+    public ReadablePreset getMostCapableNonContextEditablePreset() {
         return this;
     }
 
     public void performDefaultAction() {
-        performOpenAction();
+        performOpenAction(true);
     }
 
-    public void performOpenAction() {
-        new ZDefaultThread() {
-            public void run() {
+    public void performOpenAction(final boolean activate) {
+        try {
+            if (pc.isInitialized(preset))
                 try {
-                    assertPresetInitialized();
-                    getDeviceContext().getViewManager().openPreset(Impl_ReadablePreset.this);
-                } catch (NoSuchPresetException e) {
+                    pc.refreshIfEmpty(preset).post(new Callback(){
+                        public void result(Exception e, boolean wasCancelled) {
+                            try {
+                                getDeviceContext().getViewManager().openPreset(Impl_ReadablePreset.this, activate).post();
+                            } catch (ResourceUnavailableException e1) {
+                                e1.printStackTrace();
+                            }
+                        }
+                    });
+                } catch (Exception e1) {
+                    e1.printStackTrace();
                 }
+            else {
+                pc.assertInitialized(preset, true).post(new Callback() {
+                    public void result(Exception e, boolean wasCancelled) {
+                        if (!wasCancelled)
+                            try {
+                                getDeviceContext().getViewManager().openPreset(Impl_ReadablePreset.this, activate).send(0);
+                            } catch (Exception e1) {
+                                e1.printStackTrace();
+                            }
+                    }
+                });
             }
-        }.start();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        } catch (DeviceException e) {
+            e.printStackTrace();
+        }
     }
 
     public boolean isSamePresetContext(ReadablePreset p) {
@@ -127,204 +182,217 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
         return (p.getDeviceContext().equals(pc.getDeviceContext()));
     }
 
-    public void assertPresetRemote() throws NoSuchPresetException {
+    public void assertRemote() throws PresetException {
         try {
-            pc.assertPresetRemote(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.assertRemote(preset).post();
+        } catch (Exception e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void assertPresetInitialized() throws NoSuchPresetException {
+    public void assertInitialized(boolean refreshEmpty) throws PresetException {
         try {
-            pc.assertPresetInitialized(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.assertInitialized(preset, refreshEmpty).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // VIEW
     public Icon getIcon() {
-        int st;
         try {
-            st = this.getPresetState();
-            switch (st) {
-
-                case RemoteObjectStates.STATE_PENDING:
-                    if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
-                        return pendingFlashPresetIcon;
-                    else
-                        return pendingPresetIcon;
-
-                case RemoteObjectStates.STATE_INITIALIZING:
-                    return initializingPresetIcon;
-
-                case RemoteObjectStates.STATE_NAMED:
-                    if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
-                        return pendingFlashPresetIcon;
-                    else
-                        return namedPresetIcon;
-
-                case RemoteObjectStates.STATE_INITIALIZED:
-                    if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
-                        return flashPresetIcon;
-                    else
-                        return initializedPresetIcon;
-
-                case RemoteObjectStates.STATE_EMPTY:
-                    if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
-                        return emptyFlashPresetIcon;
-                    else
-                        return emptyPresetIcon;
-
+            if (isEmpty()) {
+                if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
+                    return emptyFlashPresetIcon;
+                else
+                    return emptyPresetIcon;
+            } else if (isPending()) {
+                return pendingPresetIcon;
+            } else if (isInitialized()) {
+                if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
+                    return flashPresetIcon;
+                else
+                    return initializedPresetIcon;
+            } else if (isInitializing()) {
+                return initializingPresetIcon;
+            } else {
+                if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
+                    return namedFlashPresetIcon;
+                else
+                    return namedPresetIcon;
             }
-        } catch (NoSuchPresetException e) {
+        } catch (PresetException e) {
         }
         return null;
     }
 
     // PRESET
-    public void refreshPreset() throws NoSuchPresetException {
+    public void refresh() {
         try {
-            pc.refreshPreset(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.refresh(preset).post();
+        } /*catch (NoSuchContextException e) {
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
+        } */ catch (ResourceUnavailableException e) {
+            e.printStackTrace();
         }
     }
 
-    public void unlockPreset() {
-        pc.unlockPreset(preset);
+    // PRESET
+    public Ticket audition() {
+        return pc.auditionPreset(preset);
     }
 
-    public boolean isPresetInitialized() throws NoSuchPresetException {
-        return pc.isPresetInitialized(preset);
-    }
-
-    public int getPresetState() throws NoSuchPresetException {
+    public boolean isInitialized() throws PresetException {
         try {
-            return pc.getPresetState(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            return pc.isInitialized(preset);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public double getInitializationStatus() throws NoSuchPresetException, PresetEmptyException {
+    public double getInitializationStatus() throws PresetException, EmptyException {
         try {
             return pc.getInitializationStatus(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public boolean isPresetWriteLocked() throws NoSuchPresetException, PresetEmptyException {
-        try {
-            return pc.isPresetWriteLocked(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     public String getToolTipText() {
         try {
             return pc.getPresetSummary(preset);
-        } catch (NoSuchPresetException e) {
-        } catch (NoSuchContextException e) {
+        } catch (Exception e) {
         }
         return TIP_ERROR;
     }
 
-    public Integer[] getLinkParams(Integer link, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException {
+    public Integer[] getLinkParams(Integer link, Integer[] ids) throws PresetException, EmptyException, ParameterException {
         try {
             return pc.getLinkParams(preset, link, ids);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public String getPresetName() throws NoSuchPresetException, PresetEmptyException {
-        return pc.getPresetName(preset);
-    }
-
-    public String getPresetDisplayName() throws NoSuchPresetException {
+    public String getString() throws PresetException {
         try {
-            return "P" + new AggRemoteName(preset, getPresetName()).toString();
-        } catch (PresetEmptyException e) {
-            return "P" + new AggRemoteName(preset, DeviceContext.EMPTY_PRESET).toString();
+            return pc.getString(preset);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Integer getPresetNumber() {
+    public String getName() throws PresetException, EmptyException {
+        try {
+            return pc.getName(preset);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public String getDisplayName() throws PresetException {
+        try {
+            return "P" + new ContextLocation(preset, pc.getString(preset)).toString();
+        } catch (DeviceException e) {
+            return "P" + new ContextLocation(preset, "unknown").toString();
+        }
+        // } catch (EmptyException e) {
+        //   return "P" + new ContextLocation(preset, DeviceContext.EMPTY_PRESET).toString();
+        // }
+    }
+
+    public Integer getIndex() {
         return preset;
     }
 
-    public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
-        return new Impl_PresetReadableParameterModel(pc.getDeviceParameterContext().getPresetContext().getParameterDescriptor(id));
+    public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
+
+        try {
+            return new Impl_PresetReadableParameterModel(pc.getDeviceParameterContext().getPresetContext().getParameterDescriptor(id));
+        } catch (DeviceException e) {
+            throw new ParameterException(e.getMessage());
+        }
     }
 
-    public ReadableParameterModel[] getAllParameterModels() {
-        List pds = pc.getDeviceParameterContext().getPresetContext().getAllParameterDescriptors();
-        ReadableParameterModel[] outModels = new ReadableParameterModel[pds.size()];
-        for (int i = 0,n = pds.size(); i < n; i++)
-            outModels[i] = new Impl_PresetReadableParameterModel((GeneralParameterDescriptor) pds.get(i));
-        return outModels;
-    }
 
     class Impl_PresetReadableParameterModel extends AbstractReadableParameterModel {
         protected Integer[] id;
+        private Integer value;
+
+        public Integer getValue() throws ParameterUnavailableException {
+            if (value == null)
+                retrieveValue();
+            return value;
+        }
+
+        private void retrieveValue() throws ParameterUnavailableException {
+            try {
+                value = getPresetParams(new Integer[]{pd.getId()})[0];
+            } catch (Exception e) {
+                throw new ParameterUnavailableException(pd.getId());
+            }
+        }
 
         public Impl_PresetReadableParameterModel(GeneralParameterDescriptor pd) {
             super(pd);
             id = new Integer[]{pd.getId()};
-            addPresetListener(pla);
-        }
-
-        public Integer getValue() throws ParameterUnavailableException {
-            try {
-                return getPresetParams(new Integer[]{pd.getId()})[0];
-            } catch (Exception e) {
-                throw new ParameterUnavailableException();
-            }
+            addListener(pla);
         }
 
         public String getToolTipText() {
             try {
                 return getValueString();
-            } catch (ParameterUnavailableException e) {
+            } catch (ParameterException e) {
             }
             return super.getToolTipText();
         }
 
         public void zDispose() {
             super.zDispose();
-            removePresetListener(pla);
+            removeListener(pla);
         }
 
         protected PresetListenerAdapter pla = new PresetListenerAdapter() {
-            public void presetInitialized(PresetInitializeEvent ev) {
-                fireChanged();
-            }
-
-            public void presetRefreshed(PresetRefreshEvent ev) {
-                fireChanged();
+            public void presetRefreshed(PresetInitializeEvent ev) {
+                value = null;
+                // fireChanged();
             }
 
             public void presetChanged(PresetChangeEvent ev) {
-                if (ev.getPreset().equals(preset) && ev.containsId(id[0]))
+                if (ev.getIndex().equals(preset) && ev.containsId(id[0])) {
+                    value = null;
                     fireChanged();
+                }
             }
         };
     }
 
     // EVENTS
-    public void addPresetListener(PresetListener pl) {
-        pc.addPresetListener(pl, new Integer[]{preset});
+    public void addListener(PresetListener pl) {
+        try {
+            pc.addContentListener(pl, new Integer[]{preset});
+        } catch (DeviceException e) {
+            e.printStackTrace();
+        }
     }
 
-    public void removePresetListener(PresetListener pl) {
-        pc.removePresetListener(pl, new Integer[]{preset});
+    public void removeListener(PresetListener pl) {
+        pc.removeContentListener(pl, new Integer[]{preset});
     }
 
-    public DeviceParameterContext getDeviceParameterContext() {
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException {
         return pc.getDeviceParameterContext();
     }
 
@@ -332,10 +400,10 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
         return pc.getDeviceContext();
     }
 
-    public void sendToMultiMode(Integer ch) throws IllegalMidiChannelException {
+    public void sendToMultiMode(Integer ch) {
         try {
-            getDeviceContext().getMultiModeContext().setPreset(ch, preset);
-        } catch (ZDeviceNotRunningException e) {
+            getDeviceContext().getMultiModeContext().setPreset(ch, preset).post();
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -345,78 +413,102 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
     }
 
     // PRESET
-    public Set getPresetSet() throws NoSuchPresetException, PresetEmptyException {
+    public Set<Integer> getPresetSet() throws PresetException, EmptyException {
         try {
-            return pc.getPresetSet(preset);
+            return pc.getPresetDeepSet(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // PRESET
-    public IntegerUseMap presetSampleUsage() throws NoSuchPresetException, PresetEmptyException {
+    public IntegerUseMap getSampleUsage() throws PresetException, EmptyException {
         try {
             return pc.presetSampleUsage(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public IntegerUseMap presetLinkPresetUsage() throws NoSuchPresetException, PresetEmptyException {
+    public IntegerUseMap getLinkedPresetUage() throws PresetException, EmptyException {
         try {
             return pc.presetLinkPresetUsage(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // PRESET
-    public IsolatedPreset getIsolated() throws NoSuchPresetException, PresetEmptyException {
+    public IsolatedPreset getIsolated() throws PresetException, EmptyException {
         try {
-            return pc.getIsolatedPreset(preset);
+            return pc.getIsolatedPreset(preset, false);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Integer[] getPresetParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException {
+    public Integer[] getPresetParams(Integer[] ids) throws PresetException, EmptyException, IllegalParameterIdException {
         try {
             return pc.getPresetParams(preset, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+        } catch (Exception e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Integer[] getVoiceParams(Integer voice, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException {
+    public Integer[] getVoiceParams(Integer voice, Integer[] ids) throws PresetException, EmptyException, ParameterException {
         try {
             return pc.getVoiceParams(preset, voice, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // LINK
-    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer link) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException {
+    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer link) throws PresetException, EmptyException {
         try {
             return pc.getIsolatedLink(preset, link);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer voice, Integer zone) throws NoSuchZoneException, NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer voice, Integer zone) throws PresetException, EmptyException {
         try {
             return pc.getIsolatedZone(preset, voice, zone);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Integer[] getZoneParams(Integer voice, Integer zone, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException {
+    public Integer[] getZoneParams(Integer voice, Integer zone, Integer[] ids) throws PresetException, EmptyException, ParameterException {
         try {
             return pc.getZoneParams(preset, voice, zone, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
@@ -435,11 +527,11 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
             return Impl_ReadablePreset.this;
         }
 
-        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer zone) throws NoSuchZoneException, NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer zone) throws PresetException, EmptyException {
             return Impl_ReadablePreset.this.getIsolatedZone(voice, zone);
         }
 
-        public Integer[] getVoiceParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException {
+        public Integer[] getVoiceParams(Integer[] ids) throws PresetException, EmptyException, ParameterException {
             return Impl_ReadablePreset.this.getVoiceParams(voice, ids);
         }
 
@@ -452,33 +544,37 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
         }
 
         public void performOpenAction() {
-            new ZDefaultThread() {
-                public void run() {
-                    try {
-                        assertPresetInitialized();
-                         if (getDeviceContext().getDevicePreferences().ZPREF_useTabbedVoicePanel.getValue())
-                            getDeviceContext().getViewManager().openTabbedVoice(Impl_ReadablePreset.Impl_ReadableVoice.this, getDeviceContext().getDevicePreferences().ZPREF_groupEnvelopesWhenVoiceTabbed.getValue(), true);
-                        else
-                            getDeviceContext().getViewManager().openVoice(Impl_ReadablePreset.Impl_ReadableVoice.this, true);
-                    } catch (NoSuchPresetException e) {
-                    }
-                }
-            }.start();
+            try {
+                assertInitialized(true);
+                if (getDeviceContext().getDevicePreferences().ZPREF_usePartitionedVoiceEditing.getValue())
+                    getDeviceContext().getViewManager().openTabbedVoice(Impl_ReadablePreset.Impl_ReadableVoice.this, getDeviceContext().getDevicePreferences().ZPREF_groupEnvelopesWhenVoiceTabbed.getValue(), true).post();
+                else
+                    getDeviceContext().getViewManager().openVoice(Impl_ReadablePreset.Impl_ReadableVoice.this, true).post();
+            } catch (ResourceUnavailableException e) {
+                e.printStackTrace();
+            } catch (PresetException e) {
+                e.printStackTrace();
+            }
         }
 
         public Integer getPresetNumber() {
             return preset;
         }
 
-        public IsolatedPreset.IsolatedVoice getIsolated() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException {
+        public IsolatedPreset.IsolatedVoice getIsolated() throws EmptyException, PresetException {
             return getIsolatedVoice(voice);
         }
 
-        public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
-            return new Impl_VoiceReadableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+        public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
+
+            try {
+                return new Impl_VoiceReadableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+            } catch (DeviceException e) {
+                throw new ParameterException(e.getMessage());
+            }
         }
 
-        public Integer[] getVoiceIndexesInGroup() throws PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchPresetException {
+        public Integer[] getVoiceIndexesInGroup() throws EmptyException, PresetException {
             return Impl_ReadablePreset.this.getVoiceIndexesInGroupFromVoice(voice);
         }
 
@@ -498,12 +594,16 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
             return new Impl_ReadableZone(zone);
         }
 
-        public int numZones() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException {
+        public int numZones() throws EmptyException, PresetException {
             return Impl_ReadablePreset.this.numZones(voice);
         }
 
-        public ZCommand[] getZCommands() {
-            return cmdProviderHelper.getCommandObjects(this);
+        public ZCommand[] getZCommands(Class markerClass) {
+            return ReadableVoice.cmdProviderHelper.getCommandObjects(markerClass, this);
+        }
+
+        public Class[] getZCommandMarkers() {
+            return ReadableVoice.cmdProviderHelper.getSupportedMarkers();
         }
 
         class Impl_ReadableZone implements ReadableZone, Comparable {
@@ -513,7 +613,7 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
                 this.zone = zone;
             }
 
-            public Integer[] getZoneParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException {
+            public Integer[] getZoneParams(Integer[] ids) throws PresetException, EmptyException, ParameterException {
                 return Impl_ReadablePreset.this.getZoneParams(voice, zone, ids);
             }
 
@@ -537,7 +637,7 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
                 return Impl_ReadablePreset.this;
             }
 
-            public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolated() throws PresetEmptyException, NoSuchZoneException, NoSuchVoiceException, NoSuchPresetException {
+            public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolated() throws EmptyException, PresetException {
                 return getIsolatedZone(zone);
             }
 
@@ -545,8 +645,12 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
                 this.zone = zone;
             }
 
-            public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
-                return new Impl_ZoneReadableParameterModel(pc.getDeviceParameterContext().getZoneContext().getParameterDescriptor(id));
+            public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
+                try {
+                    return new Impl_ZoneReadableParameterModel(pc.getDeviceParameterContext().getZoneContext().getParameterDescriptor(id));
+                } catch (DeviceException e) {
+                    throw new ParameterException(e.getMessage());
+                }
             }
 
             public int compareTo(Object o) {
@@ -563,34 +667,67 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
 
             class Impl_ZoneReadableParameterModel extends AbstractReadableParameterModel {
                 private Integer[] id;
+                private Integer value;
 
                 public Impl_ZoneReadableParameterModel(GeneralParameterDescriptor pd) {
                     super(pd);
                     id = new Integer[]{pd.getId()};
+                    Impl_ReadablePreset.this.addListener(pla);
+                }
+
+                private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+                    ois.defaultReadObject();
+                    Impl_ReadablePreset.this.addListener(pla);
                 }
 
                 public Integer getValue() throws ParameterUnavailableException {
+                    if (value == null)
+                        retrieveValue();
+                    return value;
+                }
+
+                private void retrieveValue() throws ParameterUnavailableException {
                     try {
-                        return getZoneParams(id)[0];
+                        value = getZoneParams(id)[0];
                     } catch (Exception e) {
-                        throw new ParameterUnavailableException();
+                        throw new ParameterUnavailableException(id[0]);
                     }
                 }
+
+                protected PresetListenerAdapter pla = new PresetListenerAdapter() {
+                    public void presetRefreshed(PresetInitializeEvent ev) {
+                        value = null;
+                        // Impl_ZoneReadableParameterModel.this.fireChanged();
+                    }
+
+                    public void zoneChanged(ZoneChangeEvent ev) {
+                        if (ev.containsId(id[0])) {
+                            value = null;
+                            Impl_ZoneReadableParameterModel.this.fireChanged();
+                        }
+                    }
+                };
 
                 public String getToolTipText() {
                     if (tipShowingOwner)
                         try {
                             return "Voice " + (voice.intValue() + 1) + "  Zone " + (zone.intValue() + 1) + " [" + pd.toString() + " = " + getValueString() + " ]";
-                        } catch (ParameterUnavailableException e) {
+                        } catch (ParameterException e) {
                             return "Voice " + (voice.intValue() + 1) + "  Zone " + (zone.intValue() + 1);
                         }
                     return super.getToolTipText();
+                }
+
+                public void zDispose() {
+                    super.zDispose();
+                    Impl_ReadablePreset.this.removeListener(pla);
                 }
             }
         };
         class Impl_VoiceReadableParameterModel extends AbstractReadableParameterModel {
             private Integer[] id;
             private boolean isFilterId;
+            private Integer value;
 
             public Impl_VoiceReadableParameterModel(GeneralParameterDescriptor pd) {
                 super(pd);
@@ -598,20 +735,27 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
                 isFilterId = isFilterId();
                 if (isFilterId)
                     setFilterType();
-                Impl_ReadablePreset.this.addPresetListener(pla);
+                Impl_ReadablePreset.this.addListener(pla);
+            }
+
+            private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+                ois.defaultReadObject();
+                Impl_ReadablePreset.this.addListener(pla);
             }
 
             private void setFilterType() {
                 try {
                     ((FilterParameterDescriptor) pd).setFilterType(Impl_ReadableVoice.this.getVoiceParams(new Integer[]{IntPool.get(82)})[0]);
                     Impl_VoiceReadableParameterModel.this.fireChanged();
-                } catch (NoSuchPresetException e) {
-                    e.printStackTrace();
-                } catch (PresetEmptyException e) {
+                } catch (EmptyException e) {
                     e.printStackTrace();
                 } catch (IllegalParameterIdException e) {
                     e.printStackTrace();
                 } catch (NoSuchVoiceException e) {
+                    e.printStackTrace();
+                } catch (ParameterException e) {
+                    e.printStackTrace();
+                } catch (PresetException e) {
                     e.printStackTrace();
                 }
             }
@@ -624,10 +768,16 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
             }
 
             public Integer getValue() throws ParameterUnavailableException {
+                if (value == null)
+                    retrieveValue();
+                return value;
+            }
+
+            private void retrieveValue() throws ParameterUnavailableException {
                 try {
-                    return getVoiceParams(id)[0];
+                    value = getVoiceParams(id)[0];
                 } catch (Exception e) {
-                    throw new ParameterUnavailableException();
+                    throw new ParameterUnavailableException(id[0]);
                 }
             }
 
@@ -635,32 +785,34 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
                 if (tipShowingOwner)
                     try {
                         return "Voice " + (voice.intValue() + 1) + " [" + pd.toString() + " = " + getValueString() + " ]";
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         return "Voice " + (voice.intValue() + 1);
                     }
                 return super.getToolTipText();
             }
 
             public void zDispose() {
-                Impl_ReadablePreset.this.removePresetListener(pla);
+                Impl_ReadablePreset.this.removeListener(pla);
             }
 
             protected PresetListenerAdapter pla = new PresetListenerAdapter() {
-                public void presetInitialized(PresetInitializeEvent ev) {
-                    Impl_VoiceReadableParameterModel.this.fireChanged();
-                }
-
-                public void presetRefreshed(PresetRefreshEvent ev) {
-                    Impl_VoiceReadableParameterModel.this.fireChanged();
+                public void presetRefreshed(PresetInitializeEvent ev) {
+                    value = null;
+                    //Impl_VoiceReadableParameterModel.this.fireChanged();
                 }
 
                 public void voiceChanged(VoiceChangeEvent ev) {
                     if (ev.getVoice().equals(voice)) {
                         if (isFilterId && ev.containsId(IntPool.get(82))) {
                             setFilterType();
+                            value = null;
                             return;
-                        } else if (ev.containsId(id[0]))
+                        }
+                        int i = ev.indexOfId(id[0]);
+                        if (i != -1) {
+                            value = ev.getValues()[i];
                             Impl_VoiceReadableParameterModel.this.fireChanged();
+                        }
                     }
                 }
             };
@@ -678,7 +830,7 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
             this.link = link;
         }
 
-        public Integer[] getLinkParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException {
+        public Integer[] getLinkParams(Integer[] ids) throws PresetException, EmptyException, ParameterException {
             return Impl_ReadablePreset.this.getLinkParams(link, ids);
         }
 
@@ -690,7 +842,7 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
             this.link = link;
         }
 
-        public IsolatedPreset.IsolatedLink getIsolated() throws PresetEmptyException, NoSuchPresetException, NoSuchLinkException {
+        public IsolatedPreset.IsolatedLink getIsolated() throws EmptyException, PresetException {
             return getIsolatedLink(link);
         }
 
@@ -702,8 +854,12 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
             return preset;
         }
 
-        public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
-            return new Impl_LinkReadableParameterModel(pc.getDeviceParameterContext().getLinkContext().getParameterDescriptor(id));
+        public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
+            try {
+                return new Impl_LinkReadableParameterModel(pc.getDeviceParameterContext().getLinkContext().getParameterDescriptor(id));
+            } catch (DeviceException e) {
+                throw new ParameterException(e.getMessage());
+            }
         }
 
         public int compareTo(Object o) {
@@ -720,17 +876,30 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
 
         private class Impl_LinkReadableParameterModel extends AbstractReadableParameterModel {
             private Integer[] id;
+            private Integer value;
 
             public Impl_LinkReadableParameterModel(GeneralParameterDescriptor pd) {
                 super(pd);
                 id = new Integer[]{pd.getId()};
+                Impl_ReadablePreset.this.addListener(pla);
+            }
+
+            private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+                ois.defaultReadObject();
+                Impl_ReadablePreset.this.addListener(pla);
             }
 
             public Integer getValue() throws ParameterUnavailableException {
+                if (value == null)
+                    retrieveValue();
+                return value;
+            }
+
+            private void retrieveValue() throws ParameterUnavailableException {
                 try {
-                    return getLinkParams(id)[0];
+                    value = getLinkParams(id)[0];
                 } catch (Exception e) {
-                    throw new ParameterUnavailableException();
+                    throw new ParameterUnavailableException(id[0]);
                 }
             }
 
@@ -738,100 +907,155 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
                 if (tipShowingOwner)
                     try {
                         return "Link " + (link.intValue() + 1) + " [" + pd.toString() + " = " + getValueString() + " ]";
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         return "Link " + (link.intValue() + 1);
                     }
                 return super.getToolTipText();
             }
+
+            protected PresetListenerAdapter pla = new PresetListenerAdapter() {
+
+                public void presetRefreshed(PresetInitializeEvent ev) {
+                    value = null;
+                    // Impl_ReadableLink.Impl_LinkReadableParameterModel.this.fireChanged();
+                }
+
+                public void linkChanged(LinkChangeEvent ev) {
+                    if (ev.getLink().equals(link)) {
+                        if (ev.containsId(id[0])) {
+                            value = null;
+                            Impl_ReadableLink.Impl_LinkReadableParameterModel.this.fireChanged();
+                        }
+                    }
+                }
+            };
+
+            public void zDispose() {
+                Impl_ReadablePreset.this.removeListener(pla);
+            }
         }
     };
 
-    public int numLinks() throws NoSuchPresetException, PresetEmptyException {
+    public int numLinks() throws PresetException, EmptyException {
         try {
             return pc.numLinks(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public int numPresetSamples() throws NoSuchPresetException, PresetEmptyException {
+    public int numPresetSamples() throws PresetException, EmptyException {
         try {
             return pc.numPresetSamples(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // VOICE
-    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer voice) throws PresetException, EmptyException {
         try {
             return pc.getIsolatedVoice(preset, voice);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // VOICE
-    public void refreshVoiceParameters(Integer voice, Integer[] ids) throws NoSuchContextException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException, ParameterValueOutOfRangeException, IllegalParameterIdException {
+    public void refreshVoiceParameters(Integer voice, Integer[] ids) throws PresetException {
         try {
-            pc.refreshVoiceParameters(preset, voice, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.refreshVoiceParameters(preset, voice, ids).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     // VOICE
-    public Integer[] getVoiceIndexesInGroupFromVoice(Integer voice) throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException {
+    public Integer[] getVoiceIndexesInGroupFromVoice(Integer voice) throws EmptyException, PresetException {
         try {
             return pc.getVoiceIndexesInGroupFromVoice(preset, voice);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Integer[] getVoiceIndexesInGroup(Integer group) throws PresetEmptyException, NoSuchPresetException, NoSuchGroupException {
+    public Integer[] getVoiceIndexesInGroup(Integer group) throws EmptyException, PresetException {
         try {
             return pc.getVoiceIndexesInGroup(preset, group);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public int numPresetZones() throws NoSuchPresetException, PresetEmptyException {
+    public int numPresetZones() throws PresetException, EmptyException {
         try {
             return pc.numPresetZones(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public int numVoices() throws NoSuchPresetException, PresetEmptyException {
+    public int numVoices() throws PresetException, EmptyException {
         try {
             return pc.numVoices(preset);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Integer[] getGroupParams(Integer group, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException {
+    public Integer[] getGroupParams(Integer group, Integer[] ids) throws PresetException, EmptyException, ParameterException {
         try {
             return pc.getGroupParams(preset, group, ids);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public int numZones(Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+    public int numZones(Integer voice) throws PresetException, EmptyException {
         try {
             return pc.numZones(preset, voice);
         } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     public int compareTo(Object o) {
         if (o instanceof ReadablePreset) {
-            Integer p = ((ReadablePreset) o).getPresetNumber();
+            Integer p = ((ReadablePreset) o).getIndex();
 
             if (p.intValue() < preset.intValue())
                 return 1;
@@ -841,8 +1065,13 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
         return 0;
     }
 
-    public ZCommand[] getZCommands() {
-        return cmdProviderHelper.getCommandObjects(this);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return ReadablePreset.cmdProviderHelper.getCommandObjects(markerClass, this);
+    }
+
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return ReadablePreset.cmdProviderHelper.getSupportedMarkers();
     }
 
     public void setPresetContext(PresetContext pc) {
@@ -859,14 +1088,6 @@ class Impl_ReadablePreset implements PresetModel, ReadablePreset, IconAndTipCarr
 
     public Integer getPreset() {
         return preset;
-    }
-
-    public void setPresetEditingMediator(DesktopEditingMediator pem) {
-        this.dem = pem;
-    }
-
-    public DesktopEditingMediator getPresetEditingMediator() {
-        return dem;
     }
 }
 

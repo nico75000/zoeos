@@ -8,20 +8,17 @@ import com.pcmsolutions.device.EMU.E4.gui.preset.WinValueProfileProvider;
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTable;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTable;
-import com.pcmsolutions.device.EMU.E4.parameter.ID;
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterUnavailableException;
-import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
 import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
 import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceParameterSelection;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceParameterSelectionCollection;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceSelection;
 import com.pcmsolutions.device.EMU.E4.selections.ZoneSelection;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.ZUtilities;
 import com.pcmsolutions.util.ClassUtility;
@@ -69,8 +66,22 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
         public void zDispose() {
         }
 
-        // true of there is a voice selection avaialable
-        // false if there is only a zone selection avaialable
+        public Object[] getSelObjects() {
+            int[] selRows = this.getSelectedRows();
+            int[] selCols = new int[]{0};  // only one column
+
+            if (selRows != null && selCols != null) {
+                int selRowCount = selRows.length;
+                int selColCount = selCols.length;
+                ArrayList selObjects = new ArrayList();
+                for (int n = 0; n < selRowCount; n++)
+                    for (int i = 0; i < selColCount; i++)
+                        selObjects.add(this.getValueAt(selRows[n], selCols[i]));
+                return selObjects.toArray();
+            }
+            return new Object[0];
+        }
+
         public int whatIsAvailable() {
             int nv = 0;
             int nz = 0;
@@ -90,7 +101,6 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
 
             return NOTHING_AVAILABLE;
         }
-
 
         public VoiceSelection getVoiceSelection() {
             if (whatIsAvailable() != VOICES_AVAILABLE)
@@ -126,7 +136,7 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
             public void zDispose() {
             }
 
-            protected JMenuItem[] getCustomMenuItems() {
+            protected Component[] getCustomMenuItems() {
                 return customRowHeaderMenuItems;
             }
 
@@ -144,17 +154,17 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
         this.customAction = customAction;
     }
 
-    protected final Action expandAllAction = new AbstractAction("ExpandAll") {
+    protected final Action expandAllAction = new AbstractAction("Expand all") {
         public void actionPerformed(ActionEvent e) {
             ((VoiceOverviewTableModel) getModel()).expandAll();
         }
     };
-    protected final Action contractAllAction = new AbstractAction("ContractAll") {
+    protected final Action contractAllAction = new AbstractAction("Contract all") {
         public void actionPerformed(ActionEvent e) {
             ((VoiceOverviewTableModel) getModel()).contractAll();
         }
     };
-    protected final Action toggleAllAction = new AbstractAction("ToggleAll") {
+    protected final Action toggleAllAction = new AbstractAction("Toggle all") {
         public void actionPerformed(ActionEvent e) {
             ((VoiceOverviewTableModel) getModel()).toggleAll();
         }
@@ -165,17 +175,17 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
         new JMenuItem(toggleAllAction)
     };
 
-    public VoiceOverviewTable(ReadablePreset p) throws ZDeviceNotRunningException {
-        this(new VoiceOverviewTableModel(p, p.getDeviceContext().getDeviceParameterContext()));
+    public VoiceOverviewTable(ReadablePreset p, int mode) throws DeviceException {
+        this(new VoiceOverviewTableModel(p, p.getDeviceContext().getDeviceParameterContext(), mode));
     }
 
-    public VoiceOverviewTable(VoiceOverviewTableModel tm) throws ZDeviceNotRunningException {
+    public VoiceOverviewTable(VoiceOverviewTableModel tm) {
         super(tm, null, null/*, new VoiceOverviewRowHeaderTableCellRenderer()*/, "Voice >");
-        this.preset = tm.getPreset().getMostCapableNonContextEditablePresetDowngrade();
+        this.preset = tm.getPreset().getMostCapableNonContextEditablePreset();
         this.setTransferHandler(votth);
         getRowHeader().addMouseListener(new MouseListener() {
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
+                if (e.getClickCount() == 2) {                   
                     int row = getRowHeader().rowAtPoint(e.getPoint());
                     Object val = getRowHeader().getValueAt(row, 0);
                     if (val != null)
@@ -225,10 +235,10 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
     }
 
     protected ReadablePreset convertPassThroughPreset(ReadablePreset preset) {
-        return preset.getMostCapableNonContextEditablePresetDowngrade();
+        return preset.getMostCapableNonContextEditablePreset();
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
+    protected Component[] getCustomMenuItems() {
         JMenuItem smi = null;
         Object[] selObjs = ZUtilities.eliminateInstances(this.getSelObjects(), String.class);
         try {
@@ -243,28 +253,26 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
                         samples[si++] = convertPassThroughSample(sc.getReadableSample((Integer) i.next()));
                     String mstr;
                     if (samples.length == 1)
-                        mstr = samples[0].getSampleDisplayName();
+                        mstr = samples[0].getDisplayName();
                     else
                         mstr = "Selected samples";
-                    smi = ZCommandInvocationHelper.getMenu(samples, null, null, mstr);
+                    smi = ZCommandFactory.getMenu(samples, mstr);
                 }
             }
-        } catch (ZDeviceNotRunningException e) {
+        } catch (DeviceException e) {
             e.printStackTrace();
-        } catch (NoSuchSampleException e) {
+        } catch (ParameterException e) {
             e.printStackTrace();
-        } catch (ParameterUnavailableException e) {
-            e.printStackTrace();
-        }
+        } 
         try {
             ArrayList menuItems = new ArrayList();
-            menuItems.add(ZCommandInvocationHelper.getMenu(new Object[]{convertPassThroughPreset(preset)}, null, null, preset.getPresetDisplayName()));
+            menuItems.add(ZCommandFactory.getMenu(new Object[]{convertPassThroughPreset(preset)}, preset.getDisplayName()));
             if (smi != null)
                 menuItems.add(smi);
             if (customAction != null)
                 menuItems.add(new JMenuItem(customAction));
             return (JMenuItem[]) menuItems.toArray(new JMenuItem[menuItems.size()]);
-        } catch (NoSuchPresetException e) {
+        } catch (PresetException e) {
             e.printStackTrace();
         }
         return null;
@@ -274,7 +282,7 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
         return "VOICES";
     }
 
-    protected VoiceParameterSelection getRowSelection(int row) throws ZDeviceNotRunningException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, NoSuchPresetException, NoSuchVoiceException, NoSuchZoneException {
+    protected VoiceParameterSelection getRowSelection(int row) throws EmptyException, ParameterException, PresetException, DeviceException{
         if (row >= 0 && row < getRowCount()) {
             int[] selCols = getSelectedColumns();
             Object val;
@@ -307,19 +315,7 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
         for (int r = 0,rl = selRows.length; r < rl; r++)
             try {
                 sels.add(getRowSelection(selRows[r]));
-            } catch (ZDeviceNotRunningException e) {
-                e.printStackTrace();
-            } catch (PresetEmptyException e) {
-                e.printStackTrace();
-            } catch (IllegalParameterIdException e) {
-                e.printStackTrace();
-            } catch (NoSuchLinkException e) {
-                e.printStackTrace();
-            } catch (NoSuchPresetException e) {
-                e.printStackTrace();
-            } catch (NoSuchVoiceException e) {
-                e.printStackTrace();
-            } catch (NoSuchZoneException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
 
@@ -420,11 +416,10 @@ public class VoiceOverviewTable extends AbstractRowHeaderedAndSectionedTable imp
                     return f_type;
                 }
             };
-        } catch (NoSuchPresetException e) {
-        } catch (PresetEmptyException e) {
+        } catch (EmptyException e) {
         } catch (IllegalParameterIdException e) {
-        } catch (NoSuchVoiceException e) {
-        } catch (NoSuchZoneException e) {
+        } catch (ParameterException e) {
+        } catch (PresetException e) {
         }
         return null;
     }

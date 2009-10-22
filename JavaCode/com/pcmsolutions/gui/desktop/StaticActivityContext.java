@@ -16,6 +16,13 @@ public class StaticActivityContext implements ActivityContext, Serializable {
         return closable;
     }
 
+    public void sendMessage(String msg) {
+    }
+
+    public boolean testCondition(String condition) {
+        return false;
+    }
+
     public void closed() {
     }
 

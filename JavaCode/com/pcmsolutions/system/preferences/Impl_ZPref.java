@@ -4,12 +4,11 @@ import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.EventListenerList;
-import java.util.Vector;
 import java.util.EventListener;
+import java.util.Vector;
 import java.util.prefs.PreferenceChangeEvent;
 import java.util.prefs.PreferenceChangeListener;
 import java.util.prefs.Preferences;
-import java.lang.ref.WeakReference;
 
 /**
  * Created by IntelliJ IDEA.
@@ -31,7 +30,7 @@ public abstract class Impl_ZPref implements ZPref, PreferenceChangeListener {
     private final ChangeEvent ce = new ChangeEvent(this);
 
     protected Impl_ZPref(Preferences prefs, String key, String defString, String presentationName, String description) {
-        this(prefs, key, defString, presentationName, description, null);
+        this(prefs, key, defString, presentationName, description, "Uncategorized");
     }
 
     public Impl_ZPref(Preferences prefs, String key, String def) {
@@ -85,11 +84,12 @@ public abstract class Impl_ZPref implements ZPref, PreferenceChangeListener {
         return key;
     }
 
-    public void clearListeners(){
+    public void clearListeners() {
         listeners.clear();
     }
+
     public void addChangeListener(ChangeListener cl) {
-       // listeners.add(new WeakReference(cl));
+        // listeners.add(new WeakReference(cl));
         listeners.add(cl);
     }
 
@@ -98,19 +98,20 @@ public abstract class Impl_ZPref implements ZPref, PreferenceChangeListener {
     }
 
     private Runnable r = new Runnable() {
-          public void run() {
-              synchronized (listeners) {
-                  for (int i = 0; i < listeners.size(); i++) {
-                      try {
-                         // ((ChangeListener)((WeakReference) listeners.get(i)).get()).stateChanged(ce);
-                          ((ChangeListener) listeners.get(i)).stateChanged(ce);
-                      } catch (Exception e) {
-                          e.printStackTrace();
-                      }
-                  }
-              }
-          }
-      };
+        public void run() {
+            synchronized (listeners) {
+                for (int i = 0; i < listeners.size(); i++) {
+                    try {
+                        // ((ChangeListener)((WeakReference) listeners.get(i)).get()).stateChanged(ce);
+                        ((ChangeListener) listeners.get(i)).stateChanged(ce);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    };
+
     protected void fireStateChanged(boolean onUIThread) {
         EventListenerList l;
         EventListener el;

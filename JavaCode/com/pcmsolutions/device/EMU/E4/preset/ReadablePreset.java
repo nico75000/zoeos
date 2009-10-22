@@ -6,14 +6,22 @@
 
 package com.pcmsolutions.device.EMU.E4.preset;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.multimode.IllegalMidiChannelException;
-import com.pcmsolutions.device.EMU.E4.parameter.*;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
+import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterModelProvider;
+import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.zcommands.E4ReadablePresetZCommandMarker;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4ReadableVoiceZCommandMarker;
+import com.pcmsolutions.device.EMU.E4.zcommands.E4ReadableZoneZCommandMarker;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContextElement;
 import com.pcmsolutions.gui.IconAndTipCarrier;
 import com.pcmsolutions.system.ZCommandProvider;
 import com.pcmsolutions.system.ZCommandProviderHelper;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.system.tasking.Ticket;
 import com.pcmsolutions.util.IntegerUseMap;
 
 import java.io.Serializable;
@@ -21,121 +29,125 @@ import java.util.Set;
 
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 
-public interface ReadablePreset extends PresetModel, IconAndTipCarrier, ParameterModelProvider, Serializable, ZCommandProvider {
+public interface ReadablePreset extends ContextElement, PresetModel, IconAndTipCarrier, ParameterModelProvider, Serializable, ZCommandProvider {
+
+    final ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadablePresetZCommandMarker.class);
 
     public ReadablePreset getReadablePresetDowngrade();
 
-    public ReadablePreset getMostCapableNonContextEditablePresetDowngrade();
+    public ReadablePreset getMostCapableNonContextEditablePreset();
 
-    public void performDefaultAction();
+    public boolean isUser();
 
-    public void performOpenAction();
+    public boolean isEmpty() throws PresetException;
+
+    public boolean isPending() throws PresetException;
+
+    public boolean isInitializing() throws PresetException;
+
+    public void performOpenAction(boolean activate);
 
     public boolean isSamePresetContext(ReadablePreset p);
 
     public boolean isSameDevice(ReadablePreset p);
 
-    public void assertPresetRemote() throws NoSuchPresetException;
+    public void assertRemote() throws PresetException;
 
-    public void assertPresetInitialized() throws NoSuchPresetException;
+    public void assertInitialized(boolean refreshEmpty) throws PresetException;
 
     // EVENTS
-    public void addPresetListener(PresetListener pl);
+    public void addListener(PresetListener pl);
 
-    public void removePresetListener(PresetListener pl);
+    public void removeListener(PresetListener pl);
 
     // UTILITY
-    public DeviceParameterContext getDeviceParameterContext() throws ZDeviceNotRunningException;
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException;
 
     public DeviceContext getDeviceContext();
 
-    public void sendToMultiMode(Integer ch) throws IllegalMidiChannelException;
+    public void sendToMultiMode(Integer ch) ;
 
     public void setToStringFormatExtended(boolean extended);
 
     // PRESET
-    public Set getPresetSet() throws NoSuchPresetException, PresetEmptyException;
 
-    public IntegerUseMap presetSampleUsage() throws NoSuchPresetException, PresetEmptyException;
+    public Ticket audition();
 
-    public IntegerUseMap presetLinkPresetUsage() throws NoSuchPresetException, PresetEmptyException;
+    public Set<Integer> getPresetSet() throws PresetException, EmptyException;
 
-    public IsolatedPreset getIsolated() throws NoSuchPresetException, PresetEmptyException;
+    public IntegerUseMap getSampleUsage() throws PresetException, EmptyException;
 
-    public void refreshPreset() throws NoSuchPresetException;
+    public IntegerUseMap getLinkedPresetUage() throws PresetException, EmptyException;
 
-    public void unlockPreset();
+    public IsolatedPreset getIsolated() throws PresetException, EmptyException;
 
-    public boolean isPresetInitialized() throws NoSuchPresetException;
+    public void refresh();
 
-    public int getPresetState() throws NoSuchPresetException;
+    public boolean isInitialized() throws PresetException;
 
-    public double getInitializationStatus() throws NoSuchPresetException, PresetEmptyException;
+    public double getInitializationStatus() throws PresetException, EmptyException;
 
-    public boolean isPresetWriteLocked() throws NoSuchPresetException, PresetEmptyException;
+    public String getString() throws PresetException;
 
-    public String getPresetName() throws NoSuchPresetException, PresetEmptyException;
+    public String getName() throws PresetException, EmptyException;
 
-    public String getPresetDisplayName() throws NoSuchPresetException;
+    public String getDisplayName() throws PresetException;
 
-    public Integer getPresetNumber();
+    public Integer getIndex();
 
-    public Integer[] getPresetParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException;
+    public Integer[] getPresetParams(Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
-    public int numPresetZones() throws NoSuchPresetException, PresetEmptyException;
+    public int numPresetZones() throws PresetException, EmptyException;
 
-    public int numPresetSamples() throws NoSuchPresetException, PresetEmptyException;
+    public int numPresetSamples() throws PresetException, EmptyException;
 
     // VOICE
-    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException;
+    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer voice) throws PresetException, EmptyException;
 
-    public void refreshVoiceParameters(Integer voice, Integer[] ids) throws NoSuchContextException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException, ParameterValueOutOfRangeException, IllegalParameterIdException;
+    public void refreshVoiceParameters(Integer voice, Integer[] ids) throws PresetException;
 
-    public Integer[] getVoiceIndexesInGroupFromVoice(Integer voice) throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException;
+    public Integer[] getVoiceIndexesInGroupFromVoice(Integer voice) throws EmptyException, PresetException;
 
-    public Integer[] getVoiceIndexesInGroup(Integer group) throws PresetEmptyException, NoSuchPresetException, NoSuchGroupException;
+    public Integer[] getVoiceIndexesInGroup(Integer group) throws EmptyException, PresetException;
 
-    public int numVoices() throws NoSuchPresetException, PresetEmptyException;
+    public int numVoices() throws PresetException, EmptyException;
 
-    public Integer[] getGroupParams(Integer group, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException;
+    public Integer[] getGroupParams(Integer group, Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
-    public Integer[] getVoiceParams(Integer voice, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException;
+    public Integer[] getVoiceParams(Integer voice, Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
     // LINK
-    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer link) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException;
+    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer link) throws PresetException, EmptyException;
 
-    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer voice, Integer zone) throws NoSuchZoneException, NoSuchPresetException, PresetEmptyException, NoSuchVoiceException;
+    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer voice, Integer zone) throws PresetException, EmptyException;
 
-    public int numLinks() throws NoSuchPresetException, PresetEmptyException;
+    public int numLinks() throws PresetException, EmptyException;
 
-    public Integer[] getLinkParams(Integer link, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException;
+    public Integer[] getLinkParams(Integer link, Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
     // ZONE
-    public int numZones(Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException;
+    public int numZones(Integer voice) throws PresetException, EmptyException;
 
-    public Integer[] getZoneParams(Integer voice, Integer zone, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException;
+    public Integer[] getZoneParams(Integer voice, Integer zone, Integer[] ids) throws EmptyException, ParameterException, PresetException;
 
     public ReadableVoice getReadableVoice(Integer voice);
 
     public ReadableLink getReadableLink(Integer link);
 
-    public ReadableParameterModel[] getAllParameterModels();
-
-    public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException;
+    public ReadableParameterModel getParameterModel(Integer id) throws ParameterException;
 
     // SUB INTERFACES
     public interface ReadableVoice extends Comparable, ParameterModelProvider, ZCommandProvider, Serializable {
-        public final static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadableVoiceZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.ViewVoiceZMTC;");
+        final ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadableVoiceZCommandMarker.class);
 
         public ReadablePreset getPreset();
 
-        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer zone) throws NoSuchZoneException, NoSuchPresetException, PresetEmptyException, NoSuchVoiceException;
+        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer zone) throws PresetException, EmptyException;
 
-        public Integer[] getVoiceParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException;
+        public Integer[] getVoiceParams(Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
         public Integer getVoiceNumber();
 
@@ -145,18 +157,20 @@ public interface ReadablePreset extends PresetModel, IconAndTipCarrier, Paramete
 
         public Integer getPresetNumber();
 
-        public IsolatedPreset.IsolatedVoice getIsolated() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException;
+        public IsolatedPreset.IsolatedVoice getIsolated() throws EmptyException, PresetException;
 
         public ReadableZone getReadableZone(Integer zone);
 
-        public int numZones() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException;
+        public int numZones() throws EmptyException, PresetException;
 
-        public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException;
+        public ReadableParameterModel getParameterModel(Integer id) throws ParameterException;
 
-        public Integer[] getVoiceIndexesInGroup() throws PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchPresetException;
+        public Integer[] getVoiceIndexesInGroup() throws EmptyException, PresetException;
 
         public interface ReadableZone extends Comparable, ParameterModelProvider, Serializable {
-            public Integer[] getZoneParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException;
+            final ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadableZoneZCommandMarker.class);
+
+            public Integer[] getZoneParams(Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
             public Integer getVoiceNumber();
 
@@ -168,27 +182,27 @@ public interface ReadablePreset extends PresetModel, IconAndTipCarrier, Paramete
 
             public ReadablePreset getPreset();
 
-            public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolated() throws PresetEmptyException, NoSuchZoneException, NoSuchVoiceException, NoSuchPresetException;
+            public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolated() throws EmptyException, PresetException;
 
             public void setZoneNumber(Integer zone);
 
-            public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException;
+            public ReadableParameterModel getParameterModel(Integer id) throws ParameterException;
         }
     }
 
     public interface ReadableLink extends Comparable, ParameterModelProvider, Serializable {
-        public Integer[] getLinkParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException;
+        public Integer[] getLinkParams(Integer[] ids) throws PresetException, EmptyException, ParameterException;
 
         public Integer getLinkNumber();
 
         public void setLinkNumber(Integer link);
 
-        public IsolatedPreset.IsolatedLink getIsolated() throws PresetEmptyException, NoSuchPresetException, NoSuchLinkException;
+        public IsolatedPreset.IsolatedLink getIsolated() throws EmptyException, PresetException;
 
         public ReadablePreset getPreset();
 
         public Integer getPresetNumber();
 
-        public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException;
+        public ReadableParameterModel getParameterModel(Integer id) throws ParameterException;
     }
 }

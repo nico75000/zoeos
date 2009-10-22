@@ -8,4 +8,5 @@ package com.pcmsolutions.device.EMU.E4.zcommands;
  * To change this template use Options | File Templates.
  */
 public interface E4MasterContextZCommandMarker {
+    String CATEGORY_MASTER = "Master";
 }

@@ -2,16 +2,13 @@ package com.pcmsolutions.gui.desktop;
 
 import com.pcmsolutions.gui.ComponentGenerationException;
 import com.pcmsolutions.system.paths.DesktopName;
-import com.pcmsolutions.system.ZoeosPreferences;
-import com.jidesoft.document.DocumentPane;
-import com.jidesoft.swing.JideTabbedPane;
 
 import javax.swing.event.EventListenerList;
 import javax.swing.event.TreeModelListener;
 import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreePath;
-import javax.swing.tree.MutableTreeNode;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * User: paulmeehan
@@ -34,13 +31,10 @@ public class ZDocumentTreeModel implements TreeModel {
     public boolean addDesktopElement(DesktopElement e, boolean activate) throws ComponentGenerationException, ChildViewNotAllowedException, LogicalHierarchyException {
         try {
             DesktopName[] path = e.getViewPath().getDesktopNamePath();
-
-            Object node = getChild(rootDocumentPane, path, 0, path.length - 1, activate);
-
-            if (node instanceof ZDocumentPane) {
-                return ((ZDocumentPane) node).openDesktopElement(e, activate);
-            } else if (node instanceof ZDocumentComponent) {
-                ZDocumentComponent zdc = (ZDocumentComponent) node;
+            if (path.length == 1)
+                return rootDocumentPane.openDesktopElement(e, activate);
+            else {
+                ZDocumentComponent zdc = getDocumentNode(path, path.length - 1, activate);
                 return zdc.addDesktopElement(e, activate);
             }
         } catch (Exception e1) {
@@ -49,36 +43,37 @@ public class ZDocumentTreeModel implements TreeModel {
         return false;
     }
 
-    private Object getChild(Object node, DesktopName[] path, int start, int end, boolean activate) {
-        for (int i = start; i < end; i++) {
+    ZDocumentComponent getDocumentNode(DesktopName[] path, int depth, boolean activate) {
+        if (activate)
+            activateChild(rootDocumentPane, path[0].toString());
+        ZDocumentComponent zdc = getChild(rootDocumentPane, path[0].toString());
+
+        for (int i = 1; i < depth; i++) {
             if (activate)
-                activateChild(node, path[i].toString());
-            node = getChild(node, path[i].toString());
+                activateChild(zdc, path[i].toString());
+            zdc = getChild(zdc, path[i].toString());
         }
-        return node;
+        return zdc;
     }
 
-    private void activateChild(Object node, String child) {
-        if (node instanceof ZDocumentPane) {
-            ((ZDocumentPane) node).setActiveDocument(child);
-        } else if (node instanceof ZDocumentComponent) {
-            ZDocumentComponent zdc = (ZDocumentComponent) node;
-            if (zdc.isContainer())
-                ((ZDocumentPane) zdc.getRealComponent()).setActiveDocument(child);
-        }
+    ZDocumentComponent getChild(ZDocumentComponent parent, String name) {
+        if (!parent.isContainer())
+            return null;
+        ZDocumentPane zdp = (ZDocumentPane) ((ZDocumentComponent) parent).getRealComponent();
+        return (ZDocumentComponent) zdp.getDocument(name);
     }
 
-    private Object getChild(Object parent, String name) {
-        if (parent instanceof ZDocumentPane) {
-            return ((ZDocumentPane) parent).getDocument(name);
-        } else if (parent instanceof ZDocumentComponent) {
-            Object comp = ((ZDocumentComponent) parent).getRealComponent();
-            if (comp instanceof ZDocumentPane)
-                return ((ZDocumentPane) comp).getDocument(name);
-            else
-                return null;
-        }
-        throw new IllegalArgumentException("parent invalid");
+    ZDocumentComponent getChild(ZDocumentPane parent, String name) {
+        return (ZDocumentComponent) parent.getDocument(name);
+    }
+
+    void activateChild(ZDocumentComponent zdc, String child) {
+        if (zdc.isContainer())
+            ((ZDocumentPane) zdc.getRealComponent()).setActiveDocument(child);
+    }
+
+    void activateChild(ZDocumentPane zdp, String child) {
+        zdp.setActiveDocument(child);
     }
 
     public boolean removeDesktopElement(DesktopElement e) {
@@ -87,12 +82,13 @@ public class ZDocumentTreeModel implements TreeModel {
 
     public boolean removeDesktopElement(DesktopName[] path) {
         try {
-            Object node = getChild(rootDocumentPane, path, 0, path.length - 1, false);
-            if (node instanceof ZDocumentPane && ((ZDocumentPane) node).isDocumentOpened(path[path.length - 1].toString())) {
-                ((ZDocumentPane) node).closeDocument(path[path.length - 1].toString());
-                return true;
-            } else if (node instanceof ZDocumentComponent) {
-                ZDocumentComponent zdc = (ZDocumentComponent) node;
+            if (path.length == 1) {
+                if (rootDocumentPane.isDocumentOpened(path[0].toString())) {
+                    rootDocumentPane.closeDocument(path[0].toString());
+                    return true;
+                }
+            } else {
+                ZDocumentComponent zdc = getDocumentNode(path, path.length - 1, false);
                 return zdc.removeElement(path[path.length - 1].toString());
             }
         } catch (Exception e) {
@@ -101,17 +97,35 @@ public class ZDocumentTreeModel implements TreeModel {
         return false;
     }
 
+    public void sendMessage(DesktopElement e, String msg) {
+        sendMessage(e.getViewPath().getDesktopNamePath(), msg);
+    }
+
+    public void sendMessage(DesktopName[] path, String msg) {
+        try {
+            ZDocumentComponent zdc = getDocumentNode(path, path.length, false);
+            zdc.sendMessage(msg);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public DesktopElement[] evaluateCondition(DesktopName[] path, String condition) {
+        try {
+            ZDocumentComponent zdc = getDocumentNode(path, path.length, false);
+            List<DesktopElement> positive =  zdc.evaluateCondition(condition);
+            return positive.toArray(new DesktopElement[positive.size()]);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return new DesktopElement[0];
+    }
     // in-order
     public DesktopElement[] getDesktopElementTree(DesktopName[] path, boolean originals) {
         ArrayList elems = new ArrayList();
-
-        Object node = getChild(rootDocumentPane, path, 0, path.length, false);
-
-        if (node instanceof ZDocumentPane)
-            elems.addAll(((ZDocumentPane) node).getDesktopElementTree(originals));
-        else if (node instanceof ZDocumentComponent)
-            elems.addAll(((ZDocumentComponent) node).getDesktopElementTree(originals));
-
+        ZDocumentComponent node = getDocumentNode(path, path.length, false);
+        ((ZDocumentPane)node.getDocumentPane()).updateSessionStrings();
+        elems.addAll(node.getDesktopElementTree(originals));
         return (DesktopElement[]) elems.toArray(new DesktopElement[elems.size()]);
     }
 
@@ -149,7 +163,7 @@ public class ZDocumentTreeModel implements TreeModel {
     public int getIndexOfChild(Object parent, Object child) {
         if (parent instanceof ZDocumentPane) {
             ZDocumentPane zdp = ((ZDocumentPane) parent);
-            for (int i = 0,j = zdp.getDocumentCount(); i < j; i++)
+            for (int i = 0, j = zdp.getDocumentCount(); i < j; i++)
                 if (zdp.getDocument(zdp.getDocumentNameAt(i)).equals(child))
                     return i;
         }

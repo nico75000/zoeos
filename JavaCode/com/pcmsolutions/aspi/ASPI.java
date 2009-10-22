@@ -19,7 +19,6 @@ public class ASPI {
     //public final int WM_ASPIPOST = 0x4D42 ;		// ASPI Post message
 
 
-
 //***************************************************************************
 //						 %%% ASPI Command Definitions %%%
 //***************************************************************************
@@ -64,5 +63,5 @@ public class ASPI {
     public static final char HASTAT_BUS_RESET = 0x0E;// A bus reset was detected.
     public static final char HASTAT_PARITY_ERROR = 0x0F;	// A parity error was detected.
     public static final char HASTAT_REQUEST_SENSE_FAILED = 0x10;	// The adapter failed in issuing
-    //   REQUEST SENSE.
+    //   REQUEST SENSE. 
 }

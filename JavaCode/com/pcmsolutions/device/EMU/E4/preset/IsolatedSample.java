@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.preset;
 
 import com.pcmsolutions.device.EMU.E4.sample.IsolatedSampleUnavailableException;
+import com.pcmsolutions.gui.ProgressCallback;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.sound.sampled.AudioFileFormat;
@@ -26,7 +27,7 @@ public interface IsolatedSample extends ZDisposable {
 
     public AudioFileFormat.Type getFormatType() throws IOException, UnsupportedAudioFileException;
 
-    public void ZoeAssert() throws IsolatedSampleUnavailableException;
+    public void assertSample(ProgressCallback prog) throws IsolatedSampleUnavailableException;
 
     public void setLocalFile(File f, boolean moveExisting);
 }

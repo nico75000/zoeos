@@ -3,9 +3,8 @@ package com.pcmsolutions.device.EMU.E4;
 import com.pcmsolutions.device.EMU.E4.parameter.FilterParameterDescriptor;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
 import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.system.NoteUtilities;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -13,8 +12,9 @@ import java.util.Map;
  * Date: 02-Feb-2004
  * Time: 23:51:05
  */
-class Impl_FilterParameterDescriptor extends Impl_GeneralParameterDescriptor implements FilterParameterDescriptor {
+class Impl_FilterParameterDescriptor extends AbstractParameterDescriptor implements FilterParameterDescriptor {
     private Integer filterType;
+    protected Map<String, Integer> valueForStringMap;
 
     public Impl_FilterParameterDescriptor() {
     }
@@ -26,107 +26,81 @@ class Impl_FilterParameterDescriptor extends Impl_GeneralParameterDescriptor imp
     public void init(Integer id, MinMaxDefault mmd, int loc, Integer filterType) {
         this.filterType = filterType;
         super.init(id, mmd, loc);
-        units = (String) ((Map) ParameterTables.filterParam_u.get(filterType)).get(id);
-        presentationString = (String) ((Map) ParameterTables.filterParam_ps.get(filterType)).get(id);
+        makeVal4StrMap();
     }
 
-    protected void makeStr4ValMap() {
-        Map m = (Map) ParameterTables.filterValue_ps.get(filterType);
-        String[] valStrs = (String[]) m.get(id);
-        if (valStrs == null) {
-            // id not in use for this filter type
-            stringForValueMap = null;
-            return;
-        }
+    public String getPresentationString() {
+        return (String) ((Map) ParameterTables.filterParam_ps.get(filterType)).get(IntPool.get(id));
+    }
 
-        stringForValueMap = ParameterTables.createStringForValueMap();
-
-        int max = mmd.getMax().intValue();
-        int min = mmd.getMin().intValue();
-
-        if (valStrs.length <= max - min)
-            throw new IllegalArgumentException("Problem with parameter database?");
-
-        for (int n = 0; n <= max - min; n++)
-            stringForValueMap.put(IntPool.get(n + min), valStrs[n]);
+    public String getUnits() {
+        return (String) ((Map) ParameterTables.filterParam_u.get(filterType)).get(IntPool.get(id));
     }
 
     protected void makeVal4StrMap() {
-        if (stringForValueMap == null) {
+        String[] valStrs = getValueStrings();
+        if (valStrs == null) {
             valueForStringMap = null;
             return;
         }
-        super.makeVal4StrMap();
+        valueForStringMap = ParameterTables.createValueForStringMap();
+        int min = mmd.getMin().intValue();
+        for (int i = 0, j = valStrs.length; i < j; i++)
+            valueForStringMap.put(valStrs[i], IntPool.get(i + min));
     }
 
-    public List getStringForValueList() {
-        if (stringForValueMap == null)
-            return new ArrayList();
-
-        return super.getStringForValueList();
+    protected String[] getValueStrings() {
+        return ParameterTables.filterValue_ps[filterType.intValue()][id - ParameterTables.baseFilterSubId];
     }
 
-    public List getUnitlessStringForValueList() {
-        if (stringForValueMap == null)
-            return new ArrayList();
-        return super.getUnitlessStringForValueList();
-    }
-
-    public Integer getValueForString(String valueString) throws ParameterValueOutOfRangeException {
-        if (valueForStringMap == null)
-            return IntPool.get(0);
-        return super.getValueForString(valueString);
+    protected Map<String, Integer> getString2ValueMap() {
+        return valueForStringMap;
     }
 
     public Integer getValueForUnitlessString(String valueUnitlessString) throws ParameterValueOutOfRangeException {
-        if (valueForStringMap == null)
-            return IntPool.get(0);
-        return super.getValueForUnitlessString(valueUnitlessString);
+        try {
+            return super.getValueForUnitlessString(valueUnitlessString);
+        } catch (ParameterValueOutOfRangeException e) {
+            // try for note name
+            int n = NoteUtilities.Note.getValueForString(valueUnitlessString);
+            if (n != -1) {
+                double freq = NoteUtilities.getFreqForNote(n);
+                return getValueForUnitlessString(String.valueOf(freq));
+            }
+            throw e;
+        }
     }
 
-    public String getStringForValue(Integer value) throws ParameterValueOutOfRangeException {
-        if (stringForValueMap == null)
-            return "";
-        return super.getStringForValue(value);
+    boolean isNumeric() {
+        return ParameterTables.filterValue_ps_numerics[filterType.intValue()][id - ParameterTables.baseFilterSubId] != null;
     }
 
-    // returns units appended to string value
-    public String getUnitlessStringForValue(Integer value) throws ParameterValueOutOfRangeException {
-        if (stringForValueMap == null)
-            return "";
-        return super.getUnitlessStringForValue(value);
+    double[] getNumericValueStrings() {
+        return ParameterTables.filterValue_ps_numerics[filterType.intValue()][id - ParameterTables.baseFilterSubId];
     }
 
     public Integer setFilterType(Integer filterType) {
         int ftv = filterType.intValue();
 
-        // if (filterType.intValue() == 5)
-        //   System.out.println("test");
-
         if (ftv < 0 || ftv > ParameterTables.numFilterTypes - 1)
             filterType = IntPool.get(0);
 
-
-        units = (String) ((Map) ParameterTables.filterParam_u.get(filterType)).get(id);
-        presentationString = (String) ((Map) ParameterTables.filterParam_ps.get(filterType)).get(id);
         this.filterType = filterType;
-
-        stringForValueMap = null;
-        valueForStringMap = null;
-        makeMaps();
-
+        makeVal4StrMap();
         return this.filterType;
     }
 
     public boolean isCurrentlyActive() {
-        if (stringForValueMap != null)
-            return true;
-        return false;
+        return getValueStrings() != null;
     }
 
     public FilterParameterDescriptor duplicate() {
         Impl_FilterParameterDescriptor pd = new Impl_FilterParameterDescriptor();
-        pd.init(id, mmd, hpos, filterType);
+        pd.init(getId(), mmd, hpos, filterType);
         return pd;
+    }
+
+    protected String[] getValueTips() {
+        return getValueStrings();
     }
 }

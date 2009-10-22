@@ -1,15 +1,17 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor;
 
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.LFOShapePanel;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTablePanel;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -39,7 +41,7 @@ public class EditableLFOPanel extends JPanel implements ChangeListener, ZDisposa
     protected int shapeModelIndex1;
     protected int shapeModelIndex2;
 
-    public EditableLFOPanel init(final ContextEditablePreset.EditableVoice[] voices) throws ZDeviceNotRunningException, IllegalParameterIdException {
+    public EditableLFOPanel init(final ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc) throws ParameterException, DeviceException {
         this.setFocusable(false);
         if (voices == null || voices.length < 1)
             throw new IllegalArgumentException("Need at least one voice for am EditableLFOPanel");
@@ -55,56 +57,36 @@ public class EditableLFOPanel extends JPanel implements ChangeListener, ZDisposa
 
         Action r1t = new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Refresh LFO 1") {
-                    public void run() {
                         try {
                             voices[0].getPreset().refreshVoiceParameters(voices[0].getVoiceNumber(), (Integer[]) lfo1Ids.toArray(new Integer[lfo1Ids.size()]));
-                        } catch (NoSuchContextException e1) {
-                            e1.printStackTrace();
-                        } catch (PresetEmptyException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchPresetException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchVoiceException e1) {
-                            e1.printStackTrace();
-                        } catch (ParameterValueOutOfRangeException e1) {
-                            e1.printStackTrace();
-                        } catch (IllegalParameterIdException e1) {
+                        } catch (PresetException e1) {
                             e1.printStackTrace();
                         }
-                    }
-                }.start();
             }
         };
         r1t.putValue("tip", "Refresh LFO 1");
         Action r2t = new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Refresh LFO 2") {
-                    public void run() {
                         try {
                             voices[0].getPreset().refreshVoiceParameters(voices[0].getVoiceNumber(), (Integer[]) lfo2Ids.toArray(new Integer[lfo2Ids.size()]));
-                        } catch (NoSuchContextException e1) {
-                            e1.printStackTrace();
-                        } catch (PresetEmptyException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchPresetException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchVoiceException e1) {
-                            e1.printStackTrace();
-                        } catch (ParameterValueOutOfRangeException e1) {
-                            e1.printStackTrace();
-                        } catch (IllegalParameterIdException e1) {
+                        } catch (PresetException e1) {
                             e1.printStackTrace();
                         }
-                    }
-                }.start();
             }
         };
         r2t.putValue("tip", "Refresh LFO 2");
         RowHeaderedAndSectionedTablePanel lfo1Panel;
         RowHeaderedAndSectionedTablePanel lfo2Panel;
-        lfo1Panel = new RowHeaderedAndSectionedTablePanel().init(new EditableVoiceParameterTable(voices, ParameterCategories.VOICE_LFO1, lfo1Models, "LFO 1"), "Show LFO 1", UIColors.getTableBorder(), r1t);
-        lfo2Panel = new RowHeaderedAndSectionedTablePanel().init(new EditableVoiceParameterTable(voices, ParameterCategories.VOICE_LFO2, lfo2Models, "LFO 2"), "Show LFO 2", UIColors.getTableBorder(), r2t);
+
+        EditableVoiceParameterTable evpt;
+
+        evpt=new EditableVoiceParameterTable(voices, ParameterCategories.VOICE_LFO1, lfo1Models, "LFO 1");
+        tsc.addTableToContext(evpt);
+        lfo1Panel = new RowHeaderedAndSectionedTablePanel().init(evpt, "Show LFO 1", UIColors.getTableBorder(), r1t);
+
+        evpt =new EditableVoiceParameterTable(voices, ParameterCategories.VOICE_LFO2, lfo2Models, "LFO 2");
+        tsc.addTableToContext(evpt);
+        lfo2Panel = new RowHeaderedAndSectionedTablePanel().init(evpt, "Show LFO 2", UIColors.getTableBorder(), r2t);
 
         lfo1ShapePanel = new LFOShapePanel("LFO 1") {
             public Color getBackground() {
@@ -150,7 +132,7 @@ public class EditableLFOPanel extends JPanel implements ChangeListener, ZDisposa
     protected void updateLfoShapePanel(LFOShapePanel p, ReadableParameterModel pm) {
         try {
             p.setMode(pm.getValue().intValue());
-        } catch (ParameterUnavailableException e1) {
+        } catch (ParameterException e) {
         }
     }
 
@@ -178,9 +160,9 @@ public class EditableLFOPanel extends JPanel implements ChangeListener, ZDisposa
         int su = e.getWheelRotation();
         if (e.getSource() == lfo1ShapePanel) {
             if (shapeModelIndex1 != -1)
-                ParameterModelUtilities.wheelParameterModels(su, new Object[]{lfo1Models[shapeModelIndex1]});
+                ParameterModelUtilities.wheelParameterModels(su, new Object[]{lfo1Models[shapeModelIndex1]}, false);
         } else if (e.getSource() == lfo2ShapePanel)
             if (shapeModelIndex2 != -1)
-                ParameterModelUtilities.wheelParameterModels(su, new Object[]{lfo2Models[shapeModelIndex2]});
+                ParameterModelUtilities.wheelParameterModels(su, new Object[]{lfo2Models[shapeModelIndex2]}, false);
     }
 }

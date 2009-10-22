@@ -3,19 +3,21 @@ package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListener;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListenerHelper;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTablePanel;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.gui.FuzzyLineBorder;
 import com.pcmsolutions.system.IntPool;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.preferences.ZBoolPref;
-import com.pcmsolutions.system.preferences.ZEnumPref;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -32,15 +34,15 @@ public class VoiceEnvelopePanel extends JPanel implements TitleProvider, ZDispos
     protected VoiceEnvelopeTable envTable;
     protected String title;
 
-    public VoiceEnvelopePanel init(ReadablePreset.ReadableVoice voice, String category, Integer startId, String title, Action toggleAction) throws IllegalParameterIdException {
+    public VoiceEnvelopePanel init(ReadablePreset.ReadableVoice voice, TableExclusiveSelectionContext tsc, String category, Integer startId, String title, Action toggleAction) throws ParameterException {
         ReadableParameterModel[] models = new ReadableParameterModel[12];
         generateParameterModels(voice, startId, models);
-        init(voice, category, models, title, toggleAction);
+        init(voice, tsc,category, models, title, toggleAction);
         this.setFocusable(false);
         return this;
     }
 
-    protected void generateParameterModels(ReadablePreset.ReadableVoice voice, Integer startId, ReadableParameterModel[] models) throws IllegalParameterIdException {
+    protected void generateParameterModels(ReadablePreset.ReadableVoice voice, Integer startId, ReadableParameterModel[] models) throws ParameterException {
         for (int i = 0; i < 12; i++)
             try {
                 models[i] = voice.getParameterModel(IntPool.get(startId.intValue() + i));
@@ -50,13 +52,14 @@ public class VoiceEnvelopePanel extends JPanel implements TitleProvider, ZDispos
             }
     }
 
-    protected VoiceEnvelopePanel init(final ReadablePreset.ReadableVoice voice, String category, ReadableParameterModel[] models, String title, Action toggleAction) {
+    protected VoiceEnvelopePanel init(final ReadablePreset.ReadableVoice voice, TableExclusiveSelectionContext tsc,String category, ReadableParameterModel[] models, String title, Action toggleAction) {
         this.voice = voice;
         //this.setLayout(new GridLayout(1, 2));
         this.setLayout(new FlowLayout(FlowLayout.LEADING));
         envModel = new VoiceEnvelopeModel(voice, models[0].getParameterDescriptor().getId());
         envelope = new RatesEnvelope(envModel);
         makeModelAndTable(category, models, title);
+        tsc.addTableToContext(envTable);        
         RowHeaderedAndSectionedTablePanel etp;
         final Integer[] ids = new Integer[models.length];
 
@@ -65,25 +68,11 @@ public class VoiceEnvelopePanel extends JPanel implements TitleProvider, ZDispos
 
         Action ra = new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Refresh Envelope") {
-                    public void run() {
                         try {
                             voice.getPreset().refreshVoiceParameters(voice.getVoiceNumber(), ids);
-                        } catch (NoSuchContextException e1) {
-                            e1.printStackTrace();
-                        } catch (PresetEmptyException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchPresetException e1) {
-                            e1.printStackTrace();
-                        } catch (NoSuchVoiceException e1) {
-                            e1.printStackTrace();
-                        } catch (ParameterValueOutOfRangeException e1) {
-                            e1.printStackTrace();
-                        } catch (IllegalParameterIdException e1) {
+                        } catch (PresetException e1) {
                             e1.printStackTrace();
                         }
-                    }
-                }.start();
             }
         };
         ra.putValue("tip", "Refresh " + title);
@@ -92,13 +81,13 @@ public class VoiceEnvelopePanel extends JPanel implements TitleProvider, ZDispos
         etp.getHideButton().setAction(toggleAction);
         etp.getHideButton().setToolTipText("Toggle Envelope Mode");
 
-        FuzzyLineBorder flb = new FuzzyLineBorder(UIColors.getTableBorder(),UIColors.getTableBorderWidth(), true);
+        FuzzyLineBorder flb = new FuzzyLineBorder(UIColors.getTableBorder(), UIColors.getTableBorderWidth(), true, true);
         flb.setFadingIn(!flb.isFadingIn());
         envelope.setBorder(new TitledBorder(flb, title, TitledBorder.LEFT, TitledBorder.ABOVE_TOP));
 
         //env.setBorder(new TitledBorder(UIColors.makeFuzzyBorder(UIColors.getTableBorder(), RowHeaderedAndSectionedTablePanel.getBorderWidth()), title, TitledBorder.LEFT, TitledBorder.ABOVE_TOP));
 
-        envelope.setPreferredSize(new Dimension((int) (etp.getPreferredSize().getWidth() * 0.7), (int) (etp.getPreferredSize().getHeight() * 1.2)));
+        envelope.setPreferredSize(new Dimension((int) (etp.getPreferredSize().getWidth() * 0.8), (int) (etp.getPreferredSize().getHeight() * 1.4)));
 
         add(etp);
         add(envelope);
@@ -117,7 +106,7 @@ public class VoiceEnvelopePanel extends JPanel implements TitleProvider, ZDispos
     protected void makeModelAndTable(String category, ReadableParameterModel[] models, String title) {
         envTableModel = new VoiceEnvelopeTableModel(models);
         envTable = new VoiceEnvelopeTable(voice, category, envTableModel, title);
-        envTable.setHidingSelectionOnFocusLost(true);
+    //    envTable.setHidingSelectionOnFocusLost(true);
     }
 
     public String getTitle() {

@@ -13,6 +13,6 @@ public class SmdiFileOpenException extends Exception {
     }
 
     public SmdiFileOpenException() {
-        super("could not open File");
+        super("could not open file");
     }
 }

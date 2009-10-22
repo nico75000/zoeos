@@ -1,5 +1,6 @@
 package com.pcmsolutions.device.EMU.E4.gui;
 
+import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
 import com.pcmsolutions.device.EMU.E4.gui.table.DropCellCheckerTable;
 import com.pcmsolutions.gui.IconAndTipCarrier;
@@ -17,22 +18,49 @@ import java.awt.*;
  * Time: 05:25:13
  * To change this template use Options | File Templates.
  */
-public abstract class AbstractTableCellRenderer extends JLabel implements TableCellRenderer {
+public abstract class AbstractTableCellRenderer extends JLabel implements TableCellRenderer, ListCellRenderer {
+    protected final Color transparent = UIColors.applyAlpha(Color.white, 0);
+
     protected boolean selected;
     protected boolean isDropCell;
     protected Border bdrSel;
     protected Border bdrNormal;
 
+    //static int count =0;
+    // override these for performnace reasons
+    public void validate() {
+        //System.out.println("override " + count++);
+    }
+
+    public void revalidate() {
+        //System.out.println("override " + count++);
+    }
+
+    protected void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
+        //System.out.println("override " + count++);
+    }
+
+    public void firePropertyChange(String propertyName, boolean oldValue, boolean newValue) {
+        //System.out.println("override " + count++);
+    }
+
     public AbstractTableCellRenderer() {
         setHorizontalAlignment(JLabel.LEFT);
+    }
+
+    public Component getListCellRendererComponent(JList list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+        return getTableCellRendererComponent(null, value, isSelected, cellHasFocus, 0, 0);
     }
 
     public Component getTableCellRendererComponent(JTable table, Object value,
                                                    boolean isSelected, boolean hasFocus,
                                                    int row, int column) {
 
-        setupLook(table, value, isSelected, row, column);
-        buildLabel(value);
+        try {
+            setupLook(table, value, isSelected, row, column);
+            buildLabel(value);
+        } catch (Exception e) {
+        }
 
         isDropCell = false;
 
@@ -79,7 +107,7 @@ public abstract class AbstractTableCellRenderer extends JLabel implements TableC
 
     protected void setupLook(JTable table, Object value, boolean isSelected, int row, int column) {
         if (isSelected)
-            bdrSel = new BevelBorder(BevelBorder.LOWERED, getBackground(), getForeground());
+            bdrSel = new BevelBorder(BevelBorder.RAISED, getBackground(), getForeground());
         else
             bdrNormal = null;
     }

@@ -22,7 +22,7 @@ public class CordTableModel extends AbstractParameterModelTableModel {
         columnData[0] = new ColumnData("Source", 80, JLabel.LEFT, 0, ReadableParameterModel.class, null, null);
         columnData[1] = new ColumnData("Dest", 80, JLabel.LEFT, 0, ReadableParameterModel.class, null, null);
         columnData[2] = new ColumnData("Amt", 55, JLabel.LEFT, 0, ReadableParameterModel.class, null, null);
-        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), 215, "")};
+        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionHeaderBG(), UIColors.getTableFirstSectionFG(), 215, "")};
     }
 
     protected void doRefresh() {

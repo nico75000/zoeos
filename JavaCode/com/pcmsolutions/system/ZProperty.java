@@ -123,6 +123,10 @@ public class ZProperty extends Property implements ZDisposable {
         return true;
     }
 
+    public ZPref getZPref() {
+        return pref;
+    }
+
     public void zDispose() {
         pref.zDispose();
     }

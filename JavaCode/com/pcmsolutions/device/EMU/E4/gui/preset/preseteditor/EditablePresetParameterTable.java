@@ -8,14 +8,9 @@ import com.pcmsolutions.device.EMU.E4.gui.parameter.SingleColumnParameterModelTa
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.PresetParameterTable;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.PresetParameterTableTransferHandler;
 import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
-import com.pcmsolutions.device.EMU.E4.preset.PresetEmptyException;
 import com.pcmsolutions.device.EMU.E4.selections.MasterParameterSelection;
 import com.pcmsolutions.device.EMU.E4.selections.PresetParameterSelection;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 
 import java.util.ArrayList;
 
@@ -33,11 +28,11 @@ public class EditablePresetParameterTable extends PresetParameterTable {
         public void setSelection(PresetParameterSelection pps);
     }
 
-    public EditablePresetParameterTable(ContextEditablePreset p, String category, EditableParameterModel[] parameterModels, String title) throws ZDeviceNotRunningException {
+    public EditablePresetParameterTable(ContextEditablePreset p, String category, EditableParameterModel[] parameterModels, String title) {
         this(p, category, new EditableSingleColumnParameterModelTableModel(parameterModels), title);
     }
 
-    public EditablePresetParameterTable(ContextEditablePreset p, String category, EditableSingleColumnParameterModelTableModel tm, String title) throws ZDeviceNotRunningException {
+    public EditablePresetParameterTable(ContextEditablePreset p, String category, EditableSingleColumnParameterModelTableModel tm, String title) {
         super(p, category, tm, title);
         this.setDropChecker(new DropChecker() {
             public boolean isCellDropTarget(int dropRow, int dropCol, int row, int col, Object value) {
@@ -57,16 +52,20 @@ public class EditablePresetParameterTable extends PresetParameterTable {
         dropOverExtent = -1;
     }
 
-    public void setSelection(PresetParameterSelection pps) {
+    public void setSelection(final PresetParameterSelection pps) {
+        //   Impl_ZThread.ddTQ.postTask(new Impl_ZThread.Task(){
+        //     public void doTask() {
         pps.render(((ContextEditablePreset) preset));
+        //      }
+        //  });
     }
 
     public void setSelection(MasterParameterSelection mps) {
         Integer[] ids = mps.getIds();
         Integer[] vals = mps.getVals();
 
-        ArrayList l_ids = new ArrayList();
-        ArrayList l_vals = new ArrayList();
+        final ArrayList<Integer> l_ids = new ArrayList<Integer>();
+        final ArrayList<Integer> l_vals = new ArrayList<Integer>();
 
         for (int i = 0; i < ids.length; i++) {
             if (ids[i].intValue() >= 228 && ids[i].intValue() <= 245) {
@@ -74,13 +73,11 @@ public class EditablePresetParameterTable extends PresetParameterTable {
                 l_vals.add(vals[i]);
             }
         }
-        try {
-            ((ContextEditablePreset) preset).setPresetParams((Integer[]) l_ids.toArray(new Integer[l_ids.size()]), (Integer[]) l_vals.toArray(new Integer[l_vals.size()]));
-        } catch (NoSuchPresetException e) {
-        } catch (PresetEmptyException e) {
-        } catch (IllegalParameterIdException e) {
-        } catch (ParameterValueOutOfRangeException e) {
-        }
+        for (int i = 0, j = l_ids.size(); i < j; i++)
+            try {
+                ((ContextEditablePreset) preset).setPresetParam(l_ids.get(i), l_vals.get(i));
+            } catch (Exception e) {
+            }
     }
 }
 

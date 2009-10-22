@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer;
 
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListener;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListenerHelper;
@@ -32,11 +33,7 @@ public class VoiceTitleProvider implements TitleProvider, ZDisposable {
                 updateTitle();
             }
 
-            public void presetRefreshed(PresetRefreshEvent ev) {
-                updateTitle();
-            }
-
-            public void presetInitialized(PresetInitializeEvent ev) {
+            public void presetRefreshed(PresetInitializeEvent ev) {
                 updateTitle();
             }
 
@@ -52,7 +49,7 @@ public class VoiceTitleProvider implements TitleProvider, ZDisposable {
                 updateTitle();
             }
         };
-        voice.getPreset().addPresetListener(pla);
+        voice.getPreset().addListener(pla);
         updateTitle();
     }
 
@@ -91,6 +88,6 @@ public class VoiceTitleProvider implements TitleProvider, ZDisposable {
     }
 
     public void zDispose() {
-        voice.getPreset().removePresetListener(pla);
+        voice.getPreset().removeListener(pla);
     }
 }

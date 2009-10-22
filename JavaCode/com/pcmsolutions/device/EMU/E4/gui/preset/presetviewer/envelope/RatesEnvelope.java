@@ -5,21 +5,16 @@ import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Line2D;
-import java.beans.beancontext.BeanContextSupport;
-import java.beans.PropertyChangeSupport;
 
 public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDisposable {
-    protected static int segmentColorAlpha = 230;
+    protected static int segmentColorAlpha = 200;
 
     protected static int segmentLineThickness = 2;
-    protected static Color seperatorColor = UIColors.applyAlpha(Color.black, segmentColorAlpha);
+    protected static Color delimiterColor = UIColors.applyAlpha(Color.DARK_GRAY, segmentColorAlpha);
 
-    protected static final Color background2 = Color.white;
+    protected static final Color background2 = Color.lightGray;
     protected static boolean gradedBackground = true;
 
     protected static Stroke segmentStroke = new BasicStroke(segmentLineThickness, BasicStroke.CAP_ROUND, BasicStroke.JOIN_BEVEL);
@@ -37,25 +32,15 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
     public final static int MODE_SCALED = 2;
     protected int mode = MODE_SCALED;
 
-    protected float scaleFactor = (float) Math.pow(2, 16);
-
-    protected static float MAX_SEG_TIME = 16384;
-
     protected final static int NUM_SEGMENTS = 6;
-
-    public float getScaleFactor() {
-        return scaleFactor;
-    }
-
-    public void setScaleFactor(float scaleFactor) {
-        this.scaleFactor = scaleFactor;
-        this.update();
-    }
+    protected final static int RATE_SHIFT = 16;
+    protected final static double BIT_DEPTH = 24;
+    protected static float MAX_SEG_TIME = (float) Math.pow(2, BIT_DEPTH);
+    protected static float MAX_TIME = MAX_SEG_TIME * NUM_SEGMENTS;
 
     public RatesEnvelope(RatesEnvelopeModel model) {
         this.model = model;
-
-        setOpaque(true);
+        setOpaque(false);
         //setBackground(background1);
         //setPreferredSize(new Dimension(20, 20));
         updateUsedDuration();
@@ -63,8 +48,8 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
         this.setFocusable(false);
     }
 
-    protected double log2(double a) {
-        return (double) ((Math.log(a) / Math.log(2.0)));
+    protected float log2(float a) {
+        return (float) ((Math.log(a) / Math.log(2.0)));
     }
 
     public void envelopeChanged(RatesEnvelopeModel model) {
@@ -93,13 +78,13 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
 
         Graphics2D g2 = (Graphics2D) g;
         super.paintComponent(g);
+        g2.setRenderingHints(new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON));
         if (gradedBackground) {
             GradientPaint gp;
-            gp = new GradientPaint(0, 0, getBackground(), 0, getHeight() * 2, background2, false);
+            gp = new GradientPaint(0, 0, /*getBackground()*/Color.white, 0, getHeight() * 2, background2, false);
             g2.setPaint(gp);
             g2.fillRect(0 + x - 1, 0 + y - 1, (int) w + 2, (int) h + 2);
         }
-
 
         Line2D baseLine = new Line2D.Float(x, y + calcLevelY(h, model.getBaseLevel()), x + w, y + calcLevelY(h, model.getBaseLevel()));
         GeneralPath atkPath = new GeneralPath();
@@ -115,7 +100,7 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
         // stateStart point
         currX = x;
         currY = baseY;
-        atkPath.moveTo(currX, currY);
+        atkPath.moveTo((float) currX, (float) currY);
 
         // atk1 point
         segmentBaseX = currX;
@@ -188,28 +173,22 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
 
         Stroke os = g2.getStroke();
 
-        g2.setColor(seperatorColor);
-        g2.setStroke(delimiterStroke);
-        g2.draw(baseLine);
-        g2.draw(atkDecSeperatorLine);
-        g2.draw(decRlsSeperatorLine);
-
         if (fill) {
             g2.setStroke(segmentStroke);
 
             GradientPaint gp;
-            gp = new GradientPaint(0, 0, getAtkColor(), 0, getHeight(), getBackground(), false);
+            gp = new GradientPaint(0, 0, getAtkColor(), 0, getHeight(), getBackground()/*Color.white*/, false);
             g2.setPaint(gp);
 
             //g2.setColor(atkColor);
             g2.fill(atkPath);
 
-            gp = new GradientPaint(0, 0, getDecColor(), 0, getHeight(), getBackground(), false);
+            gp = new GradientPaint(0, 0, getDecColor(), 0, getHeight(), getBackground()/*Color.white*/, false);
             g2.setPaint(gp);
             //g2.setColor(decColor);
             g2.fill(decPath);
 
-            gp = new GradientPaint(0, 0, getRlsColor(), 0, getHeight(), getBackground(), false);
+            gp = new GradientPaint(0, 0, getRlsColor(), 0, getHeight(), getBackground()/*Color.white*/, false);
             g2.setPaint(gp);
             //g2.setColor(rlsColor);
             g2.fill(rlsPath);
@@ -225,6 +204,12 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
         g2.setColor(getRlsColor());
         g2.draw(rlsPath);
 
+        g2.setColor(delimiterColor);
+        g2.setStroke(delimiterStroke);
+        g2.draw(baseLine);
+        g2.draw(atkDecSeperatorLine);
+        g2.draw(decRlsSeperatorLine);
+
         g2.setStroke(os);
     }
 
@@ -237,34 +222,25 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
     protected float calcScaledDuration(float r) {
         if (r < 0 || r > model.getMaxRate())
             throw new IllegalArgumentException("Rate not in  allowed range");
-
-
-        //  return (float) (/*MAX_SEG_TIME -*/ MAX_SEG_TIME * (  log2(8 - log2(128 - r)) / log2(8)));
-        return (float) (MAX_SEG_TIME - MAX_SEG_TIME * (log2(128 - r) / log2(128)));
-
-        /* double frac = log2(128 - r) / log2(128);
-         double frac2 = (log2(1024 - r*8 - 8) +log2(8) )/ log2(1024);
-          float x = MAX_SEG_TIME - (float) (MAX_SEG_TIME * frac);
-         float x2 = MAX_SEG_TIME - (float) (MAX_SEG_TIME * frac2);
-          // System.out.println("  Rate = " + r + "  Fraction = " + frac + "   Scaled to = " + x);
-         //System.out.println("  Rate2 = " + r + "  Fraction2 = " + frac2 + "   Scaled2 to = " + x2);
-          return x;*/
+        r = RATE_SHIFT + ((127 - RATE_SHIFT) * (r / 127));
+        float r2 = (float) Math.pow(2, log2(r) * (BIT_DEPTH / 7)) - (float) Math.pow(2, log2(RATE_SHIFT) * (BIT_DEPTH / 7));
+        return (MAX_TIME - MAX_TIME * (log2(MAX_SEG_TIME - r2) / log2(MAX_SEG_TIME)));
     }
 
     protected float calcFixedDuration(float r) {
         if (r < 0 || r > model.getMaxRate())
             throw new IllegalArgumentException("Rate not in  allowed range");
 
-        return (MAX_SEG_TIME * r) / model.getMaxRate();
+        return (MAX_TIME * r) / model.getMaxRate();
     }
 
-    /*  protected double calcScaledDuration(double r) {
+    /*  protected float calcScaledDuration(float r) {
           if (r < 0 || r > model.getMaxRate())
               throw new IllegalArgumentException("Rate not in  allowed range");
 
           float maxRate = model.getMaxRate();
           float range = (maxRate * scaleFactor) + 1;
-          double res = maxRate - maxRate * (log2(range - ((r * scaleFactor))) / log2(range));
+          float res = maxRate - maxRate * (log2(range - ((r * scaleFactor))) / log2(range));
           //System.out.println("SF =  " + scaleFactor + "  Rate " + r + " scaled to " + res);
           return res;
       }*/
@@ -273,9 +249,9 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
     protected float calcRateX(float w, float rate) {
         switch (mode) {
             case MODE_FIXED:
-                return (w * calcFixedDuration(rate)) / (MAX_SEG_TIME * NUM_SEGMENTS);
+                return (w * calcFixedDuration(rate)) / (MAX_TIME * NUM_SEGMENTS);
             case MODE_SCALED:
-                return (w * (float) calcScaledDuration(rate)) / usedSegTime;
+                return (w * calcScaledDuration(rate)) / usedSegTime;
             case MODE_FIXED_ZOOMED:
                 return (w * calcFixedDuration(rate)) / usedSegTime;
         }
@@ -336,7 +312,7 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
     }
 
     public Color getSeperatorColor() {
-        return seperatorColor;
+        return delimiterColor;
     }
 
     public Color getAtkColor() {
@@ -366,8 +342,11 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
     public void setMode(int mode) {
         if (mode != this.mode) {
             this.mode = mode;
-            revalidate();
-            repaint();
+            if (mode == MODE_FIXED)
+                setToolTipText("FIXED");
+            else
+                setToolTipText("SCALED");
+            update();
         }
     }
 
@@ -405,4 +384,5 @@ public class RatesEnvelope extends JPanel implements RatesEnvelopeListener, ZDis
         model.removeRatesEnvelopeListener(this);
         model = null;
     }
+
 }

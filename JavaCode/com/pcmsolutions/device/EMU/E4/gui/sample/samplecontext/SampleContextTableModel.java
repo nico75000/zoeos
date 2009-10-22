@@ -2,104 +2,75 @@ package com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.sample.*;
 import com.pcmsolutions.device.EMU.E4.gui.AbstractContextTableModel;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
-import com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext.PresetContextTableCellRenderer;
 import com.pcmsolutions.device.EMU.E4.gui.table.ColumnData;
 import com.pcmsolutions.device.EMU.E4.gui.table.SectionData;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.ContextListener;
+import com.pcmsolutions.device.EMU.database.Context;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.events.context.ContextRemovalEvent;
+import com.pcmsolutions.device.EMU.database.events.context.ContextAdditionEvent;
+import com.pcmsolutions.device.EMU.database.events.context.ContextReleaseEvent;
 import com.pcmsolutions.device.EMU.E4.sample.*;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.IntPool;
 
 import javax.swing.*;
 import java.text.DecimalFormat;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
-/**
- * Created by IntelliJ IDEA.
- * User: pmeehan
- * Date: 25-Jun-2003
- * Time: 01:40:38
- * To change this template use Options | File Templates.
- */
-public class SampleContextTableModel extends AbstractContextTableModel implements SampleContextListener, SampleListener {
-    private SampleContext sc;
-    private HashMap sampleIndexes = new HashMap();
-    private HashMap prevSampleIndexes;
-
+public class SampleContextTableModel extends AbstractContextTableModel<SampleContext, ReadableSample> implements SampleListener {
     public SampleContextTableModel(SampleContext sc) {
-        this.sc = sc;
-        init();
-        sc.addSampleContextListener(this);
+        init(sc);
     }
 
     protected void buildColumnAndSectionData() {
         rowHeaderColumnData = new ColumnData("", 45, JLabel.LEFT, 0, Object.class);
         columnData = new ColumnData[1];
-        columnData[0] = new ColumnData("", 155, JLabel.LEFT, 0, ContextReadableSample.class, new PresetContextTableCellRenderer(), null);
-        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), 155, "")};
+        columnData[0] = new ColumnData("", 155, JLabel.LEFT, 0, ContextReadableSample.class, new SampleContextTableCellRenderer(), null);
+        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionHeaderBG(), UIColors.getTableFirstSectionFG(), 155, "")};
     }
 
     protected void doPreRefresh() {
         removeSampleListeners();
-        prevSampleIndexes = (HashMap) sampleIndexes.clone();
-        sampleIndexes.clear();
     }
 
     protected void doPostRefresh() {
     }
 
-    /* protected List filterSampleList(List sic) {
-        ReadableSample s;
-        ArrayList outSic = new ArrayList(sic.size());
-        for (int i = 0, n = sic.size(); i < n; i++) {
-            s = (ReadableSample) sic.get(i);
-            try {
-                if (!contextFilter.filter(s.getSampleNumber(), s.getSampleName(), prevSampleIndexes.containsKey(s.getSampleNumber())))
-                    continue;
-                outSic.addDesktopElement(s);
-            } catch (NoSuchSampleException e) {
-                continue;
-            } catch (SampleEmptyException e) {
-                if (!contextFilter.filter(s.getSampleNumber(), DeviceContext.EMPTY_SAMPLE, prevSampleIndexes.containsKey(s.getSampleNumber())))
-                    continue;
-            }
-        }
-        if (outSic.size() == 0) {
-            JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Filter cancelled. It yields no samples.", "No Effect", JOptionPane.ERROR_MESSAGE);
-            return sic;
-        }
-        return outSic;
-    }*/
 
-    protected void doRefresh() {
+    protected void xdoRefresh() {
         try {
             //final List sic = filterSampleList(sc.getContextSamples());
-            final List sic = sc.getContextSamples();
+            final List<ContextReadableSample> sic = getContext().getContextSamples();
             final DecimalFormat df = new DecimalFormat("0000");
             int count = 0;
             for (int i = 0, n = sic.size(); i < n; i++) {
-                final ReadableSample s = (ReadableSample) sic.get(i);
-                if (s.getSampleNumber().intValue() == 0)
+                final ContextReadableSample s = sic.get(i);
+                if (s.getIndex().intValue() == 0)
                     continue;
                 try {
-                    if (!contextFilter.filter(s.getSampleNumber(), s.getSampleName(), prevSampleIndexes.containsKey(s.getSampleNumber())))
+                    if (!contextFilter.filter(s.getIndex(), s.getString(), prevIndexes.contains(s.getIndex())))
                         continue;
-                } catch (NoSuchSampleException e) {
+                } catch (SampleException e) {
                     continue;
-                } catch (SampleEmptyException e) {
-                    if (!contextFilter.filter(s.getSampleNumber(), DeviceContext.EMPTY_SAMPLE, prevSampleIndexes.containsKey(s.getSampleNumber())))
+                } /*catch (EmptyException e) {
+                    if (!contextFilter.filter(s.getIndex(), DeviceContext.EMPTY_SAMPLE, prevSampleIndexes.containsKey(s.getIndex())))
                         continue;
-                }
+                } */
                 s.setToStringFormatExtended(false);
-                sampleIndexes.put(s.getSampleNumber(), IntPool.get(count++));
+                indexes.put(s.getIndex(), IntPool.get(count++));
                 tableRowObjects.add(new ColumnValueProvider() {
                     private ReadableSample sample = s;
 
                     public Object getValueAt(int col) {
                         if (col == 0)
-                            return "S " + df.format(sample.getSampleNumber());
+                            return "S " + df.format(sample.getIndex());
                         else if (col == 1)
                             return sample;
                         return "";
@@ -109,65 +80,53 @@ public class SampleContextTableModel extends AbstractContextTableModel implement
                     }
 
                     public boolean equals(Object obj) {
-                        if (obj instanceof Integer && obj.equals(sample.getSampleNumber()))
+                        if (obj instanceof Integer && obj.equals(sample.getIndex()))
                             return true;
                         return false;
                     }
                 });
-                s.addSampleListener(this);
+                s.addListener(this);
             }
-        } catch (NoSuchContextException e) {
+        } catch (DeviceException e) {
+            e.printStackTrace();
         }
     }
 
-    public int getRowForSample(Integer sample) {
-        Integer row = (Integer) sampleIndexes.get(sample);
-        if (row != null)
-            return row.intValue();
-        return -1;
+    public boolean acceptElement(ReadableSample readableSample) {
+        return readableSample.getIndex().intValue() != 0;
+    }
+
+    protected String getContextPrefix() {
+        return "S ";
+    }
+
+    protected void finalizeRefreshedElement(ReadableSample readableSample) throws DeviceException {
+        readableSample.addListener(this);
     }
 
     private void removeSampleListeners() {
         Integer[] samples = new Integer[tableRowObjects.size()];
         for (int i = 0, n = tableRowObjects.size(); i < n; i++)
-            samples[i] = ((ReadableSample) ((ColumnValueProvider) tableRowObjects.get(i)).getValueAt(1)).getSampleNumber();
-        sc.removeSampleListener(this, samples);
-    }
-
-    public void samplesRemovedFromContext(SampleContext pc, Integer[] samples) {
-        refresh(false);
-    }
-
-    public void samplesAddedToContext(SampleContext pc, Integer[] samples) {
-        refresh(false);
-    }
-
-    public void contextReleased(SampleContext pc) {
-        refresh(false);
-    }
-
-    private void updateSample(final Integer sample) {
-        Integer index = (Integer) sampleIndexes.get(sample);
-        if (index != null)
-            this.fireTableCellUpdated(index.intValue(), 1);
+            samples[i] = ((ReadableSample) ((ColumnValueProvider) tableRowObjects.get(i)).getValueAt(1)).getIndex();
+        getContext().removeContentListener(this, samples);
     }
 
     public void sampleInitialized(SampleInitializeEvent ev) {
-        updateSample(ev.getSample());
+        updateIndex(ev.getIndex());
     }
 
     public void sampleRefreshed(SampleRefreshEvent ev) {
-        updateSample(ev.getSample());
+        updateIndex(ev.getIndex());
     }
 
     public void sampleChanged(SampleChangeEvent ev) {
     }
 
     public void sampleNameChanged(SampleNameChangeEvent ev) {
-        updateSample(ev.getSample());
+        updateIndex(ev.getIndex());
     }
 
     public void sampleInitializationStatusChanged(SampleInitializationStatusChangedEvent ev) {
-        updateSample(ev.getSample());
+        updateIndex(ev.getIndex());
     }
 }

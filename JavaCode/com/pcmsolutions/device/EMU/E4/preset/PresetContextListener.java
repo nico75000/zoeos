@@ -6,15 +6,12 @@
 
 package com.pcmsolutions.device.EMU.E4.preset;
 
+import com.pcmsolutions.device.EMU.database.ContextListener;
+
 
 /**
  *
  * @author  pmeehan
  */
-public interface PresetContextListener {
-    public void presetsRemovedFromContext(PresetContext pc, Integer[] presets);
-
-    public void presetsAddedToContext(PresetContext pc, Integer[] presets);
-
-    public void contextReleased(PresetContext pc);
+public interface PresetContextListener extends ContextListener{
 }

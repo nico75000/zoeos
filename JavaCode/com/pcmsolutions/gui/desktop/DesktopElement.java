@@ -2,7 +2,7 @@ package com.pcmsolutions.gui.desktop;
 
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.gui.ComponentGenerationException;
-import com.pcmsolutions.gui.MenuBarProvider;
+import com.pcmsolutions.gui.FrameMenuBarProvider;
 import com.pcmsolutions.system.Expirable;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.paths.DesktopName;
@@ -18,7 +18,7 @@ import java.io.Serializable;
  * Time: 20:16:06
  * To change this template use Options | File Templates.
  */
-public interface DesktopElement extends TitleProvider, ZDisposable, MenuBarProvider, Expirable, Serializable, Comparable {
+public interface DesktopElement extends TitleProvider, ZDisposable, FrameMenuBarProvider, Expirable, Serializable, Comparable {
 
     // should be specific to describing what this component does - e.g  "DefaultPresetEditor:43"
     // never displayed to the user - used internally by desktop manager to provide singleton documents
@@ -36,8 +36,9 @@ public interface DesktopElement extends TitleProvider, ZDisposable, MenuBarProvi
     // obvious
     public ActivityContext getActivityContext();
 
-    // obvious
-    public boolean isFloatable();
+    public String retrieveComponentSessionString();
+
+    public void updateComponentSession(String sessStr);
 
     public void setSessionString(String ss);
 

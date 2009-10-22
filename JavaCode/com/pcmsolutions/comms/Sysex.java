@@ -6,9 +6,10 @@ import java.util.Arrays;
 
 public class Sysex extends FinalMidiMessage {
 
-    public Sysex(){
+    public Sysex() {
         super();
     }
+
     public Sysex(MidiMessage msg, MidiDevice.Info source) {
         super(msg, source);
     }

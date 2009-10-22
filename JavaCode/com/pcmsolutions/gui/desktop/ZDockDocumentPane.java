@@ -4,6 +4,7 @@ import com.jidesoft.document.DocumentComponentEvent;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 
 import javax.swing.*;
+import javax.swing.tree.TreeNode;
 import java.awt.*;
 
 /**
@@ -15,7 +16,8 @@ public class ZDockDocumentPane extends ZDocumentPane {
 
     protected ZDockableFrame dockableFrame;
 
-    public ZDockDocumentPane(ZDockableFrame dockableFrame) {
+    public ZDockDocumentPane(ZDockableFrame dockableFrame, TreeNode parent) {
+        super(parent);
         this.dockableFrame = dockableFrame;
     }
 
@@ -41,10 +43,10 @@ public class ZDockDocumentPane extends ZDocumentPane {
 
     public void documentComponentDeactivated(DocumentComponentEvent event) {
         super.documentComponentDeactivated(event);
-         if (event.getDocumentComponent() instanceof ZDocumentComponent) {
+        if (event.getDocumentComponent() instanceof ZDocumentComponent) {
             ZDocumentComponent zdc = (ZDocumentComponent) event.getDocumentComponent();
             try {
-                if (zdc.getDesktopElement().isMenuBarAvailable())
+                if (zdc.getDesktopElement().isFrameMenuBarAvailable())
                     ((ZDockDocumentPane) zdc.getDocumentPane()).getDockableFrame().setJMenuBar(null);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -57,8 +59,8 @@ public class ZDockDocumentPane extends ZDocumentPane {
         if (event.getDocumentComponent() instanceof ZDocumentComponent) {
             ZDocumentComponent zdc = (ZDocumentComponent) event.getDocumentComponent();
             try {
-                if (zdc.getDesktopElement().isMenuBarAvailable())
-                    ((ZDockDocumentPane) zdc.getDocumentPane()).getDockableFrame().setJMenuBar(zdc.getDesktopElement().getMenuBar());
+                if (zdc.getDesktopElement().isFrameMenuBarAvailable())
+                    ((ZDockDocumentPane) zdc.getDocumentPane()).getDockableFrame().setJMenuBar(zdc.getDesktopElement().getFrameMenuBar());
             } catch (Exception e) {
                 e.printStackTrace();
             }

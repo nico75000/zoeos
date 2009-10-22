@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.preset;
 
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 
 /**
  * Created by IntelliJ IDEA.
@@ -10,13 +11,10 @@ import com.pcmsolutions.device.EMU.E4.events.*;
  * To change this template use Options | File Templates.
  */
 public class PresetListenerAdapter implements PresetListener {
-    public void presetInitialized(PresetInitializeEvent ev) {
-    }
-
     public void presetInitializationStatusChanged(PresetInitializationStatusChangedEvent ev) {
     }
 
-    public void presetRefreshed(PresetRefreshEvent ev) {
+    public void presetRefreshed(PresetInitializeEvent ev) {
     }
 
     public void presetChanged(PresetChangeEvent ev) {

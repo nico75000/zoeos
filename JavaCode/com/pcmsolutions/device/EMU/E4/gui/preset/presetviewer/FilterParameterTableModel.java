@@ -3,6 +3,7 @@ package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer;
 import com.pcmsolutions.device.EMU.E4.parameter.FilterParameterDescriptor;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterUnavailableException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.system.IntPool;
 
 import javax.swing.event.ChangeEvent;
@@ -66,7 +67,7 @@ public class FilterParameterTableModel extends VoiceParameterTableModel implemen
                     fpd.setFilterType(filterTypeModel.getValue());
                     //if (!fpd.isCurrentlyActive())
                     //  continue;
-                } catch (ParameterUnavailableException e) {
+                } catch (ParameterException e) {
                     //  e.printStackTrace();
                 }
             }

@@ -17,7 +17,7 @@ import java.util.Vector;
  */
 abstract public class AbstractRowHeaderedAndSectionedTableModel extends AbstractTableModel implements ColumnAndSectionDataProvider, ZDisposable {
     protected List tableRowObjects = new LinkedList();
-    protected static int DEF_COL_WIDTH = 45;
+    protected static int DEF_COL_WIDTH = 40;
 
     protected ColumnData[] columnData;
     protected ColumnData rowHeaderColumnData;
@@ -131,7 +131,7 @@ abstract public class AbstractRowHeaderedAndSectionedTableModel extends Abstract
             return columnData[column - 1].title;
     }
 
-    public Class getColumnClass(int columnIndex) {
+    public Class<Object> getColumnClass(int columnIndex) {
         if (columnIndex == 0)
             return rowHeaderColumnData.columnClass;
         else

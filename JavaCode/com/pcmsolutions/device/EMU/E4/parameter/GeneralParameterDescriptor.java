@@ -18,6 +18,8 @@ public interface GeneralParameterDescriptor extends IconAndTipCarrier, Serializa
 
     public String getReferenceString();
 
+    public String getUnits();
+
     public Integer getMinValue();
 
     public Integer getMaxValue();
@@ -43,25 +45,11 @@ public interface GeneralParameterDescriptor extends IconAndTipCarrier, Serializa
 
     public String getCategory();
 
-    public String getCollaboration();
+    public java.util.List<String> getStringList();
 
-    //public java.util.Map getStringForValueMap();
-
-    public java.util.List getStringForValueList();
-
-    public java.util.List getUnitlessStringForValueList();
-
-    //public Map getValueForStringMap();
+    public java.util.List<String> getUnitlessStringList();
 
     public String getTipForValue(Integer value) throws ParameterValueOutOfRangeException;
-
-    public Map getTipForValueMap();
-
-    public boolean hasImagesForValues();
-
-    public Image getImageForValue(Integer value) throws ParameterValueOutOfRangeException;
-
-    public java.util.Map getImageForValueMap();
 
     public boolean shouldUseSpinner();
 

@@ -8,14 +8,18 @@ import com.pcmsolutions.device.EMU.E4.gui.multimode.MultimodeIcon;
 import com.pcmsolutions.device.EMU.E4.gui.preset.icons.PresetContextIcon;
 import com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext.SampleContextIcon;
 import com.pcmsolutions.gui.ComponentGenerationException;
+import com.pcmsolutions.gui.ProgressSession;
+import com.pcmsolutions.gui.piano.PianoIcon;
 import com.pcmsolutions.system.Linkable;
 import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.Zoeos;
 import com.pcmsolutions.system.ZoeosPreferences;
 import com.pcmsolutions.system.paths.ViewPath;
 
 import javax.swing.*;
-import javax.swing.event.ChangeListener;
 import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import javax.swing.tree.MutableTreeNode;
 import java.awt.*;
 import java.net.URL;
 import java.util.ArrayList;
@@ -33,7 +37,7 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
 
     public Impl_ZDesktopManager(DockingManager dockingManager) {
         this.dockingManager = dockingManager;
-        workspaceViewTreeModel = new ZDocumentTreeModel(new ZDocumentPane());
+        workspaceViewTreeModel = new ZDocumentTreeModel(new ZDocumentPane(null));
         //dockingManager.setInitSplitPriority(DefaultDockingManager.SPLIT_SOUTH_NORTH_EAST_WEST);
         initDocks();
         //ZoeosPreferences.ZPREF_boxStyleTabs.addChangeListener(this);
@@ -52,7 +56,7 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
     }
 
     class ZCanonicalDock extends ZDockableFrame {
-        private ZDocumentTreeModel documentTreeModel = new ZDocumentTreeModel(new ZDockDocumentPane(this));
+        private ZDocumentTreeModel documentTreeModel = new ZDocumentTreeModel(new ZDockDocumentPane(this, null));
 
         public ZCanonicalDock(String name, String title, String tabTitle) {
             super(name);
@@ -91,7 +95,7 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
             super(dockMULTI, dockMULTI, dockMULTI);
             setFrameIcon(new MultimodeIcon(15, 15));
             getContext().setInitIndex(0);
-            this.setPreferredSize(new Dimension(350, 500));
+            this.setPreferredSize(new Dimension(425, 500));
         }
     }
 
@@ -122,12 +126,23 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
         }
     }
 
+    class PianoDock extends ZCanonicalDock {
+        public PianoDock() {
+            super(dockPIANO, dockPIANO, dockPIANO);
+            setFrameIcon(new PianoIcon(20, 16));
+            getContext().setInitIndex(0);
+            getContext().setInitSide(DockContext.DOCK_SIDE_SOUTH);
+            this.setPreferredSize(new Dimension(400, 500));
+        }
+    }
+
     private final ZCanonicalDock dockPresets = new PresetsDock();
     private final ZCanonicalDock dockSamples = new SamplesDock();
     private final ZCanonicalDock dockMulti = new MultiDock();
     private final ZCanonicalDock dockMaster = new MasterDock();
     private final ZCanonicalDock dockDevices = new DeviceDock();
     private final ZCanonicalDock dockProperties = new PropertiesDock();
+    private final ZCanonicalDock dockPiano = new PianoDock();
 
     private void initDocks() {
         getDockingManager().beginLoadLayoutData();
@@ -138,6 +153,7 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
         getDockingManager().addFrame(dockMaster);
         getDockingManager().addFrame(dockDevices);
         getDockingManager().addFrame(dockProperties);
+        //getDockingManager().addFrame(dockPiano);
 
         getDockingManager().loadLayoutDataFrom(ZDesktopManager.LAYOUT_LAST);
         //getDockingManager().loadLayoutDataFromFile("ZoeOSLayout");
@@ -170,7 +186,22 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
             }
             // return dockMaster.getZDocumentPane().openDesktopElement(e, activate);
             return dockMaster.getDocumentTreeModel().addDesktopElement(e, activate);
-
+            /*
+            boolean active = dockMaster.isActive();
+            try {
+                try {
+                    dockMaster.setActive(true);
+                } catch (PropertyVetoException e1) {
+                    e1.printStackTrace();
+                }
+                return dockMaster.getDocumentTreeModel().addDesktopElement(e, activate);
+            } finally {
+                try {
+                    dockMaster.setActive(active);
+                } catch (PropertyVetoException e1) {
+                    e1.printStackTrace();
+                }
+            } */
         } else if (dock.equals(dockMULTI)) {
             //getDockingManager().setFrameAvailable(dockMULTI);
             //dockMulti.setHidable(false);
@@ -209,6 +240,15 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
             }
             //return dockProperties.getZDocumentPane().openDesktopElement(e, activate);
             return dockProperties.getDocumentTreeModel().addDesktopElement(e, activate);
+        } else if (dock.equals(dockPIANO)) {
+            //getDockingManager().setFrameAvailable(dockSAMPLES);
+            //dockSamples.setHidable(false);
+            if (dockPiano.isHidden()) {
+                getDockingManager().showFrame(dockPIANO);
+                dockPiano.setHidable(false);
+            }
+            //return dockProperties.getZDocumentPane().openDesktopElement(e, activate);
+            return dockPiano.getDocumentTreeModel().addDesktopElement(e, activate);
         } else {
             throw new IllegalArgumentException("no canonical dock specified");
         }
@@ -219,6 +259,7 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
     }
 
     public boolean removeElement(ViewPath vp) {
+        MutableTreeNode mtr;
         String dock = vp.getViewEntryPoint();
         if (dock.equals(dockWORKSPACE)) {
             return workspaceViewTreeModel.removeDesktopElement(vp.getDesktopNamePath());
@@ -252,10 +293,92 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
                 dockProperties.getDocumentTreeModel().removeDesktopElement(vp.getDesktopNamePath());
                 return true;
             }
+        } else if (dock.equals(dockPIANO)) {
+            if (getDockingManager().getFrame(dockPIANO) != null) {
+                dockPiano.getDocumentTreeModel().removeDesktopElement(vp.getDesktopNamePath());
+                return true;
+            }
         } else {
             throw new IllegalArgumentException("no canonical dock specified");
         }
         return false;
+    }
+
+    public void sendMessage(DesktopElement e, String msg) {
+        sendMessage(e.getViewPath(), msg);
+    }
+
+    public void sendMessage(ViewPath vp, String msg) {
+        String dock = vp.getViewEntryPoint();
+        if (dock.equals(dockWORKSPACE)) {
+            workspaceViewTreeModel.sendMessage(vp.getDesktopNamePath(), msg);
+        } else if (dock.equals(dockDEVICES)) {
+            if (getDockingManager().getFrame(dockDEVICES) != null) {
+                dockDevices.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else if (dock.equals(dockMASTER)) {
+            if (getDockingManager().getFrame(dockMASTER) != null) {
+                dockMaster.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else if (dock.equals(dockMULTI)) {
+            if (getDockingManager().getFrame(dockMULTI) != null) {
+                dockMulti.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else if (dock.equals(dockPRESETS)) {
+            if (getDockingManager().getFrame(dockPRESETS) != null) {
+                dockPresets.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else if (dock.equals(dockSAMPLES)) {
+            if (getDockingManager().getFrame(dockSAMPLES) != null) {
+                dockSamples.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else if (dock.equals(dockPROPERTIES)) {
+            if (getDockingManager().getFrame(dockPROPERTIES) != null) {
+                dockProperties.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else if (dock.equals(dockPIANO)) {
+            if (getDockingManager().getFrame(dockPIANO) != null) {
+                dockPiano.getDocumentTreeModel().sendMessage(vp.getDesktopNamePath(), msg);
+            }
+        } else {
+            throw new IllegalArgumentException("no canonical dock specified");
+        }
+    }
+
+    public DesktopElement[] evaluateCondition(ViewPath vp, String condition) {
+        String dock = vp.getViewEntryPoint();
+        if (dock.equals(dockWORKSPACE)) {
+            return workspaceViewTreeModel.evaluateCondition(vp.getDesktopNamePath(), condition);
+        } else if (dock.equals(dockDEVICES)) {
+            if (getDockingManager().getFrame(dockDEVICES) != null) {
+                return dockDevices.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        } else if (dock.equals(dockMASTER)) {
+            if (getDockingManager().getFrame(dockMASTER) != null) {
+                return dockMaster.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        } else if (dock.equals(dockMULTI)) {
+            if (getDockingManager().getFrame(dockMULTI) != null) {
+                return dockMulti.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        } else if (dock.equals(dockPRESETS)) {
+            if (getDockingManager().getFrame(dockPRESETS) != null) {
+                return dockPresets.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        } else if (dock.equals(dockSAMPLES)) {
+            if (getDockingManager().getFrame(dockSAMPLES) != null) {
+                return dockSamples.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        } else if (dock.equals(dockPROPERTIES)) {
+            if (getDockingManager().getFrame(dockPROPERTIES) != null) {
+                return dockProperties.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        } else if (dock.equals(dockPIANO)) {
+            if (getDockingManager().getFrame(dockPIANO) != null) {
+                return dockPiano.getDocumentTreeModel().evaluateCondition(vp.getDesktopNamePath(), condition);
+            }
+        }
+        throw new IllegalArgumentException("no canonical dock specified");
     }
 
     public DesktopElement[] getDesktopElementTree(ViewPath vp) {
@@ -277,25 +400,31 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
             return dockPresets.getDocumentTreeModel().getDesktopElementTree(vp.getDesktopNamePath(), originals);
         } else if (dock.equals(dockSAMPLES)) {
             return dockSamples.getDocumentTreeModel().getDesktopElementTree(vp.getDesktopNamePath(), originals);
+        } else if (dock.equals(dockPROPERTIES)) {
+            return dockProperties.getDocumentTreeModel().getDesktopElementTree(vp.getDesktopNamePath(), originals);
         } else {
             throw new IllegalArgumentException("no canonical dock specified");
         }
     }
 
     public boolean mutuallyLinkComponents(ViewPath v1, ViewPath v2) throws ComponentGenerationException, Linkable.InvalidLinkException {
-        DesktopElement[] de1 = getDesktopElementTree(v1, true);
-        DesktopElement[] de2 = getDesktopElementTree(v2, true);
+        try {
+            DesktopElement[] de1 = getDesktopElementTree(v1, true);
+            DesktopElement[] de2 = getDesktopElementTree(v2, true);
 
-        if (de1.length == 0 || de2.length == 0)
-            return false;
+            if (de1.length == 0 || de2.length == 0)
+                return false;
 
-        Component vc1 = de1[0].getComponent();
-        Component vc2 = de2[0].getComponent();
+            Component vc1 = de1[0].getComponent();
+            Component vc2 = de2[0].getComponent();
 
-        if (vc1 instanceof Linkable && vc2 instanceof Linkable) {
-            ((Linkable) vc1).linkTo(vc2);
-            ((Linkable) vc2).linkTo(vc1);
-            return true;
+            if (vc1 instanceof Linkable && vc2 instanceof Linkable) {
+                ((Linkable) vc1).linkTo(vc2);
+                ((Linkable) vc2).linkTo(vc1);
+                return true;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return false;
     }
@@ -304,33 +433,40 @@ public class Impl_ZDesktopManager implements ZDesktopManager, ZDisposable, Chang
         modifyBranch(branch, activate, -1);
     }
 
+    // typically called to activate a snapshot i.e replace existing
     public void modifyBranch(DesktopBranch branch, boolean activate, int clipIndex) throws LogicalHierarchyException, ChildViewNotAllowedException, ComponentGenerationException {
-        List incoming = branch.asList();
-        if (incoming.size() == 0)
-            return;
+        //FlashMsg m = new FlashMsg(ZoeosFrame.getInstance(), ZoeosFrame.getInstance(), Integer.MAX_VALUE, 1000, FlashMsg.colorInfo, "Loading views...");
+        ProgressSession sess = Zoeos.getInstance().getProgressSession("Loading device views", 100);
+        sess.setIndeterminate(true);
+        try {
+            List incoming = branch.asList();
+            if (incoming.size() == 0)
+                return;
 
-        if (clipIndex > 0)
-            for (int i = incoming.size() - 1; i >= clipIndex; i--)
-                removeDesktopElement((DesktopElement) incoming.get(clipIndex));
+            if (clipIndex > 0)
+                for (int i = incoming.size() - 1; i >= clipIndex; i--)
+                    removeDesktopElement((DesktopElement) incoming.get(clipIndex));
 
-        List existing = Arrays.asList(getDesktopElementTree(branch.getRoot().getViewPath()));
+            List existing = Arrays.asList(getDesktopElementTree(branch.getRoot().getViewPath()));
 
-        List adding = new ArrayList();
-        List removing = new ArrayList();
-        adding.addAll(incoming);
-        removing.addAll(Arrays.asList(existing.toArray()));
+            List adding = new ArrayList();
+            List removing = new ArrayList();
+            adding.addAll(incoming);
+            removing.addAll(Arrays.asList(existing.toArray()));
 
-        adding.removeAll(existing);
-        removing.removeAll(incoming);
+            adding.removeAll(existing);
+            removing.removeAll(incoming);
+            for (int i = removing.size() - 1; i >= 0; i--)
+                removeDesktopElement((DesktopElement) removing.get(i));
 
-        for (int i = removing.size() - 1; i >= 0; i--)
-            removeDesktopElement((DesktopElement) removing.get(i));
-
-        if (adding.size() > 0)
-            for (int i = 0, j = adding.size(); i < j; i++)
-                addDesktopElement((DesktopElement) adding.get(i), activate);
-        else if (activate)
-            addDesktopElement((DesktopElement) incoming.get(0), true); // re-add the first to get activation
+            if (adding.size() > 0)
+                for (int i = 0, j = adding.size(); i < j; i++)
+                    addDesktopElement((DesktopElement) adding.get(i), (i == 0 ? activate : false));
+            else if (activate)
+                addDesktopElement((DesktopElement) incoming.get(0), true); // re-add the first to get activation
+        } finally {
+            sess.end();
+        }
     }
 
     /*

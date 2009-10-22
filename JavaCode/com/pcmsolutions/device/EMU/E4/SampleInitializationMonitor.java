@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.events.SampleInitializationStatusChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleInitializationStatusChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleInitializationStatusChangedEvent;
 
 /**
  * Created by IntelliJ IDEA.

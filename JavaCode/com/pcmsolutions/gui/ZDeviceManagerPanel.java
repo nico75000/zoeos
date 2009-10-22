@@ -1,9 +1,13 @@
 package com.pcmsolutions.gui;
 
 import com.pcmsolutions.system.*;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import java.awt.*;
@@ -12,7 +16,6 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.util.List;
 import java.util.Map;
-import java.util.prefs.Preferences;
 
 /**
  * Created by IntelliJ IDEA.
@@ -21,7 +24,7 @@ import java.util.prefs.Preferences;
  * Time: 22:26:01
  * To change this template use Options | File Templates.
  */
-public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListener {
+public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListener, ChangeListener {
     protected ZDeviceManager zdm;
     private Window parent;
 
@@ -65,20 +68,27 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
         h.setAction(new AbstractAction("Hunt") {
             public void actionPerformed(ActionEvent e) {
                 h.setEnabled(false);
-                Thread t = new ZDefaultThread("DeviceManager Hunt") {
-                    public void run() {
-                        try {
-                            zdm.performHunt();
-                        } finally {
+                try {
+                    Zoeos.getInstance().getSystemQ().getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
+                            try {
+                                zdm.performHunt();
+                            } finally {
+                            }
+                        }
+                    }, "performHunt").post(new Callback() {
+                        public void result(Exception e, boolean wasCancelled) {
                             SwingUtilities.invokeLater(new Runnable() {
                                 public void run() {
                                     h.setEnabled(true);
                                 }
                             });
                         }
-                    }
-                };
-                t.start();
+                    });
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                    h.setEnabled(true);
+                }
             }
         });
         h.setToolTipText("Hunt For Devices");
@@ -86,35 +96,28 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
 
         JButton r = new JButton(new AbstractAction("Refresh") {
             public void actionPerformed(ActionEvent e) {
-                new ZDefaultThread("Refesh Device Manager") {
-                    public void run() {
-                        pendingListChanged();
-                        startedListChanged();
-                        stoppedListChanged();
-                        duplicateListChanged();
-                        unidentifiedListChanged();
-                    }
-                }.start();
+                pendingListChanged();
+                startedListChanged();
+                stoppedListChanged();
+                duplicateListChanged();
+                unidentifiedListChanged();
             }
         });
         r.setToolTipText("Refresh Device Lists");
         buttBox.add(r);
 
-        final Preferences prefs = Preferences.userNodeForPackage(Zoeos.class);
         autoHuntAtStartup = new JCheckBox(new AbstractAction("Auto Hunt at Startup") {
             public void actionPerformed(ActionEvent e) {
                 ZoeosPreferences.ZPREF_autoHuntAtStartup.putValue(autoHuntAtStartup.isSelected());
             }
         });
-        autoHuntAtStartup.setSelected(ZoeosPreferences.ZPREF_autoHuntAtStartup.getValue());
         buttBox.add(autoHuntAtStartup);
 
         serializeDeviceMarshalling = new JCheckBox(new AbstractAction("Serialize Device Marshalling") {
             public void actionPerformed(ActionEvent e) {
-               ZoeosPreferences.ZPREF_serializeDeviceMarshalling.putValue(serializeDeviceMarshalling.isSelected());
+                ZoeosPreferences.ZPREF_serializeDeviceMarshalling.putValue(serializeDeviceMarshalling.isSelected());
             }
         });
-        serializeDeviceMarshalling.setSelected(ZoeosPreferences.ZPREF_serializeDeviceMarshalling.getValue());
         buttBox.add(serializeDeviceMarshalling);
 
         startBarr = new JCheckBox(new AbstractAction("Stop Device Marshalling at Pending") {
@@ -123,7 +126,6 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
                 ZoeosPreferences.ZPREF_stopHuntAtPending.putValue(startBarr.isSelected());
             }
         });
-        startBarr.setSelected(ZoeosPreferences.ZPREF_stopHuntAtPending.getValue());
         buttBox.add(startBarr);
 
         add(buttBox);
@@ -138,6 +140,14 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
 
         add(stopPanel);
         zdm.addDeviceManagerListener(this);
+        refreshPrefs();
+        ZoeosPreferences.addGlobalChangeListener(this);
+    }
+
+    void refreshPrefs() {
+        startBarr.setSelected(ZoeosPreferences.ZPREF_stopHuntAtPending.getValue());
+        autoHuntAtStartup.setSelected(ZoeosPreferences.ZPREF_autoHuntAtStartup.getValue());
+        serializeDeviceMarshalling.setSelected(ZoeosPreferences.ZPREF_serializeDeviceMarshalling.getValue());
     }
 
     public void pendingListChanged() {
@@ -158,6 +168,10 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
 
     public void duplicateListChanged() {
         dupPanel.refreshList();
+    }
+
+    public void stateChanged(ChangeEvent e) {
+        refreshPrefs();
     }
 
     private abstract class AbstractZDeviceStatePanel extends JPanel implements ListSelectionListener, MouseListener, ListCellRenderer {
@@ -273,7 +287,7 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
                     userObjects[0] = sel;
                     SwingUtilities.invokeLater(new Runnable() {
                         public void run() {
-                            ZCommandInvocationHelper.showPopup("ZDevice >", AbstractZDeviceStatePanel.this, userObjects, e, null);
+                            ZCommandFactory.showPopup("ZDevice >", AbstractZDeviceStatePanel.this, userObjects, e);
                         }
                     });
                     return true;
@@ -282,12 +296,11 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
             return false;
         }
 
-        public Component getListCellRendererComponent(
-                JList list,
-                Object value,
-                int index,
-                boolean isSelected,
-                boolean cellHasFocus) {
+        public Component getListCellRendererComponent(JList list,
+                                                      Object value,
+                                                      int index,
+                                                      boolean isSelected,
+                                                      boolean cellHasFocus) {
             //listLabel.setBackground(listColor);
             if (isSelected) {
                 listLabel.setBackground(listColor);
@@ -368,14 +381,22 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
                 public void actionPerformed(ActionEvent e) {
                     ZExternalDevice d = (ZExternalDevice) list.getSelectedValue();
                     if (d != null)
-                        zdm.startDevice(d);
+                        try {
+                            zdm.startDevice(d).post();
+                        } catch (ResourceUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
                 }
             };
             Action remove = new AbstractAction("Remove") {
                 public void actionPerformed(ActionEvent e) {
                     ZExternalDevice d = (ZExternalDevice) list.getSelectedValue();
                     if (d != null)
-                        zdm.removeDevice(d, false);
+                        try {
+                            zdm.removeDevice(d, false).post();
+                        } catch (ResourceUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
                 }
             };
             setActions(init, remove);
@@ -411,7 +432,11 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
                 public void actionPerformed(ActionEvent e) {
                     ZExternalDevice d = (ZExternalDevice) list.getSelectedValue();
                     if (d != null)
-                        zdm.stopDevice(d, "User intervention");
+                        try {
+                            zdm.stopDevice(d, "User intervention").post();
+                        } catch (ResourceUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
                 }
             };
             setActions(stop, null);
@@ -439,14 +464,22 @@ public class ZDeviceManagerPanel extends JPanel implements ZDeviceManagerListene
                 public void actionPerformed(ActionEvent e) {
                     ZExternalDevice d = (ZExternalDevice) list.getSelectedValue();
                     if (d != null)
-                        zdm.startDevice(d);
+                        try {
+                            zdm.startDevice(d).post();
+                        } catch (ResourceUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
                 }
             };
             Action remove = new AbstractAction("Remove >>") {
                 public void actionPerformed(ActionEvent e) {
                     ZExternalDevice d = (ZExternalDevice) list.getSelectedValue();
                     if (d != null)
-                        zdm.removeDevice(d, true);
+                        try {
+                            zdm.removeDevice(d, true).post();
+                        } catch (ResourceUnavailableException e1) {
+                            e1.printStackTrace();
+                        }
                 }
             };
             setActions(start, remove);

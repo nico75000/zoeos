@@ -1,13 +1,14 @@
 package com.pcmsolutions.device.EMU.E4.gui.multimode;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext.PresetContextTransferHandler;
-import com.pcmsolutions.device.EMU.E4.multimode.IllegalMidiChannelException;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.device.EMU.E4.selections.ContextPresetSelection;
 import com.pcmsolutions.device.EMU.E4.selections.DataFlavorGrid;
 import com.pcmsolutions.device.EMU.E4.selections.MultiModeSelection;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import javax.swing.*;
 import java.awt.datatransfer.DataFlavor;
@@ -34,7 +35,7 @@ public class MultiModeTransferHandler extends TransferHandler implements Transfe
         super.exportAsDrag(comp, e, action);
     }
 
-    public boolean importData(JComponent comp, Transferable t) {
+    public boolean importData(final JComponent comp, Transferable t) {
         if (comp instanceof MultiModeTable) {
             if (t.isDataFlavorSupported(multiModeFlavor)) {
                 // do import!!
@@ -47,17 +48,20 @@ public class MultiModeTransferHandler extends TransferHandler implements Transfe
                     e.printStackTrace();
                 }
             } else if (t.isDataFlavorSupported(PresetContextTransferHandler.presetContextFlavor)) {
-                int sr = ((MultiModeTable) comp).getSelectedRow();
+                final int sr = ((MultiModeTable) comp).getSelectedRow();
+                final int rc = ((MultiModeTable) comp).getRowCount();
                 try {
-                    ReadablePreset[] readablePresets = ((ContextPresetSelection) t.getTransferData(PresetContextTransferHandler.presetContextFlavor)).getReadablePresets();
-                    for (int i = 0,j = readablePresets.length; i < j; i++) {
-                        if (sr + i >= ((MultiModeTable) comp).getRowCount())
+                    final ReadablePreset[] readablePresets = ((ContextPresetSelection) t.getTransferData(PresetContextTransferHandler.presetContextFlavor)).getReadablePresets();
+                    for (int i = 0, j = readablePresets.length; i < j; i++) {
+                        if (sr + i >= rc)
                             break;
                         try {
-                            ((MultiModeTable) comp).getDevice().getMultiModeContext().setPreset(IntPool.get(sr + i + 1), readablePresets[i].getPresetNumber());
-                        } catch (IllegalMidiChannelException e) {
+                            ((MultiModeTable) comp).getDevice().getMultiModeContext().setPreset(IntPool.get(sr + i + 1), readablePresets[i].getIndex()).post();
+                        } catch (IllegalMultimodeChannelException e) {
                             e.printStackTrace();
-                        } catch (ZDeviceNotRunningException e) {
+                        } catch (DeviceException e) {
+                            e.printStackTrace();
+                        } catch (ResourceUnavailableException e) {
                             e.printStackTrace();
                         }
                     }
@@ -101,14 +105,18 @@ public class MultiModeTransferHandler extends TransferHandler implements Transfe
 
     protected Transferable createTransferable(JComponent c) {
         if (c instanceof MultiModeTable) {
-            mms = ((MultiModeTable) c).getSelection();
-            MultiModeSelection.MultiModeChannelSelection[] mmcs = mms.getChannelData();
-            int[] selCols = mms.getSelCols();
-            multiModeFlavor.clearGrid();
-            multiModeFlavor.setDefCols(selCols);
-            for (int i = 0,j = mmcs.length; i < j; i++)
-                multiModeFlavor.addRow(mmcs[i].getChannel().intValue());
-            return this;
+            try {
+                mms = ((MultiModeTable) c).getSelection();
+                MultiModeSelection.MultiModeChannelSelection[] mmcs = mms.getChannelData();
+                int[] selCols = mms.getSelCols();
+                multiModeFlavor.clearGrid();
+                multiModeFlavor.setDefCols(selCols);
+                for (int i = 0, j = mmcs.length; i < j; i++)
+                    multiModeFlavor.addRow(mmcs[i].getChannel().intValue());
+                return this;
+            } catch (DeviceException e) {
+                e.printStackTrace();
+            }
         }
         return null;
     }

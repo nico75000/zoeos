@@ -12,7 +12,7 @@ import javax.swing.*;
  * To change this template use Options | File Templates.
  */
 public interface RowHeaderedTable extends ZDisposable {
-    public JTable getRowHeader();
+    public PopupTable getRowHeader();
 
-    public JTable getTable();
+    public PopupTable getTable();
 }

@@ -12,16 +12,26 @@ import java.util.prefs.Preferences;
  * Time: 05:30:10
  * To change this template use Options | File Templates.
  */
-public interface ZPref extends ZDisposable{
+public interface ZPref extends ZDisposable {
     public void addChangeListener(ChangeListener cl);
+
     public void removeChangeListener(ChangeListener cl);
+
     public void putDefault();
+
     public void putValueString(String strVal);
+
     public String getValueString();
+
     public Object getValueObject();
+
     public String getDefaultString();
+
     public Preferences getPrefs();
+
     public String getCategory();
+
     public String getPresentationName();
+
     public String getDescription();
 }

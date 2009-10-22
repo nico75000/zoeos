@@ -33,7 +33,7 @@ public class PropertiesPanel extends JPanel implements TitleProvider, ZDisposabl
         this.properties = new ArrayList(properties);
         this.tp = tp;
         this.add(makePropertiesComponent(), BorderLayout.CENTER);
-        setBorder(new FuzzyLineBorder(UIColors.getTableBorder(), UIColors.getTableBorderWidth(), true, true));
+        setBorder(new FuzzyLineBorder(UIColors.getTableBorder(), UIColors.getTableBorderWidth()));
     }
 
     private JComponent makePropertiesComponent() {

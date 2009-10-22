@@ -11,17 +11,21 @@ import com.pcmsolutions.system.paths.DesktopName;
 import com.pcmsolutions.system.paths.ViewPath;
 
 import javax.swing.*;
-import java.awt.*;
+import javax.swing.tree.TreeNode;
 import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.awt.*;
 
 /**
  * User: paulmeehan
  * Date: 19-Jan-2004
  * Time: 10:27:53
  */
-public class ZDocumentComponent extends DocumentComponent implements ZDisposable, ZDocumentPaneListener {
+public class ZDocumentComponent extends DocumentComponent implements ZDisposable, TreeNode, ZDocumentPaneListener {
     private DesktopElement desktopElement;
     private boolean isContainer = false;
+    TreeNode parent;
 
     private static class ProxyComponent extends JPanel {
         private JComponent realComponent;
@@ -51,8 +55,9 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
         }
     };
 
-    public ZDocumentComponent(DesktopElement e) throws ComponentGenerationException {
+    public ZDocumentComponent(DesktopElement e, TreeNode parent) throws ComponentGenerationException {
         super(new ProxyComponent(e.getComponent()), e.getName().toString());
+        this.parent = parent;
         this.desktopElement = e;
         desktopElement.addTitleProviderListener(tpl);
         updateTitleData();
@@ -62,12 +67,32 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
         return isContainer;
     }
 
+    public boolean isContainerViewAsChild() {
+        return desktopElement instanceof ContainerDesktopElement;
+    }
+
     public JComponent getRealComponent() {
         return ((ProxyComponent) getComponent()).getRealComponent();
     }
 
     public void setRealComponent(JComponent jComponent) {
         ((ProxyComponent) getComponent()).setRealComponent(jComponent);
+    }
+
+    boolean areSibling(DesktopElement de1, DesktopElement de2) {
+        ViewPath vp1 = de1.getViewPath();
+        ViewPath vp2 = de2.getViewPath();
+        if (vp1.getPathCount() == vp2.getPathCount() && vp1.getParentPath().equals(vp2.getParentPath()))
+            return true;
+        return false;
+    }
+
+    boolean isChildOf(DesktopElement de1, DesktopElement de2) {
+        ViewPath vp1 = de1.getViewPath();
+        ViewPath vp2 = de2.getViewPath();
+        if (vp1.getPathCount() == vp2.getPathCount() - 1 && vp1.getPath().equals(vp2.getParentPath()))
+            return true;
+        return false;
     }
 
     public boolean addDesktopElement(DesktopElement de, boolean activate) throws ComponentGenerationException, ChildViewNotAllowedException, LogicalHierarchyException {
@@ -89,6 +114,25 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
         return false;
     }
 
+    public void sendMessage(String msg) {
+        if (isContainer) {
+            ZDocumentPane zdp = (ZDocumentPane) getRealComponent();
+            zdp.sendMessage(msg);
+            // container element should ignore message
+        }
+        desktopElement.getActivityContext().sendMessage(msg);
+    }
+     public List<DesktopElement> evaluateCondition(String condition) {
+         ArrayList<DesktopElement> positive = new ArrayList<DesktopElement>();
+         if (isContainer) {
+            ZDocumentPane zdp = (ZDocumentPane) getRealComponent();
+            positive.addAll(zdp.evaluateCondition(condition));
+            // container element should ignore message
+        }
+        if ( desktopElement.getActivityContext().testCondition(condition))
+            positive.add(desktopElement.getCopy());
+         return positive;
+    }
     public ArrayList getDesktopElementTree(boolean originals) {
         ArrayList elems = new ArrayList();
         if (isContainer) {
@@ -98,6 +142,7 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
             elems.addAll(zdp.getDesktopElementTree(originals));
         } else
             elems.add((originals ? getRealDesktopElement() : getRealDesktopElement().getCopy()));
+        //  elems.add((originals ? getDesktopElement() : getDesktopElement().getCopy()));
         return elems;
     }
 
@@ -113,7 +158,7 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
             } else {
                 // expand
                 if (desktopElement.getNodalDescriptor().allowsChildren()) {
-                    ZDocumentPane nzdp = new ZDocumentPane();
+                    ZDocumentPane nzdp = new ZDocumentPane(this);
                     nzdp.setTabbedPaneCustomizer(new DocumentPane.TabbedPaneCustomizer() {
                         public void customize(JideTabbedPane jideTabbedPane) {
                             jideTabbedPane.setRightClickSelect(true);
@@ -127,8 +172,11 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
                     nzdp.addZDocumentPaneListener(this);
                     nzdp.setGroupsAllowed(desktopElement.getNodalDescriptor().allowsGrouping());
                     nzdp.setReorderAllowed(desktopElement.getNodalDescriptor().allowsReordering());
-                    if (desktopElement.getNodalDescriptor().showingWhenContainer())
+                    if (desktopElement.getNodalDescriptor().showingWhenContainer()){
+                        nzdp.containerSession = desktopElement.getSessionString();
+                        nzdp.containerAsChildDesktopName = desktopElement.getName().toString();
                         nzdp.openDesktopElement(new ContainerDesktopElement(desktopElement));
+                    }
                     setRealComponent(nzdp);
                 } else
                     throw new ChildViewNotAllowedException();
@@ -145,7 +193,7 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
     }
 
     public DesktopElement getRealDesktopElement() {
-        if (desktopElement instanceof ContainerDesktopElement)
+        if (isContainerViewAsChild())
             return ((ContainerDesktopElement) desktopElement).desktopElement;
         return desktopElement;
     }
@@ -168,7 +216,7 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
 
     public void ZDocumentComponentClosed(ZDocumentPane source) {
         if (source.getDocumentCount() == 0 ||
-                (source.getDocumentCount() == 1 && ((ZDocumentComponent) source.getDocument(source.getDocumentNameAt(0))).getDesktopElement() instanceof ContainerDesktopElement))
+                (source.getDocumentCount() == 1 && ((ZDocumentComponent) source.getDocument(source.getDocumentNameAt(0))).isContainerViewAsChild()))
             try {
                 this.setContainer(false);
             } catch (ComponentGenerationException e1) {
@@ -176,7 +224,68 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
             }
     }
 
+    // TREE NODE
+    public TreeNode getChildAt(int childIndex) {
+        if (!isContainer())
+            return null;
+        ZDocumentPane zdp = (ZDocumentPane) getRealComponent();
+        return (ZDocumentComponent) zdp.getDocument(zdp.getDocumentNameAt(childIndex));
+    }
+
+    public int getChildCount() {
+        if (!isContainer())
+            return 0;
+        ZDocumentPane zdp = (ZDocumentPane) getRealComponent();
+        return zdp.getDocumentCount();
+    }
+
+    public TreeNode getParent() {
+        return parent;
+    }
+
+    public int getIndex(TreeNode node) {
+        if (node instanceof ZDocumentComponent)
+            return ((ZDocumentPane) getRealComponent()).indexOfDocument(((ZDocumentComponent) node).getName());
+        else
+            return -1;
+    }
+
+    public boolean getAllowsChildren() {
+        return true;
+    }
+
+    public boolean isLeaf() {
+        return !isContainer();
+    }
+
+    public Enumeration<TreeNode> children() {
+        if (isContainer()) {
+            return new Enumeration<TreeNode>() {
+                int next = 0;
+                ZDocumentPane zdp = (ZDocumentPane) getRealComponent();
+
+                public boolean hasMoreElements() {
+                    return next < zdp.getDocumentCount();
+                }
+
+                public TreeNode nextElement() {
+                    return (ZDocumentComponent) zdp.getDocument(zdp.getDocumentNameAt(next));
+                }
+            };
+        } else
+            return new Enumeration<TreeNode>() {
+                public boolean hasMoreElements() {
+                    return false;
+                }
+
+                public TreeNode nextElement() {
+                    return null;
+                }
+            };
+    }
+
     protected class ContainerDesktopElement implements DesktopElement {
+        //String session;
         protected DesktopElement desktopElement;
         private final DesktopNodeDescriptor dnd = new DesktopNodeDescriptor() {
             public boolean allowsChildren() {
@@ -240,26 +349,61 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
             return dnd;
         }
 
+        final ActivityContext ac = new ActivityContext() {
+            public boolean tryClosing() {
+                return false;
+            }
+
+            public void sendMessage(String msg) {
+                // TODO!! should this be here?
+                // desktopElement.getActivityContext().sendMessage(msg);
+            }
+
+            public boolean testCondition(String condition) {
+                return desktopElement.getActivityContext().testCondition(condition);
+            }
+
+            public void closed() {
+            }
+
+            public void activated() {
+                desktopElement.getActivityContext().activated();
+            }
+
+            public void deactivated() {
+                desktopElement.getActivityContext().deactivated();
+            }
+        };
+
         public ActivityContext getActivityContext() {
             // return desktopElement.getActivityContext();
-            return StaticActivityContext.FALSE;
+            //return StaticActivityContext.FALSE;
+            return ac;
         }
 
-        // obvious
-        public boolean isFloatable() {
-            return desktopElement.isFloatable();
+        public String retrieveComponentSessionString() {
+            return desktopElement.retrieveComponentSessionString();
+        }
+
+        public void updateComponentSession(String sessStr) {
+            desktopElement.updateComponentSession(sessStr);
         }
 
         public void setSessionString(String ss) {
             desktopElement.setSessionString(ss);
+            //  session = ss;
         }
 
         public String getSessionString() {
             return desktopElement.getSessionString();
+            // return session;
         }
 
         public DesktopElement getCopy() {
             return desktopElement.getCopy();
+            // ContainerDesktopElement cde = new ContainerDesktopElement(desktopElement);
+            // cde.session = session;
+            //  return cde;
         }
 
         public String getTitle() {
@@ -289,12 +433,12 @@ public class ZDocumentComponent extends DocumentComponent implements ZDisposable
         public void zDispose() {
         }
 
-        public boolean isMenuBarAvailable() {
-            return desktopElement.isMenuBarAvailable();
+        public boolean isFrameMenuBarAvailable() {
+            return desktopElement.isFrameMenuBarAvailable();
         }
 
-        public JMenuBar getMenuBar() {
-            return desktopElement.getMenuBar();
+        public JMenuBar getFrameMenuBar() {
+            return desktopElement.getFrameMenuBar();
         }
 
         public boolean hasExpired() {

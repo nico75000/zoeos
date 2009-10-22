@@ -7,8 +7,8 @@
 package com.pcmsolutions.device.EMU.E4.master;
 
 
-import com.pcmsolutions.device.EMU.E4.events.MasterChangedEvent;
-import com.pcmsolutions.device.EMU.E4.events.MasterRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.events.master.MasterChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.master.MasterRefreshedEvent;
 
 /**
  *
