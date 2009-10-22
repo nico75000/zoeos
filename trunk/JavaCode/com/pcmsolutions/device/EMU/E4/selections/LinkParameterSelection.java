@@ -4,8 +4,9 @@ import com.pcmsolutions.device.EMU.E4.gui.parameter.ParameterUtilities;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 
 public class LinkParameterSelection extends AbstractE4Selection {
     private Integer[] ids;
@@ -35,7 +36,7 @@ public class LinkParameterSelection extends AbstractE4Selection {
 
     }
 
-    public LinkParameterSelection(ReadablePreset.ReadableLink l, Integer[] ids, int category) throws ZDeviceNotRunningException, IllegalParameterIdException, PresetEmptyException, NoSuchPresetException, NoSuchLinkException {
+    public LinkParameterSelection(ReadablePreset.ReadableLink l, Integer[] ids, int category) throws ParameterException, PresetException, EmptyException {
         super(l.getPreset().getDeviceContext());
         this.ids = new Integer[ids.length];
         this.vals = new Integer[ids.length];
@@ -59,16 +60,8 @@ public class LinkParameterSelection extends AbstractE4Selection {
     public void render(ContextEditablePreset.EditableLink l) {
         for (int i = 0, n = ids.length; i < n; i++) {
             try {
-                l.setLinksParam(ids[i], vals[i]);
-            } catch (NoSuchPresetException e) {
-                e.printStackTrace();
-            } catch (PresetEmptyException e) {
-                e.printStackTrace();
-            } catch (IllegalParameterIdException e) {
-                e.printStackTrace();
-            } catch (ParameterValueOutOfRangeException e) {
-                e.printStackTrace();
-            } catch (NoSuchLinkException e) {
+                l.setLinkParam(ids[i], vals[i]);
+            }catch (PresetException e) {
                 e.printStackTrace();
             }
         }

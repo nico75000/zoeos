@@ -24,7 +24,7 @@ public class SingleColumnParameterModelTableModel extends AbstractParameterModel
         rowHeaderColumnData = new ColumnData("", 65, JLabel.LEFT, 0, Object.class);
         columnData = new ColumnData[1];
         columnData[0] = new ColumnData("", 85, JLabel.LEFT, 0, ReadableParameterModel.class, null, null);
-        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), 85, "")};
+        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(),UIColors.getTableSecondSectionHeaderBG(), UIColors.getTableFirstSectionFG(), 85, "")};
     }
 
     protected void doPreRefresh() {

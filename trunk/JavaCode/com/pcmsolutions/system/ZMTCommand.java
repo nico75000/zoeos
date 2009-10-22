@@ -12,11 +12,5 @@ package com.pcmsolutions.system;
 
 public interface ZMTCommand extends ZCommand {
 
-    public ZMTCommand getNextMode();
-
-    public void setTargets(Object[] targets) throws ZMTCommandTargetsNotSuitableException;
-
-    public int getMinNumTargets();
-
-    public int getMaxNumTargets();
+    public ZMTCommand getNextMode();   
 }

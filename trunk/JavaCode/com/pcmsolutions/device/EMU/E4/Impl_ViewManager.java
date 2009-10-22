@@ -1,21 +1,30 @@
 package com.pcmsolutions.device.EMU.E4;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.desktop.ViewManager;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetInitializationStatusChangedEvent;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetListenerAdapter;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.gui.ProgressSession;
+import com.pcmsolutions.gui.ZoeosFrame;
 import com.pcmsolutions.gui.desktop.DesktopBranch;
 import com.pcmsolutions.gui.desktop.DesktopElement;
-import com.pcmsolutions.gui.ZoeosFrame;
-import com.pcmsolutions.system.threads.ZDefaultThread;
-import com.pcmsolutions.system.Linkable;
 import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.Zoeos;
+import com.pcmsolutions.system.tasking.ManageableTicketedQ;
+import com.pcmsolutions.system.tasking.QueueFactory;
+import com.pcmsolutions.system.tasking.Ticket;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
 import javax.swing.*;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
-import java.util.Vector;
 import java.lang.reflect.InvocationTargetException;
+import java.util.*;
 
 /**
  * User: paulmeehan
@@ -23,38 +32,32 @@ import java.lang.reflect.InvocationTargetException;
  * Time: 18:32:32
  */
 class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
-    transient private Vector listeners;
-    private Vector snapshots = new Vector();
-    private DeviceContext device;
+    transient Vector listeners;
+    final Vector snapshots = new Vector();
+    final E4Device device;
 
     transient private ViewMediator.TaskDeviceWorkspace task_deviceWorkspace;
     transient private ViewMediator.TaskDevice task_device;
     transient private ViewMediator.TaskProperties task_properties;
+    transient private ViewMediator.TaskPiano task_piano;
     transient private ViewMediator.TaskDefaultPresetContext task_presetContext;
     transient private ViewMediator.TaskDefaultSampleContext task_sampleContext;
     transient private ViewMediator.TaskMultiMode task_multiMode;
     transient private ViewMediator.TaskMaster task_master;
+    transient private PresetListenerAdapter pla;
+
+    transient private boolean presetInitMonitorsSetup = false;
+    transient private ManageableTicketedQ viewManagerQ;
 
     private DesktopElement[] desktopElementsOnNextStart;
 
     public void zDispose() {
+        viewManagerQ.stop(true);
+        deregisterPresetInitializationMonitors();
         listeners.clear();
-        listeners = null;
         snapshots.clear();
-        snapshots = null;
-
         desktopElementsOnNextStart = null;
         r = null;
-        /*
-        device = null;
-        task_deviceWorkspace = null;
-        task_device = null;
-        task_properties = null;
-        task_presetContext = null;
-        task_sampleContext = null;
-        task_multiMode = null;
-        task_master = null;
-        */
     }
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
@@ -64,13 +67,25 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
 
     private transient Runnable r;
 
-    private void restoreDesktopElements() {
-        if (desktopElementsOnNextStart != null)
+    private synchronized void restoreDesktop() {
+        if (desktopElementsOnNextStart != null && device.getDevicePreferences().ZPREF_reopenPreviousEditors.getValue()) {
+            /* int count = 0;
+             int q = 4;
+             while (count < desktopElementsOnNextStart.length) {
+                 int quant = count + q < desktopElementsOnNextStart.length ? q : desktopElementsOnNextStart.length - count;
+                 DesktopElement[] elems = new DesktopElement[quant];
+                 System.arraycopy(desktopElementsOnNextStart, count, elems, 0, quant);
+                 ViewMediator.openDesktopElements(elems);
+                 count += quant;
+             }*/
             ViewMediator.openDesktopElements(desktopElementsOnNextStart);
+        }
         desktopElementsOnNextStart = null;
     }
 
     private void makeTransients() {
+        viewManagerQ = QueueFactory.createTicketedQueue(this, "viewManagerUIQ", 6);
+        viewManagerQ.start();
         listeners = new Vector();
         r = new Runnable() {
             public void run() {
@@ -82,6 +97,30 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
                             e.printStackTrace();
                         }
                     }
+                }
+            }
+        };
+        pla = new PresetListenerAdapter() {
+            final HashMap<Integer, ProgressSession> progs = new HashMap<Integer, ProgressSession>();
+
+            public void presetInitializationStatusChanged(final PresetInitializationStatusChangedEvent ev) {
+                try {
+                    double st = ev.getStatus();
+                    if (st == 0) {
+                        ProgressSession ps = progs.remove(ev.getIndex());
+                        if (ps != null)
+                            ps.end();
+                        progs.remove(ev.getIndex());
+                    } else if (st > 0) {   // just incoming dumps
+                        if (!progs.containsKey(ev.getIndex())) {
+                            ReadablePreset p = device.getDefaultPresetContext().getReadablePreset(ev.getIndex());
+                            progs.put(ev.getIndex(), Zoeos.getInstance().getProgressSession(device.makeDeviceProgressTitle("Initializing " + p.getDisplayName()), 100));
+                        }
+                        progs.get(ev.getIndex()).updateStatus((int) (100 * Math.abs(st)));
+                    }
+                    return;
+                } catch (DeviceException e) {
+                    e.printStackTrace();
                 }
             }
         };
@@ -103,6 +142,12 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
         if (task_properties == null)
             task_properties = new ViewMediator.TaskProperties(device);
         return task_properties;
+    }
+
+    private ViewMediator.TaskPiano getPianoTask() {
+        if (task_piano == null)
+            task_piano = new ViewMediator.TaskPiano(device);
+        return task_piano;
     }
 
     private ViewMediator.TaskMultiMode getMultiModeTask() {
@@ -129,14 +174,45 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
         return task_sampleContext;
     }
 
-    public Impl_ViewManager(DeviceContext device) {
+    public Impl_ViewManager(E4Device device) {
         this.device = device;
         makeTransients();
     }
 
+    private Object makeProgressObject(PresetInitializationStatusChangedEvent ev) {
+        return device.getStaticName() + ev.getIndex();
+    }
+
+    void registerPresetInitializationMonitors() {
+        if (!presetInitMonitorsSetup) {
+            try {
+                Set s = device.getDefaultPresetContext().getDatabaseIndexes();
+                device.presetDB.getRootContext().addContentListener(pla, (Integer[]) s.toArray(new Integer[s.size()]));
+                presetInitMonitorsSetup = true;
+            } catch (DeviceException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    void deregisterPresetInitializationMonitors() {
+        if (presetInitMonitorsSetup) {
+            try {
+                Set s = device.getDefaultPresetContext().getDatabaseIndexes();
+                device.presetDB.getRootContext().removeContentListener(pla, (Integer[]) s.toArray(new Integer[s.size()]));
+                presetInitMonitorsSetup = false;
+            } catch (NoSuchContextException e) {
+                // e.printStackTrace();
+            } catch (DeviceException e) {
+                //e.printStackTrace();
+            }
+        }
+    }
+
     protected void retrieveDeviceDesktopElementsForNextStart() {
         try {
-            desktopElementsOnNextStart = ViewMediator.getDeviceDesktopElements(device);
+            //desktopElementsOnNextStart = ViewMediator.getDeviceWorkspaceDesktopElements(device);
+            desktopElementsOnNextStart = ViewMediator.getAllDeviceDesktopElements(device);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -146,33 +222,109 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
         return desktopElementsOnNextStart != null;
     }
 
-    public Thread clearDeviceWorkspace() {
-        return new ZDefaultThread() {
-            public void run() {
-                ViewMediator.modifyBranch(new DesktopBranch(new DesktopElement[]{getDeviceWorkspaceTask().desktopElement}), true, -1);
+    Ticket sendWorkspaceMessage(final String msg) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                ViewMediator.sendWorkspaceMessage(device, msg);
             }
-        };
+        }, "Send workspace message");
     }
 
-    public Thread openDeviceViews() {
-        return new ZDefaultThread() {
-            public void run() {
+    Ticket sendPresetContextMessage(final String msg) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                ViewMediator.sendPresetContextMessage(device, msg);
+            }
+        }, "MSG:" + msg);
+    }
+
+    Ticket sendSampleContextMessage(final String msg) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                ViewMediator.sendSampleContextMessage(device, msg);
+            }
+        }, "MSG:" + msg);
+    }
+
+    public Ticket brodcastCloseIfEmpty() {
+        return sendWorkspaceMessage(ViewMessaging.MSG_BROADCAST_CLOSE_EMPTY);
+    }
+
+    public Ticket addPresetsToPresetContextFilter(Integer[] presets) {
+        return sendPresetContextMessage(ViewMessaging.applyFieldsToMessage(ViewMessaging.MSG_ADD_PRESETS_TO_PRESET_CONTEXT_FILTER, presets));
+    }
+
+    public Ticket selectOpenPresetsInPresetContext() {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                DesktopElement[] positives = ViewMediator.evaluateWorkspaceCondition(device, ViewMessaging.CONDITION_IS_OPEN_PRESET);
+                HashSet<Integer> positiveIndexes = new HashSet<Integer>();
+                for (DesktopElement de : positives)
+                    if (de instanceof ViewMediator.PresetIndexProvider)
+                        positiveIndexes.add(((ViewMediator.PresetIndexProvider) de).getPresetIndex());
+                if (positiveIndexes.size() > 0)
+                    sendPresetContextMessage(ViewMessaging.applyFieldsToMessage(ViewMessaging.MSG_SELECT_OPEN_PRESETS_IN_PRESET_CONTEXT, positiveIndexes.toArray())).post();
+            }
+        }, "selectOpenPresetsInPresetContext");
+    }
+
+    public Ticket addSamplesToSampleContextFilter(Integer[] samples) {
+        return sendSampleContextMessage(ViewMessaging.applyFieldsToMessage(ViewMessaging.MSG_ADD_SAMPLES_TO_SAMPLE_CONTEXT_FILTER, samples));
+    }
+
+    public Ticket closeEmptyPresets() {
+        return sendWorkspaceMessage(ViewMessaging.MSG_CLOSE_PRESET_EMPTY);
+    }
+
+    public Ticket closeEmptyVoices() {
+        return sendWorkspaceMessage(ViewMessaging.MSG_CLOSE_VOICE);
+    }
+
+    public Ticket closeFlashPresets() {
+        return sendWorkspaceMessage(ViewMessaging.MSG_CLOSE_PRESET_FLASH);
+
+    }
+
+    public Ticket closeUserPresets() {
+        return sendWorkspaceMessage(ViewMessaging.MSG_CLOSE_PRESET_USER);
+    }
+
+    public Ticket clearDeviceWorkspace() {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                ViewMediator.modifyBranch(new DesktopBranch(new DesktopElement[]{getDeviceWorkspaceTask().getFirstDesktopElement()}), true, -1);
+            }
+        }, "Clear device workspace");
+    }
+
+    public Ticket openDeviceViews() {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
                 getDeviceWorkspaceTask().open(false);
                 getDeviceTask().open(false);
                 getPropertiesTask().open(false);
+                //getPianoTask().assertOpen(false);
                 getDefaultPresetContextTask().open(false);
                 getDefaultSampleContextTask().open(false);
                 getMultiModeTask().open(false);
                 getMasterTask().open(false);
-
                 // activate preset context
                 getDefaultPresetContextTask().open(true);
-
                 linkSCAndPC();
-
-                restoreDesktopElements();
             }
-        };
+        }, "Open device views");
+    }
+
+    public synchronized void invalidateDesktopElements() {
+        desktopElementsOnNextStart = null;
+    }
+
+    public Ticket restoreDesktopElements() {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                restoreDesktop();
+            }
+        }, "Restore desktop");
     }
 
     private void linkSCAndPC() {
@@ -180,7 +332,7 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
             SwingUtilities.invokeAndWait(new Runnable() {
                 public void run() {
                     try {
-                        ZoeosFrame.getInstance().getZDesktopManager().mutuallyLinkComponents(getDefaultPresetContextTask().desktopElement.getViewPath(), getDefaultSampleContextTask().desktopElement.getViewPath());
+                        ZoeosFrame.getInstance().getZDesktopManager().mutuallyLinkComponents(getDefaultPresetContextTask().getFirstDesktopElement().getViewPath(), getDefaultSampleContextTask().getFirstDesktopElement().getViewPath());
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -193,100 +345,151 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
         }
     }
 
-    public Thread activateDevicePalettes() {
-        return new ZDefaultThread() {
-            public void run() {
+    public Ticket activateDevicePalettes() {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
                 getDeviceTask().open(true);
                 getPropertiesTask().open(true);
+                //getPianoTask().assertOpen(true);
                 getDefaultPresetContextTask().open(true);
                 getDefaultSampleContextTask().open(true);
                 getMultiModeTask().open(true);
                 getMasterTask().open(true);
                 linkSCAndPC();
             }
-        };
+        }, "Activate device palettes");
     }
 
-    public Thread closeDeviceViews() {
-        return new ZDefaultThread() {
-            public void run() {
-                Thread t = clearDeviceWorkspace();
-                t.start();
-                while(t.isAlive())
-                    try {
-                        t.join();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+    public Ticket closeDeviceViews() {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                //clearDeviceWorkspace().send(0);
                 getDeviceWorkspaceTask().close();
                 getDeviceTask().close();
                 getPropertiesTask().close();
+                // getPianoTask().referencedClose();
                 getDefaultPresetContextTask().close();
                 getDefaultSampleContextTask().close();
                 getMultiModeTask().close();
                 getMasterTask().close();
             }
-        };
+        }, "Activate device palettes");
     }
 
-    public Thread modifyBranch(final DesktopBranch branch, final boolean activate, final int clipIndex) {
-        return new ZDefaultThread() {
-            public void run() {
+    public Ticket modifyBranch(final DesktopBranch branch, final boolean activate, final int clipIndex) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
                 ViewMediator.modifyBranch(branch, activate, clipIndex);
             }
-        };
+        }, "Modify device desktop branch");
     }
 
-    public void openVoice(ContextEditablePreset.EditableVoice voice, boolean activate) {
-        new ViewMediator.TaskVoice(voice).open(activate);
+    public Ticket openVoice(final ContextEditablePreset.EditableVoice voice, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TaskVoice(voice).open(activate);
+            }
+        }, "Open voice");
     }
 
-    public void openVoices(ContextEditablePreset.EditableVoice[] voices, boolean activate) {
-        new ViewMediator.TaskVoice(voices).open(activate);
+    public Ticket openVoices(final ContextEditablePreset.EditableVoice[] voices, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TaskVoice(voices).open(activate);
+            }
+        }, "Open voices");
     }
 
-    public void openTabbedVoice(ContextEditablePreset.EditableVoice voice, boolean groupEnvelopes, boolean activate) {
-        new ViewMediator.TabbedTaskVoice(voice, groupEnvelopes).open(activate);
+    public Ticket openTabbedVoice(final ContextEditablePreset.EditableVoice voice, final boolean groupEnvelopes, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TabbedTaskVoice(voice, groupEnvelopes).open(activate);
+            }
+        }, "Open tabbed voice");
     }
 
-    public void openTabbedVoices(ContextEditablePreset.EditableVoice[] voices, boolean groupEnvelopes, boolean activate) {
-        new ViewMediator.TabbedTaskVoice(voices, groupEnvelopes).open(activate);
+    public Ticket openTabbedVoices(final ContextEditablePreset.EditableVoice[] voices, final boolean groupEnvelopes, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TabbedTaskVoice(voices, groupEnvelopes).open(activate);
+            }
+        }, "Open tabbed voices");
     }
 
-    public void openVoice(ReadablePreset.ReadableVoice voice, boolean activate) {
-        new ViewMediator.TaskVoice(voice).open(activate);
+    public Ticket openVoice(final ReadablePreset.ReadableVoice voice, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TaskVoice(voice).open(activate);
+            }
+        }, "Open voice");
     }
 
-    public void openTabbedVoice(ReadablePreset.ReadableVoice voice, boolean groupEnvelopes, boolean activate) {
-        new ViewMediator.TabbedTaskVoice(voice, groupEnvelopes).open(activate);
+    public Ticket openTabbedVoice(final ReadablePreset.ReadableVoice voice, final boolean groupEnvelopes, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TabbedTaskVoice(voice, groupEnvelopes).open(activate);
+            }
+        }, "Open tabbed voice");
     }
 
-    public void openPreset(ReadablePreset p) {
-        new ViewMediator.TaskPreset(p).open();
-    }
-
-    public void openPreset(ContextEditablePreset p) {
-        new ViewMediator.TaskPreset(p).open();
-    }
-
-    public void openDesktopElements(DesktopElement[] elements) {
-        ViewMediator.openDesktopElements(elements);
-    }
-
-    public void takeSnapshot(final String title) {
-        new ZDefaultThread() {
-            public void run() {
-                try {
-                    DesktopBranch db = new DesktopBranch(ViewMediator.getDeviceDesktopElements(device), title);
-                    if (db.count() == 0)
-                        return;
-                    snapshots.add(db);
-                    fireStateChanged(true);
-                } catch (Exception e) {
-                    e.printStackTrace();
+    public Ticket openPreset(final ReadablePreset p, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                if (p instanceof ContextEditablePreset) {
+                    new ViewMediator.TaskPreset((ContextEditablePreset) p).open(activate);
+                    //new ViewMediator.TaskPresetUser((ContextEditablePreset) p).assertOpen(false);
+                } else {
+                    new ViewMediator.TaskPreset(p).open(activate);
+                    //new ViewMediator.TaskPresetUser(p).assertOpen(false);
                 }
             }
-        }.start();
+        }, "Open preset");
+    }
+
+    public Ticket closePreset(final ReadablePreset p) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                if (p instanceof ContextEditablePreset) {
+                    new ViewMediator.TaskPreset((ContextEditablePreset) p).close();
+                    // new ViewMediator.TaskPresetUser((ContextEditablePreset) p).referencedClose();
+                } else {
+                    new ViewMediator.TaskPreset(p).close();
+                    //  new ViewMediator.TaskPresetUser(p).referencedClose();
+                }
+            }
+        }, "Close preset");
+    }
+
+    public Ticket openPreset(final ContextEditablePreset p, final boolean activate) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                new ViewMediator.TaskPreset(p).open(activate);
+            }
+        }, "Open preset");
+    }
+
+    public Ticket openDesktopElements(final DesktopElement[] elements) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                ViewMediator.openDesktopElements(elements);
+            }
+        }, "Open device desktop elements");
+    }
+
+    public boolean hasWorkspaceElements() throws Exception {
+        return ViewMediator.hasWorkspaceElements(device);
+    }
+
+    public Ticket takeSnapshot(final String title) {
+        return viewManagerQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                DesktopBranch db = new DesktopBranch(ViewMediator.getDeviceWorkspaceDesktopElements(device), title);
+                if (db.count() == 0)
+                    return;
+                snapshots.add(db);
+                fireStateChanged(true);
+            }
+        }, "Take device desktop snapshot");
     }
 
     public DesktopBranch[] getSnapshots() {
@@ -315,11 +518,13 @@ class Impl_ViewManager implements ViewManager, Serializable, ZDisposable {
     }
 
     public void addViewManagerListener(ViewManager.Listener l) {
-        listeners.add(l);
+        if (listeners != null)
+            listeners.add(l);
     }
 
     public void removeViewManagerListener(ViewManager.Listener l) {
-        listeners.remove(l);
+        if (listeners != null)
+            listeners.remove(l);
     }
 
     protected void fireStateChanged(boolean onUIThread) {

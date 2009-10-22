@@ -4,12 +4,12 @@ import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedT
 import com.pcmsolutions.device.EMU.E4.gui.table.ColumnAndSectionDataProvider;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchVoiceException;
-import com.pcmsolutions.device.EMU.E4.preset.PresetEmptyException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceParameterSelection;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 
 import javax.swing.*;
 import javax.swing.table.TableModel;
@@ -30,7 +30,7 @@ public abstract class AbstractVoiceParameterTable extends AbstractRowHeaderedAnd
         super(model, t, csdp, popupName);
         this.voice = voice;
         this.category = category;
-        this.setHidingSelectionOnFocusLost(true);
+      //  this.setHidingSelectionOnFocusLost(true);
     }
 
     public ReadablePreset.ReadableVoice getVoice() {
@@ -43,7 +43,7 @@ public abstract class AbstractVoiceParameterTable extends AbstractRowHeaderedAnd
         ArrayList ids = new ArrayList();
         Object o;
         for (int r = 0, re = selRows.length; r < re; r++)
-            for (int c = 0,ce = selCols.length; c < ce; c++) {
+            for (int c = 0, ce = selCols.length; c < ce; c++) {
                 o = getValueAt(selRows[r], selCols[c]);
                 if (o instanceof ReadableParameterModel)
                     ids.add(((ReadableParameterModel) o).getParameterDescriptor().getId());
@@ -53,15 +53,11 @@ public abstract class AbstractVoiceParameterTable extends AbstractRowHeaderedAnd
         ids.toArray(arrIds);
         try {
             return new VoiceParameterSelection(voice, arrIds, VoiceParameterSelection.voiceCategoryStringToEnum(category));
-        } catch (ZDeviceNotRunningException e) {
+        } catch (EmptyException e) {
             e.printStackTrace();
-        } catch (IllegalParameterIdException e) {
+        } catch (ParameterException e) {
             e.printStackTrace();
-        } catch (PresetEmptyException e) {
-            e.printStackTrace();
-        } catch (NoSuchPresetException e) {
-            e.printStackTrace();
-        } catch (NoSuchVoiceException e) {
+        } catch (PresetException e) {
             e.printStackTrace();
         }
         return null;

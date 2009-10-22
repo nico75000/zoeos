@@ -1,7 +1,7 @@
 package com.pcmsolutions.gui;
 
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
-import com.pcmsolutions.system.threads.ZWaitThread;
+import com.pcmsolutions.system.threads.Impl_ZThread;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -17,7 +17,7 @@ import java.lang.reflect.InvocationTargetException;
  * Time: 05:51:52
  * To change this template use Options | File Templates.
  */
-public class FlashBorderThread extends ZWaitThread {
+public class FlashBorderThread extends Impl_ZThread {
     private long timeout = 75;
     private Color borderColor = UIColors.applyAlpha(Color.red, 100);
     private int borderThickness = 3;
@@ -36,7 +36,7 @@ public class FlashBorderThread extends ZWaitThread {
         this.c = c;
     }
 
-    public void run() {
+    public void runBody() {
         final Border b = c.getBorder();
         c.setBorder(new CompoundBorder(new LineBorder(borderColor, borderThickness, true), b));
         try {

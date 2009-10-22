@@ -7,12 +7,9 @@ package com.pcmsolutions.device.EMU.E4.parameter;
  * Time: 01:08:07
  * To change this template use Options | File Templates.
  */
-public class ParameterUnavailableException extends Exception {
+public class ParameterUnavailableException extends ParameterException {
 
-    public ParameterUnavailableException() {
-    }
-
-    public ParameterUnavailableException(String msg) {
-        super(msg);
+    public ParameterUnavailableException(Integer id) {
+        super("parameter unavailable", id);
     }
 }

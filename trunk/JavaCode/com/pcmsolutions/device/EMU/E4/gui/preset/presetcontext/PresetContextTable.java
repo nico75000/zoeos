@@ -3,12 +3,17 @@ package com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext.SampleContextTransferHandler;
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTable;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
+import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
+import com.pcmsolutions.device.EMU.E4.gui.AbstractContextTable;
 import com.pcmsolutions.device.EMU.E4.preset.PresetContext;
-import com.pcmsolutions.device.EMU.E4.preset.PresetEmptyException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.device.EMU.E4.selections.ContextPresetSelection;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.gui.DisabledTransferHandler;
+import com.pcmsolutions.gui.UserMessaging;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import java.awt.*;
 import java.awt.event.MouseEvent;
@@ -24,13 +29,11 @@ import java.util.regex.Pattern;
  * Time: 01:19:26
  * To change this template use Options | File Templates.
  */
-public class PresetContextTable extends AbstractRowHeaderedAndSectionedTable {
-    private PresetContext presetContext;
+public class PresetContextTable extends AbstractContextTable<PresetContext, ReadablePreset> {
     private static PresetContextTransferHandler pcth = new PresetContextTransferHandler();
 
     public PresetContextTable(PresetContext pc) {
-        super(new PresetContextTableModel(pc), pcth, null/*, new RowHeaderTableCellRenderer(UIColors.getMultimodeRowHeaderBG(), UIColors.getMultimodeRowHeaderFG())*/, "Preset>");
-        this.presetContext = pc;
+        super(pc, new PresetContextTableModel(pc), pcth, null/*, new RowHeaderTableCellRenderer(UIColors.getMultimodeRowHeaderBG(), UIColors.getMultimodeRowHeaderFG())*/, "Preset>");
         //setDropChecker(defaultDropGridChecker);
         setDropChecker(new DropChecker() {
             public boolean isCellDropTarget(int dropRow, int dropCol, int row, int col, Object value) {
@@ -41,119 +44,95 @@ public class PresetContextTable extends AbstractRowHeaderedAndSectionedTable {
             }
         });
         setMaximumSize(getPreferredSize());
+        this.getRowHeader().setSelectionModel(this.getSelectionModel());
     }
 
-    public PresetContext getPresetContext() {
-        return presetContext;
-    }
-
-    public boolean editCellAt(int row, int column, EventObject e) {
-        if (e instanceof MouseEvent && ((MouseEvent) e).getClickCount() >= 2) {
-            if (getValueAt(row, column) instanceof ReadablePreset) {
-                final ReadablePreset p = (ReadablePreset) getValueAt(row, column);
-                new ZDBModifyThread("Preset Default Action") {
-                    public void run() {
-                        p.performDefaultAction();
-                    }
-                }.start();
+    protected DragAndDropTable generateRowHeaderTable() {
+        DragAndDropTable t = new DragAndDropTable(popupName, null, null) {
+            public void zDispose() {
             }
-        }
-        return false;
+
+            protected Component[] getCustomMenuItems() {
+                return customRowHeaderMenuItems;
+            }
+
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    final Object o = getModel().getValueAt(this.rowAtPoint(e.getPoint()), 1);
+                    if (o instanceof ReadablePreset)
+                        try {
+                            ((ReadablePreset) o).audition().post(new Callback() {
+                                public void result(Exception e, boolean wasCancelled) {
+                                    if ( e!=null && !wasCancelled)
+                                    UserMessaging.flashWarning(null, e.getMessage());
+                                }
+                            });
+                        } catch (ResourceUnavailableException e1) {
+                            UserMessaging.flashWarning(null, e1.getMessage());
+                        }
+                } else
+                    super.mouseClicked(e);
+            }
+        };
+        t.setTransferHandler(DisabledTransferHandler.getInstance());
+        return t;
     }
 
     public ContextPresetSelection getSelection() {
         Object[] sobjs = this.getSelObjects();
         ArrayList readablePresets = new ArrayList();
 
-        for (int i = 0,j = sobjs.length; i < j; i++)
+        for (int i = 0, j = sobjs.length; i < j; i++)
             if (sobjs[i] instanceof ReadablePreset)
                 readablePresets.add(sobjs[i]);
 
-        return new ContextPresetSelection(presetContext.getDeviceContext(), presetContext, (ReadablePreset[]) readablePresets.toArray(new ReadablePreset[readablePresets.size()]));
+        return new ContextPresetSelection(getContext().getDeviceContext(), getContext(), (ReadablePreset[]) readablePresets.toArray(new ReadablePreset[readablePresets.size()]));
     }
 
     public Integer selectPresetsByRegex(String regexStr, boolean fullMatch, boolean useDisplayName, boolean newSelection) {
         if (regexStr == null)
             return null;
-        Pattern p = Pattern.compile(regexStr);
-        PresetContextTableModel pctm = (PresetContextTableModel) getModel();
-        Matcher m;
-        if (newSelection)
-            this.clearSelection();
-        String name;
-        Integer firstSelectedPreset = null;
-        for (int i = 0,j = pctm.getRowCount(); i < j; i++) {
-            ReadablePreset preset = (ReadablePreset) pctm.getValueAt(i, 1);
-            try {
-                if (useDisplayName)
-                    name = preset.getPresetDisplayName();
+
+        getSelectionModel().setValueIsAdjusting(true);
+        try {
+            Pattern p = Pattern.compile(regexStr);
+            PresetContextTableModel pctm = (PresetContextTableModel) getModel();
+            Matcher m;
+            if (newSelection)
+                this.clearSelection();
+            String name;
+            Integer firstSelectedPreset = null;
+            for (int i = 0, j = pctm.getRowCount(); i < j; i++) {
+                ReadablePreset preset = (ReadablePreset) pctm.getValueAt(i, 1);
+                try {
+                    if (useDisplayName)
+                        name = preset.getDisplayName();
+                    else
+                        name = preset.getName();
+                } catch (EmptyException e) {
+                    name = DeviceContext.EMPTY_PRESET;
+                } catch (PresetException e) {
+                    continue;
+                }
+                m = p.matcher(name);
+
+                boolean res = false;
+                if (fullMatch)
+                    res = m.matches();
                 else
-                    name = preset.getPresetName();
-            } catch (NoSuchPresetException e) {
-                continue;
-            } catch (PresetEmptyException e) {
-                name = DeviceContext.EMPTY_PRESET;
+                    res = m.find();
+
+                if (res) {
+                    if (firstSelectedPreset == null)
+                        firstSelectedPreset = preset.getIndex();
+                    this.addRowSelectionInterval(i, i);
+                    this.addColumnSelectionInterval(0, 0);
+                }
             }
-            m = p.matcher(name);
-
-            boolean res = false;
-            if (fullMatch)
-                res = m.matches();
-            else
-                res = m.find();
-
-            if (res) {
-                if (firstSelectedPreset == null)
-                    firstSelectedPreset = preset.getPresetNumber();
-                this.addRowSelectionInterval(i, i);
-                this.addColumnSelectionInterval(0, 0);
-            }
+            return firstSelectedPreset;
+        } finally {
+            getSelectionModel().setValueIsAdjusting(false);
         }
-        return firstSelectedPreset;
-    }
-
-    // inclusive (will ignore indexes that are not available)
-    public void addPresetToSelection(Integer preset) {
-        PresetContextTableModel pctm = (PresetContextTableModel) getModel();
-        int row = pctm.getRowForPreset(preset);
-        if (row != -1) {
-            addRowSelectionInterval(row, row);
-            addColumnSelectionInterval(0, 0);
-            //this.getSelectionModel().addSelectionInterval(row, row);
-        }
-    }
-
-    public void addPresetsToSelection(Integer[] presets) {
-        for (int i = 0; i < presets.length; i++)
-            addPresetToSelection(presets[i]);
-    }
-
-    public void invertSelection() {
-        int[] selRows = this.getSelectedRows();
-        this.selectAll();
-        for (int i = 0; i < selRows.length; i++)
-            this.removeRowSelectionInterval(selRows[i], selRows[i]);
-    }
-
-    public int getRowForPreset(Integer preset) {
-        PresetContextTableModel pctm = (PresetContextTableModel) getModel();
-        return pctm.getRowForPreset(preset);
-    }
-
-    // will do nothing if index does not available
-    public void scrollToPreset(Integer preset) {
-        PresetContextTableModel pctm = (PresetContextTableModel) getModel();
-        int row = pctm.getRowForPreset(preset);
-        Rectangle cellRect = this.getCellRect(row, 0, true);
-        this.scrollRectToVisible(cellRect);
-    }
-
-    public boolean showingAllPresets(Integer[] presets) {
-        PresetContextTableModel pctm = (PresetContextTableModel) getModel();
-        for (int i = 0; i < presets.length; i++)
-            if (pctm.getRowForPreset(presets[i]) == -1)
-                return false;
-        return true;
     }
 
     public String getTableTitle() {
@@ -161,6 +140,6 @@ public class PresetContextTable extends AbstractRowHeaderedAndSectionedTable {
     }
 
     public void zDispose() {
-        presetContext = null;
+       super.zDispose();
     }
 }

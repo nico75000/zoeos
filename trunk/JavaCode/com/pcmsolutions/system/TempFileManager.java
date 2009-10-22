@@ -1,7 +1,8 @@
 package com.pcmsolutions.system;
 
-import com.pcmsolutions.comms.MidiSystemFacade;
-import com.pcmsolutions.gui.ZoeosFrame;
+import com.pcmsolutions.comms.ZMidiSystem;
+import com.pcmsolutions.gui.ProgressSession;
+import com.pcmsolutions.gui.UserMessaging;
 
 import javax.swing.*;
 import java.io.File;
@@ -28,10 +29,18 @@ public class TempFileManager {
         cleanTempDirectory(true);
     }
 
+    public static int numTmpExtensions(final File[] files) {
+        int c = 0;
+        for (int i = 0; i < files.length; i++)
+            if (files[i] != null && files[i].getName().endsWith(tempExt))
+                c++;
+        return c;
+    }
+
     private static void assertTempDirectory() {
         if (!tempDir.exists() && !tempDir.mkdir()) {
-            JOptionPane.showMessageDialog(null, "Could not create ZoeOS temp directory. Exiting.", "Fatal Error", JOptionPane.ERROR_MESSAGE);
-            MidiSystemFacade.getInstance().zDispose();
+            UserMessaging.showError( "Could not create ZoeOS temp directory. Exiting.");
+            ZMidiSystem.getInstance().zDispose();
             Zoeos.getInstance().zDispose();
             System.exit(0);
         }
@@ -45,17 +54,19 @@ public class TempFileManager {
         File[] files = tempDir.listFiles();
         if (files == null)
             return;
+        Zoeos z = Zoeos.getInstance();
+        ProgressSession ps = null;
         if (showProgress)
-            ZoeosFrame.getInstance().beginProgressElement(progressStr, progressStr, files.length + 1);
+            ps = z.getProgressSession(progressStr, files.length + 1);
         try {
             for (int i = 0; i < files.length; i++) {
                 files[i].delete();
                 if (showProgress)
-                    ZoeosFrame.getInstance().updateProgressElement(progressStr);
+                    ps.updateStatus();
             }
         } finally {
             if (showProgress)
-                ZoeosFrame.getInstance().endProgressElement(progressStr);
+                ps.end();
         }
     }
 

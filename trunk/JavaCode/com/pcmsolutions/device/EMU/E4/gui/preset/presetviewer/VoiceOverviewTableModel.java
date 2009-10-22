@@ -1,10 +1,16 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.DevicePreferences;
-import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleInitializationStatusChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleInitializeEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleNameChangeEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleRefreshEvent;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.parameter.ParameterUtilities;
+import com.pcmsolutions.device.EMU.E4.gui.preset.PresetViewModes;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinPopupMenu;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinTableCellRenderer;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinValueProfile;
@@ -12,23 +18,35 @@ import com.pcmsolutions.device.EMU.E4.gui.preset.icons.VoiceSwitchIcon;
 import com.pcmsolutions.device.EMU.E4.gui.table.ColumnData;
 import com.pcmsolutions.device.EMU.E4.gui.table.SectionData;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
-import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.device.EMU.E4.sample.*;
+import com.pcmsolutions.device.EMU.E4.preset.IsolatedPreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
+import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
+import com.pcmsolutions.device.EMU.E4.sample.SampleListener;
+import com.pcmsolutions.device.EMU.E4.sample.SampleListenerAdapter;
+import com.pcmsolutions.device.EMU.E4.sample.VisibleSampleIndexProvider;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 import com.pcmsolutions.gui.IconAndTipCarrier;
+import com.pcmsolutions.gui.EmptyIcon;
 import com.pcmsolutions.system.*;
 import com.pcmsolutions.system.preferences.ZIntPref;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.*;
-import java.util.prefs.Preferences;
 
-public class VoiceOverviewTableModel extends AbstractPresetTableModel implements ZDisposable, ChangeListener {
-    protected static final Map id2col = new Hashtable();
+public class VoiceOverviewTableModel extends AbstractPresetTableModel implements ZDisposable, ChangeListener, VisibleSampleIndexProvider {
+    protected final Map<Integer, Integer> id2col = new Hashtable<Integer, Integer>();
     protected ReadablePreset preset;
     protected ArrayList zoneParameterDescriptors;
 
@@ -38,14 +56,15 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
     private SampleListener gsl;
     private Integer[] gsi;
 
+    protected int origKeyCol = -1;
+    protected int sampleCol = 2; // always 2 under current scheme
+
     {
         zoneParameterDescriptors = new ArrayList();
     }
 
     public static Integer[] getUserIdList() {
         ArrayList customIds = new ArrayList();
-        Preferences prefs = Preferences.userNodeForPackage(VoiceOverviewTableModel.class);
-
         String ids = DevicePreferences.ZPREF_voiceTableUserIds.getValue();
         StringTokenizer t = new StringTokenizer(ids, Zoeos.preferenceFieldSeperator);
 
@@ -57,21 +76,32 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
 
     public static void setUserIdList(Integer[] userIds) {
         String s = "";
-        for (int i = 0,j = userIds.length; i < j; i++)
+        for (int i = 0, j = userIds.length; i < j; i++)
             s += userIds[i].toString() + Zoeos.preferenceFieldSeperator;
         DevicePreferences.ZPREF_voiceTableUserIds.putValue(s);
     }
 
     protected int numVoices;
-    protected ArrayList expansionMemory;
+    protected ArrayList<Boolean> expansionMemory;
     protected ParameterContext vc;
+
+    Timer emptySampleRefreshTimer;
 
     private final static VoiceSwitchIcon onIcon = new VoiceSwitchIcon(10, 10, Color.DARK_GRAY, Color.LIGHT_GRAY, VoiceSwitchIcon.EXPANDED);
     private final static VoiceSwitchIcon offIcon = new VoiceSwitchIcon(10, 10, Color.DARK_GRAY, Color.LIGHT_GRAY, VoiceSwitchIcon.CONTRACTED);
     private final static VoiceSwitchIcon disabledIcon = new VoiceSwitchIcon(10, 10, Color.LIGHT_GRAY, Color.white, VoiceSwitchIcon.DISABLED);
+    private final static EmptyIcon emptyIcon = new EmptyIcon(10, 10);
 
-    public VoiceOverviewTableModel(ReadablePreset p, DeviceParameterContext dpc) {
+    int mode;
+    private static int emptySampleRefreshInterval = 10000;
+
+    public boolean includesUserParameters() {
+        return (mode & PresetViewModes.VOICE_MODE_USER) != 0;
+    }
+
+    public VoiceOverviewTableModel(ReadablePreset p, DeviceParameterContext dpc, int mode) {
         super(p, dpc.getVoiceContext());
+        this.mode = mode;
         vc = dpc.getVoiceContext();
         this.preset = p;
         init();
@@ -82,29 +112,41 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
         try {
             gsl = new SampleListenerAdapter() {
                 public void sampleInitializationStatusChanged(SampleInitializationStatusChangedEvent ev) {
-                    updateSampleCells(ev.getSample());
+                    updateSampleCells(ev.getIndex());
                 }
 
                 public void sampleNameChanged(SampleNameChangeEvent ev) {
-                    updateSampleCells(ev.getSample());
+                    updateSampleCells(ev.getIndex());
                 }
 
                 public void sampleRefreshed(SampleRefreshEvent ev) {
-                    updateSampleCells(ev.getSample());
+                    updateSampleCells(ev.getIndex());
                 }
 
                 public void sampleInitialized(SampleInitializeEvent ev) {
-                    updateSampleCells(ev.getSample());
+                    updateSampleCells(ev.getIndex());
                 }
             };
             Set s = preset.getDeviceContext().getDefaultSampleContext().getDatabaseIndexes();
             gsi = (Integer[]) s.toArray(new Integer[s.size()]);
-            preset.getDeviceContext().getDefaultSampleContext().addSampleListener(gsl, gsi);
-        } catch (NoSuchContextException e) {
-            e.printStackTrace();
-        } catch (ZDeviceNotRunningException e) {
+            preset.getDeviceContext().getDefaultSampleContext().addContentListener(gsl, gsi);
+        } catch (Exception e) {
             e.printStackTrace();
         }
+        emptySampleRefreshTimer = new Timer(emptySampleRefreshInterval, new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                Integer[] samples = getSampleIndexes();
+                SampleContext sc = preset.getPresetContext().getRootSampleContext();
+                for (int i = 0; i < samples.length; i++)
+                    try {
+                        if (samples[i].intValue() > 0 && samples[i].intValue() < DeviceContext.BASE_ROM_SAMPLE)
+                            sc.refreshIfEmpty(samples[i]).post();
+                    } catch (Exception e1) {
+                    }
+            }
+        });
+        emptySampleRefreshTimer.setCoalesce(true);
+        emptySampleRefreshTimer.start();
     }
 
     public void updateSampleCells(Integer sample) {
@@ -115,7 +157,7 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
                 try {
                     if (v instanceof ReadableParameterModel && ((ReadableParameterModel) v).getValue().equals(sample))
                         VoiceOverviewTableModel.this.fireTableCellUpdated(i, col.intValue());
-                } catch (ParameterUnavailableException e) {
+                } catch (ParameterException e) {
                 }
             }
     }
@@ -123,15 +165,17 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
     public void zDispose() {
         if (gsi != null && gsl != null)
             try {
-                preset.getDeviceContext().getDefaultSampleContext().removeSampleListener(gsl, gsi);
-            } catch (ZDeviceNotRunningException e) {
-                e.printStackTrace();
+                preset.getDeviceContext().getDefaultSampleContext().removeContentListener(gsl, gsi);
+            } catch (DeviceException e) {
             }
 
         super.zDispose();
         WinValueProfile.ZPREF_keyWinDisplayMode.removeChangeListener(this);
         WinValueProfile.ZPREF_velWinDisplayMode.removeChangeListener(this);
         WinValueProfile.ZPREF_rtWinDisplayMode.removeChangeListener(this);
+        if (emptySampleRefreshTimer != null)
+            emptySampleRefreshTimer.stop();
+        emptySampleRefreshTimer = null;
     }
 
     public void stateChanged(ChangeEvent e) {
@@ -139,20 +183,20 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
             VoiceOverviewTableModel.this.fireTableDataChanged();
     }
 
-    public void setExpansionMemory(java.util.List mem) {
-        expansionMemory = new ArrayList(mem);
+    public void setExpansionMemory(java.util.List<Boolean> mem) {
+        expansionMemory = new ArrayList<Boolean>(mem);
         refresh(false);
     }
 
-    protected java.util.List getExpansionMemory() {
-        return (java.util.List) expansionMemory.clone();
+    protected java.util.List<Boolean> getExpansionMemory() {
+        return (java.util.List<Boolean>) expansionMemory.clone();
     }
 
 // returns a Boolean for each row, true if it's a voice and false if it's a zone
     public Boolean[] getRowState() {
         Boolean[] st = new Boolean[tableRowObjects.size()];
 
-        for (int i = 0,j = tableRowObjects.size(); i < j; i++)
+        for (int i = 0, j = tableRowObjects.size(); i < j; i++)
             if (((ColumnValueProvider) tableRowObjects.get(i)).getValueAt(0) instanceof ReadablePreset.ReadableVoice)
                 st[i] = Boolean.TRUE;
             else
@@ -174,19 +218,130 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
             try {
                 if (obj instanceof ReadablePreset.ReadableVoice && ((ReadablePreset.ReadableVoice) obj).numZones() > 0)
                     return true;
-            } catch (PresetEmptyException e) {
-                handlePresetEmptyException();
-            } catch (NoSuchVoiceException e) {
-                e.printStackTrace();
-            } catch (NoSuchPresetException e) {
-                handleNoSuchPresetException();
+            } catch (EmptyException e) {
+                handleEmptyException();
+            } catch (PresetException e) {
+                handlePresetException();
             }
         }
         return false;
     }
 
+    private static final String SECTION_MAIN = "MAIN";
+    private static final String SECTION_KEYWIN = "KEY WIN";
+    private static final String SECTION_VELWIN = "VELOCITY WIN";
+    private static final String SECTION_RTWIN = "REALTIME WIN";
+    private static final String SECTION_USER = "USER";
+
+    SectionData createSection(String section, int colWidthCount) {
+        if (section.equals(SECTION_MAIN)) {
+            return new SectionData(UIColors.getTableFirstSectionBG(),
+                    UIColors.getTableFirstSectionHeaderBG(),
+                    UIColors.getTableFirstSectionFG(),
+                    colWidthCount,
+                    "MAIN");
+        } else if (section.equals(SECTION_KEYWIN)) {
+            return new SectionData(UIColors.getTableSecondSectionBG(),
+                    UIColors.getTableSecondSectionHeaderBG(),
+                    UIColors.getTableSecondSectionFG(),
+                    colWidthCount,
+                    "KEY WIN", new MouseAdapter() {
+                        public void mouseReleased(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mousePressed(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mouseClicked(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            } else if (e.getClickCount() >= 2) {
+                                try {
+                                    WinValueProfile.ZPREF_keyWinDisplayMode.putValue((WinValueProfile.ZPREF_keyWinDisplayMode.getValue() + 1) % 3);
+                                } catch (Exception e1) {
+                                    e1.printStackTrace();
+                                }
+                            }
+                        }
+                    });
+        } else if (section.equals(SECTION_VELWIN)) {
+            return new SectionData(UIColors.getTableThirdSectionBG(),
+                    UIColors.getTableThirdSectionHeaderBG(),
+                    UIColors.getTableThirdSectionFG(),
+                    colWidthCount,
+                    "VELOCITY WIN", new MouseAdapter() {
+                        public void mouseReleased(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mousePressed(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mouseClicked(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            } else if (e.getClickCount() >= 2) {
+                                try {
+                                    WinValueProfile.ZPREF_velWinDisplayMode.putValue((WinValueProfile.ZPREF_velWinDisplayMode.getValue() + 1) % 3);
+                                } catch (Exception e1) {
+                                    e1.printStackTrace();
+                                }
+                            }
+                        }
+                    });
+        } else if (section.equals(SECTION_RTWIN)) {
+            return new SectionData(UIColors.getTableFourthSectionBG(),
+                    UIColors.getTableFourthSectionHeaderBG(),
+                    UIColors.getTableFourthSectionFG(),
+                    colWidthCount,
+                    "REALTIME WIN", new MouseAdapter() {
+                        public void mouseReleased(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_rtWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mousePressed(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_rtWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            }
+                        }
+
+                        public void mouseClicked(MouseEvent e) {
+                            if (e.isPopupTrigger()) {
+                                new WinPopupMenu(WinValueProfile.ZPREF_rtWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
+                            } else if (e.getClickCount() >= 2) {
+                                try {
+                                    WinValueProfile.ZPREF_rtWinDisplayMode.putValue((WinValueProfile.ZPREF_rtWinDisplayMode.getValue() + 1) % 3);
+                                } catch (Exception e1) {
+                                    e1.printStackTrace();
+                                }
+                            }
+                        }
+                    });
+        } else if (section.equals(SECTION_USER)) {
+            return new SectionData(UIColors.getTableFifthSectionBG(),
+                    UIColors.getTableFifthSectionHeaderBG(),
+                    UIColors.getTableFifthSectionFG(),
+                    colWidthCount,
+                    "USER");
+        } else
+            throw new IllegalArgumentException("unsupported section");
+    }
+
     protected void buildColumnAndSectionData() {
-        rowHeaderColumnData = new ColumnData("", DEF_COL_WIDTH, JLabel.LEFT, 0, Object.class, VoiceOverviewRowHeaderTableCellRenderer.INSTANCE, null);
+        rowHeaderColumnData = new ColumnData("", DEF_COL_WIDTH + 2, JLabel.LEFT, 0, Object.class, VoiceOverviewRowHeaderTableCellRenderer.INSTANCE, null);
         columnData = new ColumnData[parameterObjects.size()];
         firstCustomCol = parameterObjects.size() - customIds.length;
 
@@ -194,133 +349,56 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
         ArrayList arrSectionData = new ArrayList();
         int sectionIndex = 0;
         int colWidthCount = 0;
-
+        String currSection = null;
         id2col.clear();
 
         for (int i = 0, n = parameterObjects.size(); i < n; i++) {
-            id = generateColumnDataInstance(i, sectionIndex);
-
+            id = ((GeneralParameterDescriptor) parameterObjects.get(i)).getId().intValue();
             id2col.put(IntPool.get(id), IntPool.get(i + 1));
-
-            colWidthCount += columnData[i].width;
-
-            if (id == 44) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableFirstSectionBG(),
-                        UIColors.getTableFirstSectionFG(),
-                        colWidthCount,
-                        "MAIN"));
-                sectionIndex++;
-                colWidthCount = 0;
-            } else if (id == 48) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableSecondSectionBG(),
-                        UIColors.getTableSecondSectionFG(),
-                        colWidthCount,
-                        "KEY WIN", new MouseAdapter() {
-                            public void mouseReleased(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mousePressed(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mouseClicked(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_keyWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                } else if (e.getClickCount() >= 2) {
-                                    try {
-                                        WinValueProfile.ZPREF_keyWinDisplayMode.putValue((WinValueProfile.ZPREF_keyWinDisplayMode.getValue() + 1) % 3);
-                                    } catch (Exception e1) {
-                                        e1.printStackTrace();
-                                    }
-                                }
-                            }
-                        }));
-                sectionIndex++;
-                colWidthCount = 0;
-
-            } else if (id == 52) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableThirdSectionBG(),
-                        UIColors.getTableThirdSectionFG(),
-                        colWidthCount,
-                        "VELOCITY WIN", new MouseAdapter() {
-                            public void mouseReleased(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mousePressed(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mouseClicked(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_velWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                } else if (e.getClickCount() >= 2) {
-                                    try {
-                                        WinValueProfile.ZPREF_velWinDisplayMode.putValue((WinValueProfile.ZPREF_velWinDisplayMode.getValue() + 1) % 3);
-                                    } catch (Exception e1) {
-                                        e1.printStackTrace();
-                                    }
-                                }
-                            }
-                        }));
-                sectionIndex++;
-                colWidthCount = 0;
-            } else if (id == 56) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableFourthSectionBG(),
-                        UIColors.getTableFourthSectionFG(),
-                        colWidthCount,
-                        "REALTIME WIN", new MouseAdapter() {
-                            public void mouseReleased(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_rtWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mousePressed(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_rtWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                }
-                            }
-
-                            public void mouseClicked(MouseEvent e) {
-                                if (e.isPopupTrigger()) {
-                                    new WinPopupMenu(WinValueProfile.ZPREF_rtWinDisplayMode).getPopupMenu().show(e.getComponent(), e.getX(), e.getY());
-                                } else if (e.getClickCount() >= 2) {
-                                    try {
-                                        WinValueProfile.ZPREF_rtWinDisplayMode.putValue((WinValueProfile.ZPREF_rtWinDisplayMode.getValue() + 1) % 3);
-                                    } catch (Exception e1) {
-                                        e1.printStackTrace();
-                                    }
-                                }
-                            }
-                        }));
-                sectionIndex++;
-                colWidthCount = 0;
-            } else if (customIds.length > 0 && id == (customIds[customIds.length - 1]).intValue()) {
-                arrSectionData.add(new SectionData(
-                        UIColors.getTableFifthSectionBG(),
-                        UIColors.getTableFifthSectionFG(),
-                        colWidthCount,
-                        "USER"));
-                sectionIndex++;
-                colWidthCount = 0;
+            if (ParameterUtilities.isKeyWinId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_KEYWIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_KEYWIN;
+            } else if (ParameterUtilities.isVelWinId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_VELWIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_VELWIN;
+            } else if (ParameterUtilities.isRTWinId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_RTWIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_RTWIN;
+            } else if (ParameterUtilities.isMainId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_MAIN)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_MAIN;
+            } else if (ParameterUtilities.isVoiceOverviewUserId(id)) {
+                if (currSection != null && !currSection.equals(SECTION_USER)) {
+                    arrSectionData.add(createSection(currSection, colWidthCount));
+                    sectionIndex++;
+                    colWidthCount = 0;
+                }
+                currSection = SECTION_USER;
             }
+            generateColumnDataInstance(i, sectionIndex);
+            colWidthCount += columnData[i].width;
         }
+        arrSectionData.add(createSection(currSection, colWidthCount));
         sectionData = new SectionData[arrSectionData.size()];
         arrSectionData.toArray(sectionData);
+        if (id2col.containsKey(ID.origKey))
+            origKeyCol = id2col.get(ID.origKey).intValue();
     }
 
     protected int generateColumnDataInstance(int i, int sectionIndex) {
@@ -334,6 +412,28 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
         else
             title = getColNameFromRefString(pd.getReferenceString(), 1);
 
+        if (id == 37) // group
+            columnData[i] = new ColumnData(title, (int) (DEF_COL_WIDTH * 0.8), JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        else if (id == 38) // sample
+            columnData[i] = new ColumnData(title, (int) (DEF_COL_WIDTH * 3.45), JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        else if (id >= 41 && id <= 43) // tune, ftune, xpose
+            columnData[i] = new ColumnData(title, (int) (DEF_COL_WIDTH * 0.8), JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        else if (id == 44) // alphanumeric key position
+            columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 5, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        //else if (id == 45 || id == 47) // alphanumeric key position and keyWin
+        //    columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 5, JLabel.LEFT, sectionIndex, ReadableParameterModel.class, WinTableCellRenderer.CANONICAL_RENDERERS[(id - 45) % 4]);
+        else if (id >= 45 && id <= 56) // keyWin, velWin, rtWin
+            columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class, WinTableCellRenderer.CANONICAL_RENDERERS[(id - 45) % 4]);
+        else if (id < 57) // one of the defaults
+            columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        else { // user id
+            if (id == 82)
+                columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 77, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+            else
+                columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 17, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+        }
+
+        /*
         if (id == 38) // sample
             columnData[i] = new ColumnData(title, DEF_COL_WIDTH * 4, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
         else if (id == 44) // alphanumeric key position
@@ -346,6 +446,7 @@ public class VoiceOverviewTableModel extends AbstractPresetTableModel implements
             columnData[i] = new ColumnData(title, DEF_COL_WIDTH, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
         else  // user id
             columnData[i] = new ColumnData(title, DEF_COL_WIDTH + 20, JLabel.LEFT, sectionIndex, ReadableParameterModel.class);
+            */
         return id;
     }
 
@@ -387,104 +488,94 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             pd = vc.getParameterDescriptor(ID.sample);
             parameterObjects.add(pd);
             zoneParameterDescriptors.add(pd);
+            if ((mode & PresetViewModes.VOICE_MODE_MAIN) != 0) {
 
-            pd = vc.getParameterDescriptor(IntPool.get(39));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(39));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(40));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(40));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(41));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(null);
+                pd = vc.getParameterDescriptor(IntPool.get(41));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(null);
 
-            pd = vc.getParameterDescriptor(IntPool.get(42));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(42));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(43));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(null);
+                pd = vc.getParameterDescriptor(IntPool.get(43));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(null);
 
-            pd = vc.getParameterDescriptor(IntPool.get(44));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(44));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
+            }
+            if ((mode & PresetViewModes.VOICE_MODE_KEY_WIN) != 0) {
 
-            pd = vc.getParameterDescriptor(IntPool.get(45));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(45));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(46));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(46));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(47));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(47));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(48));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(48));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
+            }
+            if ((mode & PresetViewModes.VOICE_MODE_VEL_WIN) != 0) {
+                pd = vc.getParameterDescriptor(IntPool.get(49));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(49));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(50));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(50));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(51));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
 
-            pd = vc.getParameterDescriptor(IntPool.get(51));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(52));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(pd);
+            }
+            if ((mode & PresetViewModes.VOICE_MODE_RT_WIN) != 0) {
 
-            pd = vc.getParameterDescriptor(IntPool.get(52));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(pd);
+                pd = vc.getParameterDescriptor(IntPool.get(53));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(null);
 
-            pd = vc.getParameterDescriptor(IntPool.get(53));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(null);
+                pd = vc.getParameterDescriptor(IntPool.get(54));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(null);
 
-            pd = vc.getParameterDescriptor(IntPool.get(54));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(null);
+                pd = vc.getParameterDescriptor(IntPool.get(55));
+                parameterObjects.add(pd);
+                zoneParameterDescriptors.add(null);
 
-            pd = vc.getParameterDescriptor(IntPool.get(55));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(null);
-
-            pd = vc.getParameterDescriptor(IntPool.get(56));
-            parameterObjects.add(pd);
-            zoneParameterDescriptors.add(null);
-
-            for (int i = 0,j = customIds.length; i < j; i++) {
-                pd = vc.getParameterDescriptor(customIds[i]);
+                pd = vc.getParameterDescriptor(IntPool.get(56));
                 parameterObjects.add(pd);
                 zoneParameterDescriptors.add(null);
             }
-/*
-            pd = vc.getParameterDescriptor(IntPool.get(57));
-            parameterObjects.addDesktopElement(pd);
-            zoneParameterDescriptors.addDesktopElement(null);
-
-            pd = vc.getParameterDescriptor(IntPool.get(58));
-            parameterObjects.addDesktopElement(pd);
-            zoneParameterDescriptors.addDesktopElement(null);
-
-            pd = vc.getParameterDescriptor(IntPool.get(61));
-            parameterObjects.addDesktopElement(pd);
-            zoneParameterDescriptors.addDesktopElement(null);
-            pd = vc.getParameterDescriptor(IntPool.get(72));
-            parameterObjects.addDesktopElement(pd);
-            zoneParameterDescriptors.addDesktopElement(null);
-            lastCustomId = 72;
-            */
-
+            if ((mode & PresetViewModes.VOICE_MODE_USER) != 0) {
+                for (int i = 0, j = customIds.length; i < j; i++) {
+                    pd = vc.getParameterDescriptor(customIds[i]);
+                    parameterObjects.add(pd);
+                    zoneParameterDescriptors.add(ParameterUtilities.isZoneId(customIds[i].intValue()) ? pd : null);
+                }
+            }
         } catch (IllegalParameterIdException e) {
-            e.printStackTrace();
+            SystemErrors.internal(e);
         }
     }
 
@@ -498,7 +589,7 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             pm.setTipShowingOwner(true);
         }
 
-        public Integer getValue() throws ParameterUnavailableException {
+        public Integer getValue() throws ParameterException {
             return pm.getValue();
         }
 
@@ -510,11 +601,11 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             return pm.isTipShowingOwner();
         }
 
-        public String getValueString() throws ParameterUnavailableException {
+        public String getValueString() throws ParameterException {
             return pm.getValueString();
         }
 
-        public String getValueUnitlessString() throws ParameterUnavailableException {
+        public String getValueUnitlessString() throws ParameterException {
             return pm.getValueUnitlessString();
         }
 
@@ -542,8 +633,13 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             pm.zDispose();
         }
 
-        public ZCommand[] getZCommands() {
-            return pm.getZCommands();
+        public ZCommand[] getZCommands(Class markerClass) {
+            return pm.getZCommands(markerClass);
+        }
+
+        // most capable/super first
+        public Class[] getZCommandMarkers() {
+            return pm.getZCommandMarkers();
         }
 
         public String toString() {
@@ -551,13 +647,12 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             try {
                 sn = pm.getValue();
                 if (sn.intValue() >= 0)
-                    return new AggRemoteName(sn, sc.getSampleName(pm.getValue())).toString();
-            } catch (ParameterUnavailableException e) {
-                //e.printStackTrace();
-            } catch (NoSuchSampleException e) {
-                e.printStackTrace();
-            } catch (SampleEmptyException e) {
-                return new AggRemoteName(sn, DeviceContext.EMPTY_SAMPLE).toString();
+                    return new ContextLocation(sn, sc.getName(pm.getValue())).toString();
+            } catch (DeviceException e) {
+            } catch (EmptyException e) {
+                return new ContextLocation(sn, DeviceContext.EMPTY_SAMPLE).toString();
+            } catch (ParameterException e) {
+            } catch (ContentUnavailableException e) {
             }
             switch (sn.intValue()) {
                 case -1:
@@ -584,8 +679,9 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         public Icon getIcon() {
             try {
                 return sc.getReadableSample(pm.getValue()).getIcon();
-            } catch (ParameterUnavailableException e) {
-            } catch (NoSuchSampleException e) {
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
+                e.printStackTrace();
             }
             return null;
         }
@@ -597,10 +693,8 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                     return sc.getReadableSample(pm.getValue()).getToolTipText();
                 else
                     return null;
-            } catch (ParameterUnavailableException e) {
-                //e.printStackTrace();
-            } catch (NoSuchSampleException e) {
-                e.printStackTrace();
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
             }
             return "";
         }
@@ -610,7 +704,8 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         }
     }
 
-    protected void doRefresh() {
+    protected void doRefresh
+            () {
         ArrayList oldExpansionMemory = expansionMemory;
         expansionMemory = new ArrayList();
         numVoices = 0;
@@ -627,10 +722,10 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                     newVoice(((Boolean) oldExpansionMemory.get(i)).booleanValue());
                 else
                     newVoice(iezbd);
-        } catch (NoSuchPresetException e) {
-            handleNoSuchPresetException();
-        } catch (PresetEmptyException e) {
-            handlePresetEmptyException();
+        } catch (EmptyException e) {
+            handleEmptyException();
+        } catch (PresetException e) {
+            handlePresetException();
         } finally {
 //ignorePresetInitialize = false;
             if (oldExpansionMemory != null)
@@ -638,15 +733,18 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         }
     }
 
-    protected void doPreRefresh() {
+    protected void doPreRefresh
+            () {
         // TODO!! re-enable this   ??
         // ignorePresetInitialize = true;
     }
 
-    protected void doPostRefresh() {
+    protected void doPostRefresh
+            () {
     }
 
-    private Voice[] getVoices() {
+    private Voice[] getVoices
+            () {
         ArrayList voices = new ArrayList();
         Object ro;
         for (int i = 0, n = tableRowObjects.size(); i < n; i++) {
@@ -657,25 +755,30 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         return (Voice[]) voices.toArray(new Voice[voices.size()]);
     }
 
-    public void toggleAll() {
+    public void toggleAll
+            () {
         Voice[] voices = getVoices();
         for (int i = 0, n = voices.length; i < n; i++)
             voices[i].toggle();
     }
 
-    public void expandAll() {
+    public void expandAll
+            () {
         Voice[] voices = getVoices();
         for (int i = 0, n = voices.length; i < n; i++)
             voices[i].setExpanded(true);
     }
 
-    public void contractAll() {
+    public void contractAll
+            () {
         Voice[] voices = getVoices();
         for (int i = 0, n = voices.length; i < n; i++)
             voices[i].setExpanded(false);
     }
 
-    private Voice findVoice(Integer voiceIndex) {
+    private Voice findVoice
+            (Integer
+            voiceIndex) {
         Object ro;
         for (int i = 0, n = tableRowObjects.size(); i < n; i++) {
             ro = tableRowObjects.get(i);
@@ -687,13 +790,13 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         return null;
     }
 
-    public void voiceAdded(final VoiceAddEvent ev) {
-        int num = ev.getNumberOfVoices();
-        for (int n = 0; n < num; n++)
-            newVoice(true);
+    public void voiceAdded
+            (final VoiceAddEvent ev) {
+        newVoice(true);
     }
 
-    public void voiceRemoved(final VoiceRemoveEvent ev) {
+    public void voiceRemoved
+            (final VoiceRemoveEvent ev) {
         Voice v = findVoice(ev.getVoice());
         if (v != null) {
             v.disposeVoice();
@@ -701,17 +804,19 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             refresh(false);
     }
 
-    public void voiceChanged(final VoiceChangeEvent ev) {
-        if (ev.getPreset().equals(preset.getPresetNumber())) {
+    public void voiceChanged
+            (final VoiceChangeEvent ev) {
+        if (ev.getIndex().equals(preset.getIndex())) {
             for (int i = 0, n = tableRowObjects.size(); i < n; i++) {
                 if (tableRowObjects.get(i) instanceof Voice && ((Voice) tableRowObjects.get(i)).getVoice().getVoiceNumber().equals(ev.getVoice())) {
-                    ((Voice) tableRowObjects.get(i)).updateParameters(ev.getParameters());
+                    ((Voice) tableRowObjects.get(i)).updateParameters(ev.getIds());
                 }
             }
         }
     }
 
-    private void remapVoices() {
+    private void remapVoices
+            () {
         Object ro;
         int cvi = 0;
         for (int i = 0, n = tableRowObjects.size(); i < n; i++) {
@@ -722,16 +827,17 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         }
     }
 
-    public void zoneAdded(final ZoneAddEvent ev) {
+    public void zoneAdded
+            (final ZoneAddEvent ev) {
         Voice v = findVoice(ev.getVoice());
         if (v != null) {
-            for (int i = 0, n = ev.getNumberOfZones(); i < n; i++)
-                v.addZone();
+            v.addZone();
         } else  // out of sync somehow
             refresh(false);
     }
 
-    public void zoneRemoved(final ZoneRemoveEvent ev) {
+    public void zoneRemoved
+            (final ZoneRemoveEvent ev) {
         Voice v = findVoice(ev.getVoice());
         if (v != null) {
             v.removeZone(ev.getZone());
@@ -740,22 +846,44 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
         }
     }
 
-    public void zoneChanged(final ZoneChangeEvent ev) {
-        if (ev.getPreset().equals(preset.getPresetNumber())) {
+    public void zoneChanged
+            (final ZoneChangeEvent ev) {
+        if (ev.getIndex().equals(preset.getIndex())) {
             for (int i = 0, n = tableRowObjects.size(); i < n; i++) {
                 if (tableRowObjects.get(i) instanceof Voice.Zone && ((Voice.Zone) tableRowObjects.get(i)).getVoice().getVoiceNumber().equals(ev.getVoice()) && ((Voice.Zone) tableRowObjects.get(i)).getZone().getZoneNumber().equals(ev.getZone())) {
-                    ((Voice.Zone) tableRowObjects.get(i)).updateParameters(ev.getParameters());
+                    ((Voice.Zone) tableRowObjects.get(i)).updateParameters(ev.getIds());
                 }
             }
         }
     }
 
-    protected void newVoice(boolean expanded) {
+    protected void newVoice
+            (boolean expanded) {
         new Voice(getVoiceInterface(numVoices)).init(expanded);
     }
 
-    protected ReadablePreset.ReadableVoice getVoiceInterface(int index) {
+    protected ReadablePreset.ReadableVoice getVoiceInterface
+            (int index) {
         return preset.getReadableVoice(IntPool.get(index));
+    }
+
+    public Integer[] getSampleIndexes() {
+        ArrayList samples = new ArrayList();
+        Integer col = ((Integer) id2col.get(IntPool.get(38)));
+        if (col != null)
+            for (int i = 0, n = this.getRowCount(); i < n; i++) {
+                Object v = getValueAt(i, col.intValue());
+                try {
+                    if (v instanceof ReadableParameterModel) {
+                        Integer s = ((ReadableParameterModel) v).getValue();
+                        if (!samples.contains(s))
+                            samples.add(s);
+                    }
+                } catch (ParameterUnavailableException e) {
+                } catch (ParameterException e) {
+                }
+            }
+        return (Integer[]) samples.toArray(new Integer[samples.size()]);
     }
 
     protected class Voice implements ZDisposable, ColumnValueProvider, Switchable, IconAndTipCarrier, ZCommandProvider, ReadablePreset.ReadableVoice, ObjectProxy {
@@ -939,12 +1067,10 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             try {
                 for (int i = 0, n = preset.numZones(voice.getVoiceNumber()); i < n; i++)
                     addZone();
-            } catch (NoSuchPresetException e) {
-                handleNoSuchPresetException();
-            } catch (PresetEmptyException e) {
-                handlePresetEmptyException();
-            } catch (NoSuchVoiceException e) {
-                e.printStackTrace();
+            } catch (EmptyException e) {
+                handleEmptyException();
+            } catch (PresetException e) {
+                handlePresetException();
             }
             //e.printStackTrace();
             //refresh(false);
@@ -975,19 +1101,26 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                     // else
                     pm.setShowUnits(false);
                     voiceColumnObjects.add(pm);
-                } catch (IllegalParameterIdException e) {
+                    if (pm.getParameterDescriptor().getId().equals(ID.sample)) {
+                        try {
+                            if (pm.getValue().intValue() > 0 && pm.getValue().intValue() < DeviceContext.BASE_ROM_SAMPLE)
+                                preset.getPresetContext().getRootSampleContext().refreshIfEmpty(pm.getValue()).post();
+                        } catch (ResourceUnavailableException e) {
+                        }
+                    }
+                } catch (ParameterException e) {
                     e.printStackTrace();
                     voiceColumnObjects.add("");
                 }
             }
         }
 
-        protected ReadableParameterModel getAppropiateParameterModelInterface(int i) throws IllegalParameterIdException {
+        protected ReadableParameterModel getAppropiateParameterModelInterface(int i) throws ParameterException {
             ReadableParameterModel pm = voice.getParameterModel(((GeneralParameterDescriptor) parameterObjects.get(i)).getId());
             if (((GeneralParameterDescriptor) parameterObjects.get(i)).getId().equals(ID.sample))
                 try {
                     return new VoiceSampleReadableParameterModel(pm, preset.getDeviceContext().getDefaultSampleContext());
-                } catch (ZDeviceNotRunningException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             pm.setTipShowingOwner(true);
@@ -996,14 +1129,30 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
 
         public Object getValueAt(int col) {
             try {
-                if (col == 2 && hasZones()) // sample number
-                    return DeviceContext.MULTISAMPLE + "[" + this.numZones() + "]";
-                else if (col == 8 && hasZones()) // orig key
+                if (col == sampleCol && hasZones()) // sample number
+                    return new IconAndTipCarrier() {
+                        public Icon getIcon() {
+                            return emptyIcon;
+                        }
+
+                        public String getToolTipText() {
+                            return null;
+                        }
+
+                        public String toString() {
+                            try {
+                                return DeviceContext.MULTISAMPLE + "[" + Voice.this.numZones() + "]";
+                            } catch (Exception e) {
+
+                            }
+                            return DeviceContext.MULTISAMPLE;
+                        }
+                    };
+                else if (origKeyCol == col && hasZones()) // orig key
                     return "";
-                return (voiceColumnObjects.size() > col ? voiceColumnObjects.get(col) : "");
-            } catch (PresetEmptyException e) {
-            } catch (NoSuchVoiceException e) {
-            } catch (NoSuchPresetException e) {
+                else if (voiceColumnObjects.size() > col)
+                    return voiceColumnObjects.get(col);
+            } catch (Exception e) {
             }
             return "";
         }
@@ -1055,19 +1204,23 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             */
         }
 
-        public ZCommand[] getZCommands() {
-            return cmdProviderHelper.getCommandObjects(this);
+        public ZCommand[] getZCommands(Class markerClass) {
+            return ReadablePreset.ReadableVoice.cmdProviderHelper.getCommandObjects(markerClass, this);
+        }
+
+        public Class[] getZCommandMarkers() {
+            return ReadablePreset.ReadableVoice.cmdProviderHelper.getSupportedMarkers();
         }
 
         public ReadablePreset getPreset() {
             return voice.getPreset();
         }
 
-        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer zone) throws NoSuchZoneException, NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+        public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer zone) throws PresetException, EmptyException {
             return voice.getIsolatedZone(zone);
         }
 
-        public Integer[] getVoiceParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException {
+        public Integer[] getVoiceParams(Integer[] ids) throws ParameterException, PresetException, EmptyException {
             return voice.getVoiceParams(ids);
         }
 
@@ -1087,7 +1240,7 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             return voice.getPresetNumber();
         }
 
-        public IsolatedPreset.IsolatedVoice getIsolated() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException {
+        public IsolatedPreset.IsolatedVoice getIsolated() throws PresetException, EmptyException {
             return voice.getIsolated();
         }
 
@@ -1095,15 +1248,15 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             return voice.getReadableZone(zone);
         }
 
-        public int numZones() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException {
+        public int numZones() throws PresetException, EmptyException {
             return voice.numZones();
         }
 
-        public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
+        public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
             return voice.getParameterModel(id);
         }
 
-        public Integer[] getVoiceIndexesInGroup() throws PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchPresetException {
+        public Integer[] getVoiceIndexesInGroup() throws PresetException, EmptyException {
             return voice.getVoiceIndexesInGroup();
         }
 
@@ -1159,7 +1312,7 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                 return zone;
             }
 
-            public Integer[] getZoneParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException {
+            public Integer[] getZoneParams(Integer[] ids) throws EmptyException, ParameterException, PresetException {
                 return zone.getZoneParams(ids);
             }
 
@@ -1183,7 +1336,7 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                 return zone.getPreset();
             }
 
-            public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolated() throws PresetEmptyException, NoSuchZoneException, NoSuchVoiceException, NoSuchPresetException {
+            public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolated() throws EmptyException, PresetException {
                 return zone.getIsolated();
             }
 
@@ -1191,7 +1344,7 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                 this.zone.setZoneNumber(zone);
             }
 
-            public ReadableParameterModel getParameterModel(Integer id) throws IllegalParameterIdException {
+            public ReadableParameterModel getParameterModel(Integer id) throws ParameterException {
                 return zone.getParameterModel(id);
             }
 
@@ -1208,8 +1361,15 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                             pm = getAppropiateParameterModelInterface(pd);
                             pm.setShowUnits(false);
                             zoneColumnObjects.add(pm);
+                            if (pm.getParameterDescriptor().getId().equals(ID.sample)) {
+                                try {
+                                    if (pm.getValue().intValue() > 0 && pm.getValue().intValue() < DeviceContext.BASE_ROM_SAMPLE)
+                                        preset.getPresetContext().getRootSampleContext().refreshIfEmpty(pm.getValue());
+                                } catch (Exception e) {
+                                }
+                            }
                         }
-                    } catch (IllegalParameterIdException e) {
+                    } catch (ParameterException e) {
                         e.printStackTrace();
                         zoneColumnObjects.add("");
                     }
@@ -1220,12 +1380,12 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
                 return "";
             }
 
-            protected ReadableParameterModel getAppropiateParameterModelInterface(GeneralParameterDescriptor pd) throws IllegalParameterIdException {
+            protected ReadableParameterModel getAppropiateParameterModelInterface(GeneralParameterDescriptor pd) throws ParameterException {
                 ReadableParameterModel pm = zone.getParameterModel(pd.getId());
                 if (pd.getId().equals(ID.sample))
                     try {
                         return new VoiceSampleReadableParameterModel(pm, preset.getDeviceContext().getDefaultSampleContext());
-                    } catch (ZDeviceNotRunningException e) {
+                    } catch (DeviceException e) {
                         e.printStackTrace();
                     }
                 pm.setTipShowingOwner(true);
@@ -1257,5 +1417,4 @@ E4_GEN_RT_HIGHFADE,        id = 56 (38h,00h)     min = 0;  max = 127  (Link only
             }
         }
     }
-
 }

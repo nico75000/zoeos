@@ -5,5 +5,5 @@ package com.pcmsolutions.gui.desktop;
  * Date: 27-Jan-2004
  * Time: 14:10:16
  */
-public class ChildViewNotAllowedException extends Exception{
+public class ChildViewNotAllowedException extends Exception {
 }

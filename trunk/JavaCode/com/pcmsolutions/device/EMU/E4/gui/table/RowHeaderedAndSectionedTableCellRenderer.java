@@ -18,7 +18,7 @@ public class RowHeaderedAndSectionedTableCellRenderer extends GeneralTableCellRe
     }
 
     protected void setupLook(JTable table, Object value, boolean isSelected, int row, int column) {
-       super.setupLook(table, value, isSelected, row, column);
+        super.setupLook(table, value, isSelected, row, column);
         RowHeaderedAndSectionedTable t = (RowHeaderedAndSectionedTable) table;
         ColumnData[] cd = t.getColumnData();
         SectionData[] sd = t.getSectionData();

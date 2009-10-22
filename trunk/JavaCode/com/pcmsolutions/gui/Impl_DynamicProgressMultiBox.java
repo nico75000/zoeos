@@ -17,7 +17,7 @@ public class Impl_DynamicProgressMultiBox extends Impl_ProgressMultiBox implemen
     protected int holdTime;
 
     public Impl_DynamicProgressMultiBox(JFrame frame, String title, boolean modal) {
-        this(frame, title, modal, null, 500);
+        this(frame, title, modal, null, 0);
     }
 
     public Impl_DynamicProgressMultiBox(JFrame frame, String title, boolean modal, Component relativeTo, int holdTime) {
@@ -38,17 +38,7 @@ public class Impl_DynamicProgressMultiBox extends Impl_ProgressMultiBox implemen
                 }
             }
         };
-        //   if (SwingUtilities.isEventDispatchThread())
         SwingUtilities.invokeLater(run);
-        /* else
-             try {
-                 SwingUtilities.invokeAndWait(run);
-             } catch (InterruptedException e1) {
-                 e1.printStackTrace();
-             } catch (InvocationTargetException e1) {
-                 e1.printStackTrace();
-             }
-          */
     }
 
     private class KillThread extends Thread {
@@ -59,33 +49,22 @@ public class Impl_DynamicProgressMultiBox extends Impl_ProgressMultiBox implemen
         }
 
         public void run() {
-            do
+       //     do
                 try {
                     sleep(holdTime);
                 } catch (Exception e) {
                 }
-            while (progressElements.size() > 0);
+         //   while (progressElements.size() < 4 && progressElements.size() > 2);
 
             final Runnable run = new Runnable() {
                 public void run() {
-                    //progressDialog.setVisible(true);
                     dlgContents.remove(pe);
                     progressDialog.pack();
                     if (progressElements.size() == 0)
                         progressDialog.setVisible(false);
                 }
             };
-            //   if (SwingUtilities.isEventDispatchThread())
             SwingUtilities.invokeLater(run);
-            /* else
-                 try {
-                     SwingUtilities.invokeAndWait(run);
-                 } catch (InterruptedException e1) {
-                     e1.printStackTrace();
-                 } catch (InvocationTargetException e1) {
-                     e1.printStackTrace();
-                 }
-                 */
         }
     }
 }

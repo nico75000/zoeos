@@ -15,6 +15,13 @@ public class IntPool {
     public static final int ceiling = 10000;
     public static final int floor = -256;
 
+    public static final Integer zero = new Integer(0);
+    public static final Integer one = new Integer(1);
+    public static final Integer minus_one = new Integer(-1);
+
+    public static final Integer MIN = new Integer(Integer.MIN_VALUE);
+    public static final Integer MAX = new Integer(Integer.MAX_VALUE);
+
     static {
         // this static initializer replaces commented code below
         ints.setSize(ceiling + 1);
@@ -24,6 +31,10 @@ public class IntPool {
         neg_ints.setSize(-floor + 1);
         for (int i = 0; i >= floor; i--)
             neg_ints.setElementAt(new Integer(i), -i);
+    }
+
+    public static Integer off(Integer curr, int off){
+       return get(curr.intValue() + off);
     }
 
     public static Integer get(int i) {

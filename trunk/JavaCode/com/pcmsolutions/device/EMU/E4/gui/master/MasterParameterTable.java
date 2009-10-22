@@ -9,12 +9,16 @@ import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedT
 import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.selections.MasterParameterSelection;
 import com.pcmsolutions.device.EMU.E4.selections.PresetParameterSelection;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.system.threads.Impl_ZThread;
 
 import java.util.ArrayList;
 import java.util.EventObject;
+
+import org.tritonus.sampled.file.AiffTool;
 
 /**
  * Created by IntelliJ IDEA.
@@ -36,13 +40,13 @@ public class MasterParameterTable extends AbstractRowHeaderedAndSectionedTable i
 
     public String getCategory() {
         return category;
-    }
+    }  
 
-    public MasterParameterTable(DeviceContext dc, EditableParameterModel[] parameterModels, String title, String category) throws ZDeviceNotRunningException {
+    public MasterParameterTable(DeviceContext dc, EditableParameterModel[] parameterModels, String title, String category)  {
         this(dc, new MasterParameterTableModel(parameterModels), title, category);
     }
 
-    public MasterParameterTable(DeviceContext dc, MasterParameterTableModel tm, String title, String category) throws ZDeviceNotRunningException {
+    public MasterParameterTable(DeviceContext dc, MasterParameterTableModel tm, String title, String category) {
         super(tm, MasterTransferHandler.getInstance(), null, title + " >");
         this.title = title;
         this.deviceContext = dc;
@@ -56,8 +60,9 @@ public class MasterParameterTable extends AbstractRowHeaderedAndSectionedTable i
             }
         });
         this.category = category;
-        this.setHidingSelectionOnFocusLost(true);
+       // this.setHidingSelectionOnFocusLost(true);
         ParameterModelUtilities.registerTableForEditableParameterModelShortcuts(this);
+        this.getRowHeader().setSelectionModel(this.getSelectionModel());                
     }
 
     protected void setupDropOverExtent() {
@@ -82,9 +87,7 @@ public class MasterParameterTable extends AbstractRowHeaderedAndSectionedTable i
         ids.toArray(arrIds);
         try {
             return new MasterParameterSelection(deviceContext, arrIds, MasterParameterSelection.convertMasterCategoryString(category));
-        } catch (ZDeviceNotRunningException e) {
-            e.printStackTrace();
-        } catch (IllegalParameterIdException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
@@ -96,12 +99,16 @@ public class MasterParameterTable extends AbstractRowHeaderedAndSectionedTable i
         return super.editCellAt(row, column, e);
     }
 
-    public void setSelection(MasterParameterSelection ms) {
-        try {
-            ms.render(deviceContext.getMasterContext());
-        } catch (ZDeviceNotRunningException e) {
-            e.printStackTrace();
-        }
+    public void setSelection(final MasterParameterSelection ms) {
+      //  Impl_ZThread.ddTQ.postTask(new Impl_ZThread.Task(){
+       //     public void doTask() {
+                try {
+                    ms.render(deviceContext.getMasterContext());
+                } catch (DeviceException e) {
+                    e.printStackTrace();
+                }
+      //      }
+      //      });
     }
 
     public boolean willAcceptCategory(int category) {

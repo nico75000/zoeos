@@ -1,6 +1,6 @@
 package com.pcmsolutions.gui.desktop;
 
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
+import com.pcmsolutions.gui.ZCommandFactory;
 
 import javax.swing.*;
 import java.awt.*;
@@ -31,10 +31,11 @@ public class Impl_DesktopNodeDescriptor implements DesktopNodeDescriptor {
     }
 
     private static void customizePopup(Object[] objs, JPopupMenu popup) {
-        popup.addSeparator();
-        Component[] comps = ZCommandInvocationHelper.getMenuComponents(objs);
+        /*popup.addSeparator();
+        Component[] comps = ZCommandFactory.getMenuComponents(objs);
         for (int i = 0; i < comps.length; i++)
             popup.add(comps[i]);
+            */
     }
 
     public Impl_DesktopNodeDescriptor(boolean componentShowingWithChildren) {

@@ -1,7 +1,6 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset;
 
 
-
 /**
  * Created by IntelliJ IDEA.
  * User: paulmeehan

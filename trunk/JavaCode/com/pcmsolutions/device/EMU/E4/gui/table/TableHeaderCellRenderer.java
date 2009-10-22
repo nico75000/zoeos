@@ -16,10 +16,10 @@ public class TableHeaderCellRenderer extends GeneralTableCellRenderer {
     public static final TableHeaderCellRenderer INSTANCE = new TableHeaderCellRenderer();
 
     private TableHeaderCellRenderer() {
+        setForeground(UIColors.getTableHeaderFG());
+        setBackground(UIColors.getTableHeaderBG());
     }
 
     protected void setupLook(JTable table, Object value, boolean isSelected, int row, int column) {
-        setForeground(UIColors.getTableHeaderFG());
-        setBackground(UIColors.getTableHeaderBG());
     }
 }

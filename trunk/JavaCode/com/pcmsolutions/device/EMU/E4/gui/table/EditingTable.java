@@ -16,7 +16,7 @@ abstract public class EditingTable extends PopupTable {
     int selCol;
     int selRow;
 
-    protected final Object mouseWheelMonitor = new Object();
+   // protected final Object mouseWheelMonitor = new Object();
 
     public EditingTable(TableModel model, String popupName, Color popupBG, Color popupFG) {
         super(model, popupName, popupBG, popupFG);
@@ -40,6 +40,7 @@ abstract public class EditingTable extends PopupTable {
                 //if (!((JComboBox) c).isPopupVisible())
                 ((JComboBox) c).updateUI();
                 ((JComboBox) c).showPopup();// setPopupVisible(true);
+                ((JComboBox) c).requestFocusInWindow();
                 //((JComboBox) c).showPopup();
                 //((JComboBox) c).showPopup();// setPopupVisible(true);
                 //((JComboBox) c).showPopup();
@@ -47,6 +48,7 @@ abstract public class EditingTable extends PopupTable {
                 //}
             } else if (c instanceof JSpinner) {
                 ((JSpinner) c).updateUI();
+                ((JSpinner) c).requestFocusInWindow();
             }
         }
         return rv;

@@ -1,5 +1,7 @@
 package com.pcmsolutions.system;
 
+import com.pcmsolutions.system.tasking.SyncTicket;
+
 import java.io.Serializable;
 
 /**
@@ -10,14 +12,12 @@ import java.io.Serializable;
  * To change this template use Options | File Templates.
  */
 public abstract class AbstractZDevice implements ZExternalDevice, Serializable {
-
     // STATE
+    //private transient CriticalityMonitor criticality = new CriticalityMonitor();
 
-    protected StateMachineHelper sts = new StateMachineHelper(STATE_PENDING, stateTransitions, stateNames);
+    protected StdStateMachineHelper sts = new StdStateMachineHelper(STATE_PENDING, stateTransitions, stateNames);
 
     protected Object identityMessage;
-
-    // protected volatile JInternalFrame mainView = null;
 
     public SystemEntryPoint getSystemEntryPoint() {
         return new Impl_SystemEntryPoint(getClass(), getDeviceIdentityMessage().toString());
@@ -27,13 +27,11 @@ public abstract class AbstractZDevice implements ZExternalDevice, Serializable {
         this.identityMessage = identityMessage;
     }
 
-    public abstract void startDevice() throws ZDeviceStartupException, IllegalStateTransitionException;
+    public abstract SyncTicket startDevice() throws ZDeviceStartupException, IllegalStateTransitionException;
 
     public abstract void stopDevice(boolean waitForConfigurers, String reason) throws IllegalStateTransitionException;
 
     public abstract void removeDevice(boolean saveState) throws ZDeviceCannotBeRemovedException, IllegalStateTransitionException;
-
-    public abstract void refreshDevice() throws ZDeviceRefreshException;
 
     public Object getDeviceIdentityMessage() {
         return identityMessage;
@@ -47,7 +45,28 @@ public abstract class AbstractZDevice implements ZExternalDevice, Serializable {
         return sts.getState();
     }
 
-    abstract public int getStateSynchronized();
+    public String getReasonForState() {
+        return sts.getReason();
+    }
+    /*
+    public void beginCritical(Object critical) {
+        criticality.beginCritical(critical);
+    }
 
-    public abstract void markDuplicate() throws IllegalStateTransitionException;
+    public void endCritical(Object critical) {
+        criticality.endCritical(critical);
+    }
+
+    public boolean runIfNonCritical(Runnable r) {
+        return criticality.runIfNonCritical(r);
+    }
+
+    public boolean isCritical() {
+        return criticality.isCritical();
+    }
+
+    public void waitOnCriticals() {
+        criticality.waitOnCriticals();
+    }
+    */
 }

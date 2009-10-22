@@ -17,6 +17,8 @@ public interface ScsiTarget extends Comparable, Serializable {
 
     public String getDeviceName();
 
+    public boolean isDevice();
+
     public String getDeviceManufacturer();
 
     public int getDeviceType();

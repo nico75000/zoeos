@@ -3,6 +3,7 @@ package com.pcmsolutions.device.EMU.E4.packaging;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.preset.IsolatedSample;
 import com.pcmsolutions.device.EMU.E4.sample.IsolatedSampleUnavailableException;
+import com.pcmsolutions.gui.ProgressCallback;
 
 import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioSystem;
@@ -19,6 +20,8 @@ import java.io.Serializable;
  * To change this template use Options | File Templates.
  */
 class Impl_SerializableIsolatedSample implements IsolatedSample, Serializable {
+    static final long serialVersionUID = -3740525754945034385L;
+
     private String name;
     private File localFile;
     private Integer sample;
@@ -59,13 +62,16 @@ class Impl_SerializableIsolatedSample implements IsolatedSample, Serializable {
         return AudioSystem.getAudioFileFormat(localFile).getType();
     }
 
-    public void ZoeAssert() throws IsolatedSampleUnavailableException {
-        if (!isROMSample()) {
-            if ((localFile != null && localFile.exists()))
-                return;
-            throw new IsolatedSampleUnavailableException("File not available");
+    public void assertSample(ProgressCallback prog) throws IsolatedSampleUnavailableException {
+        try {
+            if (!isROMSample()) {
+                if ((localFile != null && localFile.exists()))
+                    return;
+                throw new IsolatedSampleUnavailableException("Sample file not found");
+            }
+        } finally {
+            prog.updateProgress(1);
         }
-
     }
 
     /* public SampleDescriptor getSampleDescriptor() throws IsolatedSampleUnavailableException {

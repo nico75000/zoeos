@@ -6,11 +6,15 @@
 
 package com.pcmsolutions.util;
 
+import com.pcmsolutions.gui.ZoeosFrame;
+
+import javax.swing.*;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.Enumeration;
 import java.util.Vector;
+import java.util.concurrent.locks.Condition;
 
 /**
  *
@@ -107,8 +111,8 @@ public class CALock implements Serializable {
     }
 
     public synchronized void configure() throws IllegalArgumentException {
-        //  if ( SwingUtilities.isEventDispatchThread())
-        //      JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "EDT in CALock configure!");
+       if ( SwingUtilities.isEventDispatchThread())
+           JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "EDT in CALock configure!");
         CANode node;
         Thread me = Thread.currentThread();
         int index = getIndex(me);
@@ -137,7 +141,7 @@ public class CALock implements Serializable {
         Thread me = Thread.currentThread();
         int index = getIndex(me);
         if (index > firstConfigurer() || index == -1)
-            throw new IllegalArgumentException(this.getClass().toString() + ":unlock-> lock not held!");
+            throw new IllegalArgumentException(this.getClass().toString() + ":releaseContent-> lock not held!");
         node = (CANode) waiters.elementAt(index);
         node.nAcquires--;
         if (node.nAcquires == 0) {

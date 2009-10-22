@@ -23,7 +23,7 @@ public class DesktopBranch implements Serializable {
         this.desktopElements = (DesktopElement[]) desktopElements.clone();
         this.title = title;
         if (!validateInOrder(desktopElements))
-          throw new IllegalArgumentException("DesktopBranch: DesktopElements must be in-order");
+            throw new IllegalArgumentException("DesktopBranch: DesktopElements must be in-order");
     }
 
     public static boolean validateInOrder(DesktopElement[] elems) {
@@ -32,7 +32,7 @@ public class DesktopBranch implements Serializable {
     }
 
     public List asList() {
-        return Arrays.asList((Object[])desktopElements.clone());
+        return Arrays.asList((Object[]) desktopElements.clone());
     }
 
     public String getTitle() {

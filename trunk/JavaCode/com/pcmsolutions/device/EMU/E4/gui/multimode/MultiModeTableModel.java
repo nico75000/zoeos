@@ -1,26 +1,36 @@
 package com.pcmsolutions.device.EMU.E4.gui.multimode;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.events.MultiModeChannelChangedEvent;
-import com.pcmsolutions.device.EMU.E4.events.MultiModeRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.AuditionManager;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeChannelChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeChannelChangedEvent;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.parameter2.ParameterModelTableCellEditor;
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTableModel;
 import com.pcmsolutions.device.EMU.E4.gui.table.ColumnData;
 import com.pcmsolutions.device.EMU.E4.gui.table.SectionData;
-import com.pcmsolutions.device.EMU.E4.multimode.IllegalMidiChannelException;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeContext;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeListener;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZCommand;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
-import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.system.*;
+import com.pcmsolutions.system.tasking.TicketRunnable;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import javax.swing.*;
 import javax.swing.event.ChangeListener;
 import java.awt.*;
+import java.awt.event.ActionListener;
+import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,15 +52,17 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
     private ArrayList submixParameterModels = new ArrayList();
     private ParameterModelTableCellEditor pmtce;
     private MultiModePresetTableCellEditor mmptce;
+    private Timer refreshTimer;
+    private static int refreshInterval = 20000;
 
-    public MultiModeTableModel(DeviceContext d, boolean just16) throws ZDeviceNotRunningException {
+    public MultiModeTableModel(DeviceContext d, boolean just16) throws DeviceException {
         this.multimodeContext = d.getMultiModeContext();
         this.device = d;
         pmtce = new ParameterModelTableCellEditor(Color.white, Color.black);
         mmptce = new MultiModePresetTableCellEditor(device);
         try {
             readablePresets = d.getDefaultPresetContext().getDatabasePresets();
-        } catch (NoSuchContextException e) {
+        } catch (DeviceException e) {
             readablePresets = new ArrayList();
             e.printStackTrace();
         }
@@ -66,6 +78,17 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
 
         buildParameterModels();
         multimodeContext.addMultiModeListener(this);
+        refreshTimer = new Timer(refreshInterval, new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    multimodeContext.refresh().post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                }
+            }
+        });
+        refreshTimer.setCoalesce(true);
+        refreshTimer.start();
     }
 
     protected static class MultiModePresetEditableParameterModel implements ParameterModelWrapper, EditableParameterModel {
@@ -78,7 +101,7 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
             pm.setTipShowingOwner(true);
         }
 
-        public Integer getValue() throws ParameterUnavailableException {
+        public synchronized Integer getValue() throws ParameterException {
             return pm.getValue();
         }
 
@@ -90,11 +113,11 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
             return pm.isTipShowingOwner();
         }
 
-        public String getValueString() throws ParameterUnavailableException {
+        public String getValueString() throws ParameterException {
             return pm.getValueString();
         }
 
-        public String getValueUnitlessString() throws ParameterUnavailableException {
+        public String getValueUnitlessString() throws ParameterException {
             return pm.getValueUnitlessString();
         }
 
@@ -118,20 +141,22 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
             pm.zDispose();
         }
 
-        public ZCommand[] getZCommands() {
-            return pm.getZCommands();
+        public ZCommand[] getZCommands(Class markerClass) {
+            return pm.getZCommands(markerClass);
+        }
+
+        // most capable/super first
+        public Class[] getZCommandMarkers() {
+            return pm.getZCommandMarkers();
         }
 
         public String toString() {
             Integer pn = IntPool.get(0);
             try {
                 pn = pm.getValue();
-                return new AggRemoteName(pn, defPC.getPresetName(pm.getValue())).toString();
-            } catch (ParameterUnavailableException e) {
-                //e.printStackTrace();
-            } catch (NoSuchPresetException e) {
-            } catch (PresetEmptyException e) {
-                return new AggRemoteName(pn, DeviceContext.EMPTY_PRESET).toString();
+                return new ContextLocation(pn, defPC.getString(pm.getValue())).toString();
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
             }
             return pn.toString();
         }
@@ -139,8 +164,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
         public Icon getIcon() {
             try {
                 return defPC.getReadablePreset(pm.getValue()).getIcon();
-            } catch (NoSuchPresetException e) {
-            } catch (ParameterUnavailableException e) {
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
+                e.printStackTrace();
             }
             return null;
         }
@@ -148,34 +174,35 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
         public String getToolTipText() {
             try {
                 return defPC.getReadablePreset(pm.getValue()).getToolTipText();
-            } catch (NoSuchPresetException e) {
-            } catch (ParameterUnavailableException e) {
+            } catch (DeviceException e) {
+            } catch (ParameterException e) {
+                e.printStackTrace();
             }
             return "";
         }
 
-        public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+        public void setValue(Integer value) throws ParameterException {
             ((EditableParameterModel) pm).setValue(value);
         }
 
-        public void setValueString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+        public void offsetValue(Integer offset) throws ParameterException {
+            ((EditableParameterModel) pm).offsetValue(offset);
+        }
+
+        public void offsetValue(Double offsetAsFOR) throws ParameterException {
+            ((EditableParameterModel) pm).offsetValue(offsetAsFOR);
+        }
+
+        public void setValueString(String value) throws ParameterException {
             ((EditableParameterModel) pm).setValueString(value);
         }
 
-        public void setValueUnitlessString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+        public void setValueUnitlessString(String value) throws ParameterException {
             ((EditableParameterModel) pm).setValueUnitlessString(value);
         }
 
-        public void defaultValue() throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+        public void defaultValue() throws ParameterException {
             ((EditableParameterModel) pm).defaultValue();
-        }
-
-        public void setValue(EditChainValueProvider ecvp, EditableParameterModel[] chained) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-            ((EditableParameterModel) pm).setValue(ecvp, chained);
-        }
-
-        public boolean isEditChainableWith(Object o) {
-            return ((EditableParameterModel) pm).isEditChainableWith(o);
         }
 
         public boolean getShowUnits() {
@@ -251,12 +278,12 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
         columnData[2] = new ColumnData("Pan", pnw, JLabel.LEFT, 1, ReadableParameterModel.class, null, pmtce);
         columnData[3] = new ColumnData("Submix", sw, JLabel.LEFT, 1, ReadableParameterModel.class, null, pmtce);
         // replace "" below with " " to make the section headers visible
-        String sStr = "";
+        String sStr = " ";
         //if (totalChnls > 16)
         //    sStr = " ";
 
-        sectionData[0] = new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), pw, sStr);
-        sectionData[1] = new SectionData(UIColors.getTableSecondSectionBG(), UIColors.getTableSecondSectionFG(), vw + pnw + sw, sStr);
+        sectionData[0] = new SectionData(UIColors.getTableFirstSectionBG(),UIColors.getTableFirstSectionHeaderBG(), UIColors.getTableFirstSectionFG(), pw, sStr);
+        sectionData[1] = new SectionData(UIColors.getTableSecondSectionBG(),UIColors.getTableSecondSectionHeaderBG(), UIColors.getTableSecondSectionFG(), vw + pnw + sw, sStr);
     }
 
     public boolean isCellEditable(int rowIndex, int columnIndex) {
@@ -275,7 +302,7 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                             return "Ch " + (row + 1);
                         case 1:
                             /*try {
-                                Integer p = multimodeContext.getPreset(IntPool.get(row + 1));
+                                Integer p = multimodeContext.getIndex(IntPool.get(row + 1));
                                 int pv = p.intValue();
                                 if (pv + 1 > readablePresets.size())
                                     break;
@@ -283,7 +310,7 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                                 if (rop != null && rop.getPresetNumber().equals(p))
                                     return rop;
                                 return p.toString();
-                            } catch (IllegalMidiChannelException e) {
+                            } catch (IllegalMultimodeChannelException e) {
                                 e.printStackTrace();
                             }
                             break;
@@ -297,7 +324,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                                         return p;
                                 } else
                                     return "error";
-                            } catch (IllegalMidiChannelException e) {
+                            } catch (IllegalMultimodeChannelException e) {
+                                e.printStackTrace();
+                            } catch (DeviceException e) {
                                 e.printStackTrace();
                             }
                             break;
@@ -312,7 +341,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                                         return p;
                                 } else
                                     return "error";
-                            } catch (IllegalMidiChannelException e) {
+                            } catch (IllegalMultimodeChannelException e) {
+                                e.printStackTrace();
+                            } catch (DeviceException e) {
                                 e.printStackTrace();
                             }
                             break;
@@ -326,7 +357,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                                         return p;
                                 } else
                                     return "error";
-                            } catch (IllegalMidiChannelException e) {
+                            } catch (IllegalMultimodeChannelException e) {
+                                e.printStackTrace();
+                            } catch (DeviceException e) {
                                 e.printStackTrace();
                             }
                             break;
@@ -340,7 +373,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                                         return p;
                                 } else
                                     return "error";
-                            } catch (IllegalMidiChannelException e) {
+                            } catch (IllegalMultimodeChannelException e) {
+                                e.printStackTrace();
+                            } catch (DeviceException e) {
                                 e.printStackTrace();
                             }
                             break;
@@ -368,10 +403,12 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
     public Object getValueAt(int row, int col) {
         switch (col) {
             case 0:
+                if (row + 1 == device.getDevicePreferences().ZPREF_auditionChnl.getValue())
+                    return "Ch " + (row + 1) + " A";
                 return "Ch " + (row + 1);
             case 1:
                 /* try {
-                     Integer p = multimodeContext.getPreset(IntPool.get(row + 1));
+                     Integer p = multimodeContext.getIndex(IntPool.get(row + 1));
                      int pv = p.intValue();
                      if (pv + 1 > readablePresets.size())
                          break;
@@ -381,7 +418,7 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                      if (rop != null && rop.getPresetNumber().equals(p))
                          return rop;
                      return p.toString();
-                 } catch (IllegalMidiChannelException e) {
+                 } catch (IllegalMultimodeChannelException e) {
                      e.printStackTrace();
                  }
                  break;
@@ -395,7 +432,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                             return p;
                     } else
                         return "error";
-                } catch (IllegalMidiChannelException e) {
+                } catch (IllegalMultimodeChannelException e) {
+                    e.printStackTrace();
+                } catch (DeviceException e) {
                     e.printStackTrace();
                 }
                 break;
@@ -409,7 +448,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                             return p;
                     } else
                         return "error";
-                } catch (IllegalMidiChannelException e) {
+                } catch (IllegalMultimodeChannelException e) {
+                    e.printStackTrace();
+                } catch (DeviceException e) {
                     e.printStackTrace();
                 }
                 break;
@@ -423,7 +464,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                             return p;
                     } else
                         return "error";
-                } catch (IllegalMidiChannelException e) {
+                } catch (IllegalMultimodeChannelException e) {
+                    e.printStackTrace();
+                } catch (DeviceException e) {
                     e.printStackTrace();
                 }
                 break;
@@ -437,7 +480,9 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
                             return p;
                     } else
                         return "error";
-                } catch (IllegalMidiChannelException e) {
+                } catch (IllegalMultimodeChannelException e) {
+                    e.printStackTrace();
+                } catch (DeviceException e) {
                     e.printStackTrace();
                 }
                 break;
@@ -458,7 +503,7 @@ public class MultiModeTableModel extends AbstractRowHeaderedAndSectionedTableMod
         multimodeContext.removeMultiModeListener(this);
         multimodeContext = null;
         readablePresets.clear();
-
+        refreshTimer.stop();
         int size;
         size = volumeParameterModels.size();
         for (int n = 0; n < size; n++)

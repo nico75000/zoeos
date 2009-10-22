@@ -8,6 +8,7 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.util.HashSet;
 import java.util.Vector;
 
 public class EditableParameterModelGroup implements EditableParameterModel, ChangeListener, ParameterModelWrapper {
@@ -33,10 +34,6 @@ public class EditableParameterModelGroup implements EditableParameterModel, Chan
         group[0].addChangeListener(this);
     }
 
-    public String toString() {
-        return group[0].toString();
-    }
-
     public boolean equals(Object obj) {
         return group[0].equals(obj);
     }
@@ -46,7 +43,7 @@ public class EditableParameterModelGroup implements EditableParameterModel, Chan
             throw new IllegalArgumentException("EditableParameterModelGroup needs at least one parameter model");
 
         pd = group[0].getParameterDescriptor();
-        for (int i = 1,j = group.length; i < j; i++) {
+        for (int i = 1, j = group.length; i < j; i++) {
             if (!group[i].getParameterDescriptor().equals(pd))
                 throw new IllegalArgumentException("EditableParameterModelGroup requires all parameter models to have the same parameter descriptor");
             //if (!group[i].isEditChainableWith(group[i - 1]))
@@ -63,7 +60,7 @@ public class EditableParameterModelGroup implements EditableParameterModel, Chan
         //this.offsetting = offsetting;
     }
 
-    public Integer getValue() throws ParameterUnavailableException {
+    public Integer getValue() throws ParameterException {
         return group[0].getValue();
     }
 
@@ -75,11 +72,11 @@ public class EditableParameterModelGroup implements EditableParameterModel, Chan
         return group[0].isTipShowingOwner();
     }
 
-    public String getValueString() throws ParameterUnavailableException {
+    public String getValueString() throws ParameterException {
         return group[0].getValueString();
     }
 
-    public String getValueUnitlessString() throws ParameterUnavailableException {
+    public String getValueUnitlessString() throws ParameterException {
         return group[0].getValueUnitlessString();
     }
 
@@ -114,63 +111,40 @@ public class EditableParameterModelGroup implements EditableParameterModel, Chan
         changeListeners = null;
     }
 
-    public ZCommand[] getZCommands() {
-        return cmdProviderHelper.getCommandObjects(this);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return EditableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
     }
 
-    /*private void offsetValue(int amt) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        int newVal;
-        for (int i = 0,j = group.length; i < j; i++) {
-            newVal = group[i].getValueObject().intValue() + amt;
-            if (newVal > max)
-                newVal = max;
-            else if (newVal < min)
-                newVal = min;
-            try {
-                group[i].setValueObject(IntPool.get(newVal));
-            } catch (ParameterUnavailableException e) {
-                if (i == 0) // tolerate any voice except the leading voice of the group
-                    throw e;
-            }
-        }
-    } */
-
-    public void setValue(final Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        //   if (offsetting)
-        //     offsetValue(value.intValue() - group[0].getValueObject().intValue());
-        // else {
-        group[0].setValue(new EditableParameterModel.EditChainValueProvider() {
-            // might return null to signify no operation
-            public Integer getValue(EditableParameterModel model, EditableParameterModel leadModel) throws ParameterUnavailableException {
-                return value;
-            }
-        }, group);
-        // }
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return EditableParameterModel.cmdProviderHelper.getSupportedMarkers();
     }
 
-    public void setValueString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void setValue(final Integer value) throws ParameterException {
+        for (int i = 0; i < group.length; i++)
+            group[i].setValue(value);
+    }
+
+    public void offsetValue(Integer offset) throws ParameterException {
+        for (int i = 0; i < group.length; i++)
+            group[i].offsetValue(offset);
+    }
+
+    public void offsetValue(Double offsetAsFOR) throws ParameterException {
+        for (int i = 0; i < group.length; i++)
+            group[i].offsetValue(offsetAsFOR);
+    }
+
+    public void setValueString(String value) throws ParameterException {
         setValue(pd.getValueForString(value));
     }
 
-    public void setValueUnitlessString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void setValueUnitlessString(String value) throws ParameterException {
         setValue(pd.getValueForUnitlessString(value));
     }
 
-    public void defaultValue() throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void defaultValue() throws ParameterException {
         ParameterModelUtilities.defaultParameterModels(group);
-    }
-
-    public void setValue(EditChainValueProvider ecvp, EditableParameterModel[] modelChain) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        if (modelChain[0] != this)
-            throw new IllegalArgumentException("first element of passed chain must be this EditableParameterModelGroup");
-        EditableParameterModel[] newChain = new EditableParameterModel[modelChain.length + group.length - 1];
-        System.arraycopy(group, 0, newChain, 0, group.length);
-        System.arraycopy(modelChain, 1, newChain, group.length, modelChain.length - 1);
-        newChain[0].setValue(ecvp, newChain);
-    }
-
-    public boolean isEditChainableWith(Object o) {
-        return ((EditableParameterModel) group[0]).isEditChainableWith(o);
     }
 
     public void stateChanged(ChangeEvent e) {
@@ -182,8 +156,27 @@ public class EditableParameterModelGroup implements EditableParameterModel, Chan
         return group[0].getIcon();
     }
 
+    public String toString() {
+        if (group.length == 1)
+            return group[0].toString();
+        else
+            return group[0].toString();
+    }
+
     public String getToolTipText() {
-        return group[0].getToolTipText();
+        if (group.length == 1)
+            return group[0].getToolTipText();
+        else {
+            HashSet s = new HashSet();
+            for (int i = 0; i < group.length; i++)
+                try {
+                    s.add(group[i].getValue());
+                } catch (ParameterException e) {
+                }
+            StringBuffer sb = new StringBuffer();
+            sb.append(group[0].getToolTipText()).append("  (").append(+s.size()).append(" distinct value").append((s.size() == 1 ? "" : "s")).append( ")");
+            return sb.toString();
+        }
     }
 
     public Object[] getWrappedObjects() {

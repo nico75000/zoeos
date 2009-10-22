@@ -50,14 +50,16 @@ public class LFOShapePanel extends JPanel {
     protected Insets ins;
 
     protected static final float[] randomFactors;
+    protected static final float[] noiseFactors;
 
     static {
         randomFactors = generateRandomFactors(200); // hopefully x extent of component will never be bigger than this
+        noiseFactors = generateNoiseFactors(200); // hopefully x extent of component will never be bigger than this
     }
 
     public LFOShapePanel(String title) {
         //this.setBorder(new LineBorder(UIColors.getVoiceOverviewTableBorder(), 4, true));
-        FuzzyLineBorder flb = new FuzzyLineBorder(UIColors.getTableBorder(),UIColors.getTableBorderWidth(), true, false);
+        FuzzyLineBorder flb = new FuzzyLineBorder(UIColors.getTableBorder(), UIColors.getTableBorderWidth(), true, false);
         flb.setFadingIn(flb.isFadingIn());
         this.setBorder(new TitledBorder(flb, title, TitledBorder.LEFT, TitledBorder.ABOVE_TOP));
         //this.setBorder(new TitledBorder(UIColors.makeFuzzyBorder(UIColors.getTableBorder(), RowHeaderedAndSectionedTablePanel.getBorderWidth()), title, TitledBorder.LEFT, TitledBorder.ABOVE_TOP));
@@ -66,6 +68,7 @@ public class LFOShapePanel extends JPanel {
         setPreferredSize(new Dimension(i.left + i.right + 60, i.top + i.bottom + 60));
         setSize(getPreferredSize());
         this.setFocusable(false);
+        //setOpaque(false);
     }
 
     public boolean isGradedBackground() {
@@ -157,14 +160,18 @@ public class LFOShapePanel extends JPanel {
     }
 
     protected void update() {
-        //revalidate();
+        revalidate();
         repaint();
     }
 
     protected void paintComponent(Graphics g) {
+        //Thread.dumpStack();
+        /* if (!AbstractRowHeaderedAndSectionedTable.repaint) {
+             System.out.println("paintcomponent skipped on lfo");
+             return;
+         }*/
         Graphics2D g2d = ((Graphics2D) g);
-
-
+        g2d.setRenderingHints(new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON));
         ins = getInsets();
         w = getWidth() - ins.right - ins.left - lineThickness * 2;
         h = getHeight() - ins.bottom - ins.top - lineThickness * 2;
@@ -176,7 +183,7 @@ public class LFOShapePanel extends JPanel {
         super.paintComponent(g);
         if (gradedBackground) {
             GradientPaint gp;
-            gp = new GradientPaint(0, 0, getBackground(), 0, (int) (getHeight() * 1.75), Color.white, false);
+            gp = new GradientPaint(0, 0, /*getBackground()*/Color.white, 0, (int) (getHeight() * 1.75), Color.lightGray, false);
             g2d.setPaint(gp);
             g2d.fillRect(ins.left - 1, ins.top - 1, getWidth() - ins.right - ins.left + 2, getHeight() - ins.top - ins.bottom + 2);
         }
@@ -256,6 +263,13 @@ public class LFOShapePanel extends JPanel {
             if (facts[i] < -1)
                 facts[i] = -1;
         }
+        return facts;
+    }
+
+    protected static float[] generateNoiseFactors(int num) {
+        float[] facts = new float[num];
+        for (int i = 0; i < num; i++)
+            facts[i] = (float) Math.random();
         return facts;
     }
 
@@ -441,7 +455,8 @@ public class LFOShapePanel extends JPanel {
         for (int i = 0; i < w; i++) {
             cx = i / w;
             if (i % 4 == 0)
-                sinFact = (float) Math.sin(cx * 2 * Math.PI) + (float) ((Math.random() - 0.5) / 2);
+             sinFact = (float) Math.sin(cx * 2 * Math.PI) + (float) ((Math.random() - 0.5) / 2);
+            // sinFact = (float) Math.sin(cx * 2 * Math.PI) + (float) ((noiseFactors[i] - 0.5) / 2);
             else
                 sinFact = (float) Math.sin(cx * 2 * Math.PI);
             if (sinFact > 1)

@@ -2,10 +2,11 @@ package com.pcmsolutions.device.EMU.E4.gui.table;
 
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.gui.PopupCategoryLabel;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
+import javax.swing.table.JTableHeader;
 import javax.swing.table.TableModel;
 import java.awt.*;
 import java.awt.event.*;
@@ -22,7 +23,7 @@ abstract public class PopupTable extends JTable implements MouseListener, ZDispo
     protected Color popupBG;
     protected Color popupFG;
     protected String popupName;
-    protected boolean hidingSelectionOnFocusLost = false;
+    private boolean hidingSelectionOnFocusLost = false;
 
     protected int[] lastHiddenRows;
     protected int[] lastHiddenCols;
@@ -30,7 +31,36 @@ abstract public class PopupTable extends JTable implements MouseListener, ZDispo
     public PopupTable(TableModel model, String popupName, Color popupBG, Color popupFG) {
         this(popupName, popupBG, popupFG);
         setModel(model);
-        // this.setDoubleBuffered(true);
+    }
+
+    protected JTableHeader createDefaultTableHeader() {
+        //return super.createDefaultTableHeader();    //To change body of overridden methods use File | Settings | File Templates.
+        return new JTableHeader(columnModel) {
+            {
+                enableEvents(AWTEvent.MOUSE_EVENT_MASK);
+            }
+
+            protected void processMouseEvent(MouseEvent e) {
+                super.processMouseEvent(e);    //To change body of overridden methods use File | Settings | File Templates.
+                if (e.getClickCount() == 2) {
+                    final int col = this.columnAtPoint(e.getPoint());
+                    if (col != -1){
+                        final JTable table = this.getTable();
+                        table.requestFocusInWindow();
+                        SwingUtilities.invokeLater(new Runnable(){
+                            public void run() {
+                                table.setColumnSelectionInterval(col, col);
+                                table.setRowSelectionInterval(0, table.getRowCount()-1);
+                            }
+                        });
+                    }
+                }
+            }
+        };
+    }
+
+    public JTableHeader getTableHeader() {
+        return super.getTableHeader();    //To change body of overridden methods use File | Settings | File Templates.
     }
 
     public PopupTable(String popupName, Color popupBG, Color popupFG) {
@@ -39,19 +69,12 @@ abstract public class PopupTable extends JTable implements MouseListener, ZDispo
         this.popupName = popupName;
         this.addMouseListener(this);
         this.addFocusListener(this);
-        //this.setDoubleBuffered(true);
-        setShowGrid(true);
+        //  this.setDoubleBuffered(false);
+      //  setShowGrid(false);
     }
 
     public Color getBackground() {
         return UIColors.getTableBG();
-    }
-
-    public void mouseDragged(MouseEvent mouseEvent) {
-    }
-
-    public void mouseClicked(MouseEvent e) {
-        checkPopup(e);
     }
 
     public int getRowHeight() {
@@ -64,6 +87,19 @@ abstract public class PopupTable extends JTable implements MouseListener, ZDispo
 
     public void setHidingSelectionOnFocusLost(boolean hidingSelectionOnFocusLost) {
         this.hidingSelectionOnFocusLost = hidingSelectionOnFocusLost;
+    }
+
+    public void mouseDragged(MouseEvent mouseEvent) {
+    }
+
+    public void mouseClicked(MouseEvent e) {
+        checkPopup(e);
+        /* if (e.getClickCount() == 2)
+         {
+             int col = this.getTableHeader().columnAtPoint(e.getPoint());
+             if (col != -1 )
+                 this.addColumnSelectionInterval(col, col);
+         }*/
     }
 
     public void mouseEntered(MouseEvent e) {
@@ -100,8 +136,8 @@ abstract public class PopupTable extends JTable implements MouseListener, ZDispo
         if (e.isPopupTrigger()) {
             Object[] sels = getSelObjects();
             if (sels != null) {
-                JPopupMenu p = ZCommandInvocationHelper.getPopup(sels, popupFG, popupBG, popupName);
-                JMenuItem[] cmi = getCustomMenuItems();
+                JPopupMenu p = ZCommandFactory.getPopup(sels, popupName);
+                Component[] cmi = getCustomMenuItems();
                 if (cmi != null) {
                     p.addSeparator();
                     for (int i = 0, n = cmi.length; i < n; i++)
@@ -114,37 +150,37 @@ abstract public class PopupTable extends JTable implements MouseListener, ZDispo
                 // p.addDesktopElement(new PopupCategoryMenuItem("Table"));
                 p.add(new PopupCategoryLabel("Table"));
 
-                p.add(new AbstractAction("Select All") {
+                p.add(new AbstractAction("Select all") {
                     public void actionPerformed(ActionEvent e) {
                         PopupTable.this.selectAll();
                     }
                 });
-                p.add(new AbstractAction("Select Row") {
+                p.add(new AbstractAction("Select row") {
                     public void actionPerformed(ActionEvent e) {
                         PopupTable.this.addColumnSelectionInterval(0, PopupTable.this.getColumnCount() - 1);
                         //PopupTable.this.getSelectionModel().addSelectionInterval(0, PopupTable.this.getRowCount() - 1);
                     }
                 });
-                p.add(new AbstractAction("Select Column") {
+                p.add(new AbstractAction("Select column") {
                     public void actionPerformed(ActionEvent e) {
                         PopupTable.this.addRowSelectionInterval(0, PopupTable.this.getRowCount() - 1);
                         //PopupTable.this.getSelectionModel().addSelectionInterval(0, PopupTable.this.getRowCount() - 1);
                     }
                 });
-                p.add(new AbstractAction("Clear Selection") {
+                p.add(new AbstractAction("Clear selection") {
                     public void actionPerformed(ActionEvent e) {
                         PopupTable.this.clearSelection();
                         //PopupTable.this.getSelectionModel().addSelectionInterval(0, PopupTable.this.getRowCount() - 1);
                     }
                 });
-                ZCommandInvocationHelper.showPopup(p, this, e);
+                ZCommandFactory.showPopup(p, this, e);
                 return true;
             }
         }
         return false;
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
+    protected Component[] getCustomMenuItems() {
         return null;
     }
 

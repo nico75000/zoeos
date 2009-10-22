@@ -1,7 +1,6 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
-import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListener;
+import com.pcmsolutions.device.EMU.E4.gui.*;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.device.DefaultDeviceEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.gui.device.DevicePanel;
@@ -9,6 +8,10 @@ import com.pcmsolutions.device.EMU.E4.gui.device.DeviceWorkspaceEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.gui.device.PropertiesPanel;
 import com.pcmsolutions.device.EMU.E4.gui.master.MasterEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.gui.multimode.MultiModeEnclosurePanel;
+import com.pcmsolutions.device.EMU.E4.gui.piano.MidiPiano;
+import com.pcmsolutions.device.EMU.E4.gui.preset.PresetViewModes;
+import com.pcmsolutions.device.EMU.E4.gui.preset.icons.PresetIcon;
+import com.pcmsolutions.device.EMU.E4.gui.preset.icons.PresetUserIcon;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext.PresetContextEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.*;
 import com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.envelope.EditableAmpEnvelopePanel;
@@ -19,19 +22,26 @@ import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.AmpEnvelo
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.AuxEnvelopePanel;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.FilterEnvelopePanel;
 import com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext.SampleContextEnclosurePanel;
+import com.pcmsolutions.device.EMU.E4.gui.table.PopupTable;
+import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.gui.ComponentGenerationException;
 import com.pcmsolutions.gui.GriddedPanel;
+import com.pcmsolutions.gui.UserMessaging;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.gui.desktop.ViewInstance;
 import com.pcmsolutions.gui.desktop.ZDesktopManager;
 import com.pcmsolutions.system.Indexable;
 import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.callback.Callback;
 import com.pcmsolutions.system.paths.DesktopName;
 import com.pcmsolutions.system.paths.ViewPath;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseListener;
 import java.util.ArrayList;
 
 /**
@@ -63,26 +73,26 @@ class ViewFactory {
 
         // final DesktopName name = new DesktopName(Object.class, PathFactory.provideDevicePath(device));
         return new ViewInstance() {
-           // private transient DefaultDeviceEnclosurePanel view;
+            // private transient DefaultDeviceEnclosurePanel view;
 
             public JComponent getView() throws ComponentGenerationException {
                 DefaultDeviceEnclosurePanel view;
-              //  if (view == null) {
-                    view = new DefaultDeviceEnclosurePanel();
-                    try {
-                        view.init(device, new JPanel() {
-                            public Color getForeground() {
-                                return UIColors.getDefaultFG();
-                            }
+                //  if (view == null) {
+                view = new DefaultDeviceEnclosurePanel();
+                try {
+                    view.init(device, new JPanel() {
+                        public Color getForeground() {
+                            return UIColors.getDefaultFG();
+                        }
 
-                            public Color getBackground() {
-                                return UIColors.getDefaultBG();
-                            }
-                        });
-                    } catch (Exception e) {
-                        throw new ComponentGenerationException(e.getMessage());
-                    }
-               // }
+                        public Color getBackground() {
+                            return UIColors.getDefaultBG();
+                        }
+                    });
+                } catch (Exception e) {
+                    throw new ComponentGenerationException(e.getMessage());
+                }
+                // }
                 return view;
             }
 
@@ -96,9 +106,46 @@ class ViewFactory {
         };
     }
 
+    //PIANO
+    public static ViewInstance providePianoView(final DeviceContext device) {
+        final DesktopName name = new DesktopName(JPanel.class, PathFactory.providePianoPath(device));
+        final ViewPath vp = new ViewPath(ZDesktopManager.dockPIANO, name);
+        return new ViewInstance() {
+            public JComponent getView() throws ComponentGenerationException {
+                try {
+                    JPanel piano = new MidiPiano(device) {
+                        public Color getBackground() {
+                            return UIColors.getDefaultBG();
+                        }
+
+                        public Color getForeground() {
+                            return UIColors.getDefaultFG();
+                        }
+                    };
+                    return piano;
+                } catch (Exception e) {
+                    throw new ComponentGenerationException(e.getMessage());
+                }
+            }
+
+            public DesktopName getDesktopName() {
+                return name;
+            }
+
+            public ViewPath getViewPath() {
+                return vp;
+            }
+        };
+    }
+
     // PRESET
     public static DesktopName[] provideDefaultDesktopNames(ReadablePreset p) {
-        return join(provideDefaultDesktopNames(p.getDeviceContext()), new DesktopName(DefaultPresetViewerPanel.class, PathFactory.providePresetPath(p)));
+        return join(provideDefaultDesktopNames(p.getDeviceContext()), new DesktopName(PresetPanel.class, PathFactory.providePresetPath(p)));
+    }
+
+    // PRESET
+    public static DesktopName[] provideUserDesktopNames(ReadablePreset p) {
+        return join(provideDefaultDesktopNames(p), new DesktopName(PresetPanel.class, PathFactory.providePresetUserPath(p)));
     }
 
     public static ViewInstance provideDefaultView(final ReadablePreset p) {
@@ -108,7 +155,47 @@ class ViewFactory {
             public JComponent getView() throws ComponentGenerationException {
                 try {
                     DeviceWorkspaceEnclosurePanel dep = new DeviceWorkspaceEnclosurePanel();
-                    dep.init(p.getDeviceContext(), new DefaultPresetViewerPanel(p));
+                    dep.init(p.getDeviceContext(), new PresetPanel(p, true, true, true, PresetViewModes.VOICE_MODE_ALL_BUT_USER));
+                    return dep;
+                } catch (Exception e) {
+                    throw new ComponentGenerationException(e.getMessage());
+                }
+            }
+
+            public DesktopName getDesktopName() {
+                return names[names.length - 1];
+            }
+
+            public ViewPath getViewPath() {
+                return vp;
+            }
+        };
+    }
+
+    public static ViewInstance provideUserView(final ReadablePreset p) {
+        final DesktopName[] names = provideUserDesktopNames(p);
+        final ViewPath vp = new ViewPath(ZDesktopManager.dockWORKSPACE, names);
+        return new ViewInstance() {
+            public JComponent getView() throws ComponentGenerationException {
+                try {
+                    DeviceWorkspaceEnclosurePanel dep = new DeviceWorkspaceEnclosurePanel();
+                    dep.init(p.getDeviceContext(), new PresetPanel(p, true, false, false, PresetViewModes.VOICE_MODE_USER) {
+                        public String getTitle() {
+                            return "User";
+                        }
+
+                        public Integer getIndex() {
+                            return ViewIndexFactory.PRESET_USER_INDEX;
+                        }
+
+                        public Icon getIcon() {
+                            Icon i = p.getIcon();
+                            if (i != null)
+                                return new PresetUserIcon((PresetIcon) i);
+                            else
+                                return null;
+                        }
+                    });
                     return dep;
                 } catch (Exception e) {
                     throw new ComponentGenerationException(e.getMessage());
@@ -132,7 +219,47 @@ class ViewFactory {
             public JComponent getView() throws ComponentGenerationException {
                 try {
                     DeviceWorkspaceEnclosurePanel dep = new DeviceWorkspaceEnclosurePanel();
-                    dep.init(p.getDeviceContext(), new DefaultPresetEditorPanel(p));
+                    dep.init(p.getDeviceContext(), new EditablePresetPanel(p, true, true, true, PresetViewModes.VOICE_MODE_ALL_BUT_USER));
+                    return dep;
+                } catch (Exception e) {
+                    throw new ComponentGenerationException(e.getMessage());
+                }
+            }
+
+            public DesktopName getDesktopName() {
+                return names[names.length - 1];
+            }
+
+            public ViewPath getViewPath() {
+                return vp;
+            }
+        };
+    }
+
+    public static ViewInstance provideUserView(final ContextEditablePreset p) {
+        final DesktopName[] names = provideUserDesktopNames(p);
+        final ViewPath vp = new ViewPath(ZDesktopManager.dockWORKSPACE, names);
+        return new ViewInstance() {
+            public JComponent getView() throws ComponentGenerationException {
+                try {
+                    DeviceWorkspaceEnclosurePanel dep = new DeviceWorkspaceEnclosurePanel();
+                    dep.init(p.getDeviceContext(), new EditablePresetPanel(p, true, false, false, PresetViewModes.VOICE_MODE_USER) {
+                        public String getTitle() {
+                            return "User";
+                        }
+
+                        public Integer getIndex() {
+                            return ViewIndexFactory.PRESET_USER_INDEX;
+                        }
+
+                        public Icon getIcon() {
+                            Icon i = p.getIcon();
+                            if (i != null)
+                                return new PresetUserIcon((PresetIcon) i);
+                            else
+                                return null;
+                        }
+                    });
                     return dep;
                 } catch (Exception e) {
                     throw new ComponentGenerationException(e.getMessage());
@@ -220,20 +347,26 @@ class ViewFactory {
 
         public Integer getIndex() {
             if (voices.length > 1)
-                return ViewIndexFactory.getMultiVoiceIndex(voices);
+                return ViewIndexFactory.getEditableVoiceIndex(voices);
             else
                 return voices[0].getVoiceNumber();
         }
     }
 
     // this is where the actual sections of a voice are shown in tabbed mode
-    private static class VoiceSectionPanel extends GriddedPanel implements TitleProvider, Indexable {
+    private abstract static class VoiceSectionPanel extends GriddedPanel implements MouseListener, TitleProvider, Indexable, EnclosureNorthenComponentProvider, ZDisposable {
         private TitleProvider titleProvider;
         private Integer index;
+        protected EnclosureMenuBar encMenuBar;
+        protected ReadablePreset.ReadableVoice voice;
+        // protected Impl_TableExclusiveSelectionContext tsc = new Impl_TableExclusiveSelectionContext();
+        protected static final String selectionContext = "selection";
 
-        public VoiceSectionPanel(TitleProvider titleProvider, Integer index) {
+        public VoiceSectionPanel(ReadablePreset.ReadableVoice voice, TitleProvider titleProvider, Integer index) {
             this.titleProvider = titleProvider;
             this.index = index;
+            this.voice = voice;
+            this.addMouseListener(this);
         }
 
         public Color getBackground() {
@@ -267,6 +400,44 @@ class ViewFactory {
         public Integer getIndex() {
             return index;
         }
+
+        public void mouseDragged(java.awt.event.MouseEvent mouseEvent) {
+        }
+
+        public void mouseClicked(java.awt.event.MouseEvent e) {
+            if (e.getClickCount() == 2) {
+                try {
+                    voice.getPreset().audition().post(new Callback() {
+                        public void result(Exception e, boolean wasCancelled) {
+                            if (e != null && !wasCancelled)
+                                UserMessaging.flashWarning(null, e.getMessage());
+                        }
+                    });
+                    return;
+                } catch (ResourceUnavailableException e1) {
+                    UserMessaging.flashWarning(null, e1.getMessage());
+                }
+            }
+        }
+
+        public void mouseEntered(java.awt.event.MouseEvent e) {
+        }
+
+        public void mouseExited(java.awt.event.MouseEvent e) {
+        }
+
+        public void mousePressed(java.awt.event.MouseEvent e) {
+        }
+
+        public void mouseReleased(java.awt.event.MouseEvent e) {
+        }
+
+        public void zDispose() {
+            titleProvider = null;
+            encMenuBar.zDispose();
+            encMenuBar = null;
+            this.removeMouseListener(this);
+        }
     }
 
     public static DesktopName[] provideDefaultDesktopNames(ReadablePreset.ReadableVoice v) {
@@ -290,14 +461,14 @@ class ViewFactory {
         // if (v.getGroupMode())
         return join(provideDefaultDesktopNames(voices[0].getPreset()), new DesktopName(EditableVoicePanel.class, PathFactory.provideVoicePaths(voices)));
         //  else
-        //      return join(provideDefaultDesktopNames(v.getPreset()), new DesktopName(EditableVoicePanel.class, PathFactory.provideVoicePath(v)));
+        //      return join(provideDefaultDesktopNames(v.getIndex()), new DesktopName(EditableVoicePanel.class, PathFactory.provideVoicePath(v)));
     }
 
     public static DesktopName[] provideDefaultDesktopNames(ContextEditablePreset.EditableVoice[] voices, int sections) {
         // if (v.getGroupMode())
         return join(provideDefaultDesktopNames(voices), new DesktopName(EditableVoicePanel.class, PathFactory.provideVoiceSectionPaths(voices, sections)));
         //  else
-        //      return join(provideDefaultDesktopNames(v.getPreset()), new DesktopName(EditableVoicePanel.class, PathFactory.provideVoicePath(v)));
+        //      return join(provideDefaultDesktopNames(v.getIndex()), new DesktopName(EditableVoicePanel.class, PathFactory.provideVoicePath(v)));
     }
 
     public static ViewInstance provideDefaultView(final ReadablePreset.ReadableVoice voice, final boolean empty) {
@@ -335,70 +506,98 @@ class ViewFactory {
         return new ViewInstance() {
             public JComponent getView() throws ComponentGenerationException {
                 try {
+                    final Impl_TableExclusiveSelectionContext tsc = new Impl_TableExclusiveSelectionContext();
                     DeviceWorkspaceEnclosurePanel dep = new DeviceWorkspaceEnclosurePanel();
-                    VoiceSectionPanel vsp = new VoiceSectionPanel(tp, ViewIndexFactory.getVoiceSectionIndex(sections));
+                    VoiceSectionPanel vsp = new VoiceSectionPanel(voice, tp, ViewIndexFactory.getVoiceSectionIndex(sections)) {
+                        {
+                            /*
+                             tsc.setSelectionAction(new Impl_TableExclusiveSelectionContext.SelectionAction() {
+                                 public void newSelection(PopupTable t) {
+                                     encMenuBar.removeDynamicMenuContext(selectionContext);
+                                     if (t != null) {
+                                         Object[] selObjs = t.getSelObjects();
+                                         Component[] items = ZCommandFactory.getToolBarStyleMenuComponents(selObjs, "Parameter");
+                                         encMenuBar.addDynamicMenuContext(items, selectionContext);
+                                     }
+                                 }
+
+                                 public void clearedSelection(PopupTable t) {
+                                     //To change body of implemented methods use File | Settings | File Templates.
+                                 }
+                             });
+                             */
+                        }
+
+                        public boolean isEnclosureNorthenComponentAvailable() {
+                            return false;
+                        }
+
+                        public Component getEnclosureNorthenComponent() {
+                            return null;
+                        }
+                    };
                     int gridIndex = 0;
                     if ((sections & VoiceSections.VOICE_CORDS) != 0) {
                         CordPanel p = new CordPanel();
-                        p.init(voice);
+                        p.init(voice, tsc);
                         vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                     }
                     if ((sections & VoiceSections.VOICE_AMP_FILTER) != 0) {
                         AmplifierPanel amp = new AmplifierPanel();
-                        amp.init(voice);
+                        amp.init(voice, tsc);
                         vsp.addAnchoredComponent(amp, gridIndex++, 0, GridBagConstraints.NORTH);
 
                         FilterPanel filt = new FilterPanel();
-                        filt.init(voice);
+                        filt.init(voice, tsc);
                         vsp.addAnchoredComponent(filt, gridIndex++, 0, GridBagConstraints.NORTH);
                     } else {
                         if ((sections & VoiceSections.VOICE_AMP) != 0) {
                             AmplifierPanel p = new AmplifierPanel();
-                            p.init(voice);
+                            p.init(voice, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                         if ((sections & VoiceSections.VOICE_FILTER) != 0) {
                             FilterPanel p = new FilterPanel();
-                            p.init(voice);
+                            p.init(voice, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                     }
                     if ((sections & VoiceSections.VOICE_LFO) != 0) {
                         LFOPanel p = new LFOPanel();
-                        p.init(voice);
+                        p.init(voice, tsc);
                         vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                     }
                     if ((sections & VoiceSections.VOICE_TUNING) != 0) {
                         TuningPanel p = new TuningPanel();
-                        p.init(voice);
+                        p.init(voice, tsc);
                         vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                     }
                     if ((sections & VoiceSections.VOICE_ENVELOPES) != 0) {
                         AmpEnvelopePanel amp = new AmpEnvelopePanel();
-                        amp.init(voice);
+                        amp.init(voice, tsc);
                         vsp.addAnchoredComponent(amp, gridIndex++, 0, GridBagConstraints.NORTH);
 
                         FilterEnvelopePanel filt = new FilterEnvelopePanel();
-                        filt.init(voice);
+                        filt.init(voice, tsc);
                         vsp.addAnchoredComponent(filt, gridIndex++, 0, GridBagConstraints.NORTH);
 
                         AuxEnvelopePanel aux = new AuxEnvelopePanel();
-                        aux.init(voice);
+                        aux.init(voice, tsc);
                         vsp.addAnchoredComponent(aux, gridIndex++, 0, GridBagConstraints.NORTH);
                     } else {
                         if ((sections & VoiceSections.VOICE_AMP_ENVELOPE) != 0) {
                             AmpEnvelopePanel p = new AmpEnvelopePanel();
-                            p.init(voice);
+                            p.init(voice, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                         if ((sections & VoiceSections.VOICE_FILTER_ENVELOPE) != 0) {
                             FilterEnvelopePanel p = new FilterEnvelopePanel();
-                            p.init(voice);
+                            p.init(voice, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                         if ((sections & VoiceSections.VOICE_AUX_ENVELOPE) != 0) {
                             AuxEnvelopePanel p = new AuxEnvelopePanel();
-                            p.init(voice);
+                            p.init(voice, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                     }
@@ -456,68 +655,105 @@ class ViewFactory {
                 try {
                     int gridIndex = 0;
                     DeviceWorkspaceEnclosurePanel dep = new DeviceWorkspaceEnclosurePanel();
-                    VoiceSectionPanel vsp = new VoiceSectionPanel(tp, ViewIndexFactory.getVoiceSectionIndex(sections));
+                    final Impl_TableExclusiveSelectionContext tsc = new Impl_TableExclusiveSelectionContext();
+                    VoiceSectionPanel vsp = new VoiceSectionPanel(voices[0], tp, ViewIndexFactory.getVoiceSectionIndex(sections)) {
+                        ZCommandFactory.ZCommandPresentationContext parameterCommandPresentationContext;
+
+                        {
+                            parameterCommandPresentationContext = ZCommandFactory.getToolbarPresentationContext(EditableParameterModel.cmdProviderHelper.getSupportedMarkers(), null);
+                            tsc.setSelectionAction(new Impl_TableExclusiveSelectionContext.SelectionAction() {
+                                public void newSelection(PopupTable t) {
+                                    if (t != null) {
+                                        Object[] selObjs = t.getSelObjects();
+                                        parameterCommandPresentationContext.setTargets(selObjs);
+                                    } else
+                                        parameterCommandPresentationContext.disableContext();
+                                }
+
+                                public void clearedSelection(PopupTable t) {
+                                }
+                            });
+                        }
+
+                        public boolean isEnclosureNorthenComponentAvailable() {
+                            return true;
+                        }
+
+                        public Component getEnclosureNorthenComponent() {
+                            if (encMenuBar == null) {
+                                encMenuBar = new EnclosureMenuBar();
+                                encMenuBar.addStaticMenuContext(parameterCommandPresentationContext.getComponents(), selectionContext);
+                            }
+                            return encMenuBar.getjMenuBar();
+                        }
+
+                        public void zDispose() {
+                            super.zDispose();
+                            parameterCommandPresentationContext.zDispose();
+                            parameterCommandPresentationContext = null;
+                        }
+                    };
                     if ((sections & VoiceSections.VOICE_CORDS) != 0) {
                         EditableCordPanel p = new EditableCordPanel();
-                        p.init(voices);
+                        p.init(voices, tsc);
                         vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                     }
                     if ((sections & VoiceSections.VOICE_AMP_FILTER) != 0) {
                         EditableAmplifierPanel amp = new EditableAmplifierPanel();
-                        amp.init(voices);
+                        amp.init(voices, tsc);
                         vsp.addAnchoredComponent(amp, gridIndex++, 0, GridBagConstraints.NORTH);
 
                         EditableFilterPanel filt = new EditableFilterPanel();
-                        filt.init(voices);
+                        filt.init(voices, tsc);
                         vsp.addAnchoredComponent(filt, gridIndex++, 0, GridBagConstraints.NORTH);
                     } else {
                         if ((sections & VoiceSections.VOICE_AMP) != 0) {
                             EditableAmplifierPanel p = new EditableAmplifierPanel();
-                            p.init(voices);
+                            p.init(voices, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                         if ((sections & VoiceSections.VOICE_FILTER) != 0) {
                             EditableFilterPanel p = new EditableFilterPanel();
-                            p.init(voices);
+                            p.init(voices, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                     }
                     if ((sections & VoiceSections.VOICE_LFO) != 0) {
                         EditableLFOPanel p = new EditableLFOPanel();
-                        p.init(voices);
+                        p.init(voices, tsc);
                         vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                     }
                     if ((sections & VoiceSections.VOICE_TUNING) != 0) {
                         EditableTuningPanel p = new EditableTuningPanel();
-                        p.init(voices);
+                        p.init(voices, tsc);
                         vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                     }
                     if ((sections & VoiceSections.VOICE_ENVELOPES) != 0) {
                         EditableAmpEnvelopePanel amp = new EditableAmpEnvelopePanel();
-                        amp.init(voices);
+                        amp.init(voices, tsc);
                         vsp.addAnchoredComponent(amp, gridIndex++, 0, GridBagConstraints.NORTH);
 
                         EditableFilterEnvelopePanel filt = new EditableFilterEnvelopePanel();
-                        filt.init(voices);
+                        filt.init(voices, tsc);
                         vsp.addAnchoredComponent(filt, gridIndex++, 0, GridBagConstraints.NORTH);
 
                         EditableAuxEnvelopePanel aux = new EditableAuxEnvelopePanel();
-                        aux.init(voices);
+                        aux.init(voices, tsc);
                         vsp.addAnchoredComponent(aux, gridIndex++, 0, GridBagConstraints.NORTH);
                     } else {
                         if ((sections & VoiceSections.VOICE_AMP_ENVELOPE) != 0) {
                             EditableAmpEnvelopePanel p = new EditableAmpEnvelopePanel();
-                            p.init(voices);
+                            p.init(voices, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                         if ((sections & VoiceSections.VOICE_FILTER_ENVELOPE) != 0) {
                             EditableFilterEnvelopePanel p = new EditableFilterEnvelopePanel();
-                            p.init(voices);
+                            p.init(voices, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                         if ((sections & VoiceSections.VOICE_AUX_ENVELOPE) != 0) {
                             EditableAuxEnvelopePanel p = new EditableAuxEnvelopePanel();
-                            p.init(voices);
+                            p.init(voices, tsc);
                             vsp.addAnchoredComponent(p, gridIndex++, 0, GridBagConstraints.NORTH);
                         }
                     }

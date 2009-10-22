@@ -1,15 +1,21 @@
 package com.pcmsolutions.gui.smdi;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTablePanel;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
+import com.pcmsolutions.gui.UserMessaging;
 import com.pcmsolutions.gui.ZDialog;
 import com.pcmsolutions.smdi.SMDIAgent;
 import com.pcmsolutions.smdi.SmdiTarget;
 import com.pcmsolutions.smdi.SmdiUnavailableException;
 import com.pcmsolutions.smdi.TargetNotSMDIException;
+import com.pcmsolutions.system.ScsiIdProvider;
 import com.pcmsolutions.system.ZExternalDevice;
 import com.pcmsolutions.system.Zoeos;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -17,7 +23,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
 import java.util.List;
-import java.util.prefs.Preferences;
 
 /**
  * Created by IntelliJ IDEA.
@@ -26,12 +31,10 @@ import java.util.prefs.Preferences;
  * Time: 23:00:21
  * To change this template use Options | File Templates.
  */
-public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListener, ComponentListener {
+public class ZSmdiManagerDialog extends ZDialog implements ComponentListener {
     protected RowHeaderedAndSectionedTablePanel smdiPanel;
     protected SmdiManagerTable smdiManagerTable;
     protected JScrollPane scrollPane;
-
-    private static final String PREF_smdiManagerMaxHeight = "smdiManagerMaxHeight";
 
     public ZSmdiManagerDialog(Frame ownerFrame, boolean modal) throws HeadlessException {
         super(ownerFrame, "SMDI Manager", modal);
@@ -50,7 +53,7 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
             public void actionPerformed(ActionEvent e) {
                 int sr = smdiManagerTable.getRowHeader().getSelectedRow();
                 if (sr < 0) {
-                    JOptionPane.showMessageDialog(ZSmdiManagerDialog.this, "Select a device first", "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(ZSmdiManagerDialog.this, "Select a SMDI device first", "Error", JOptionPane.ERROR_MESSAGE);
                     return;
                 }
 
@@ -64,7 +67,17 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
                 if (l.size() > 0) {
                     int res = JOptionPane.showOptionDialog(ZSmdiManagerDialog.this, "Choose a device for the coupling:", "Choose Device", JOptionPane.OK_OPTION, JOptionPane.QUESTION_MESSAGE, null, l.toArray(), l.get(0));
                     if (res != JOptionPane.CLOSED_OPTION && res != JOptionPane.CANCEL_OPTION)
-                        if (l.get(res) instanceof ZExternalDevice)
+                        if (l.get(res) instanceof ZExternalDevice) {
+                            ZExternalDevice zed = (ZExternalDevice) l.get(res);
+                            try {
+                                if (zed instanceof ScsiIdProvider && ((ScsiIdProvider) zed).getScsiId() != st.getSCSI_Id())
+                                    if (!UserMessaging.askYesNo("The Midi device you have chosen is not reporting the same SCSI Id as the SMDI device you have selected. Continue anyway?"))
+                                        return;
+                            } catch (ParameterException e1) {
+                                e1.printStackTrace();
+                            } catch (DeviceException e1) {
+                                e1.printStackTrace();
+                            }
                             try {
                                 SMDIAgent.setSmdiTargetCoupling(st.getHA_Id(), st.getSCSI_Id(), ((ZExternalDevice) l.get(res)).getDeviceIdentityMessage());
                             } catch (TargetNotSMDIException e1) {
@@ -72,21 +85,13 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
                             } catch (SmdiUnavailableException e1) {
                                 e1.printStackTrace();
                             }
+                        }
                 } else
-                    JOptionPane.showMessageDialog(ZSmdiManagerDialog.this, "No devices available", "Problem", JOptionPane.ERROR_MESSAGE);
+                    UserMessaging.showError(ZSmdiManagerDialog.this, "No midi devices available");
             }
         });
         cButt.setAlignmentX(Component.LEFT_ALIGNMENT);
         cButt.setToolTipText("Couple the selected SMDI Device to a Midi Device");
-
-        /*  JButton dcButt = new JButton(new AbstractAction("Decouple from Midi Device") {
-              public void actionPerformed(ActionEvent e) {
-                  SMDIAgent.setSmdiTargetCoupling();
-              }
-          });
-          dcButt.setAlignmentX(Component.LEFT_ALIGNMENT);
-          dcButt.setToolTipText("Decouple the selected SMDI Device from a Midi Device");
-          */
 
         JButton ccButt = new JButton(new AbstractAction("Clear All Couplings") {
             public void actionPerformed(ActionEvent e) {
@@ -98,7 +103,7 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
             }
         });
         ccButt.setAlignmentX(Component.LEFT_ALIGNMENT);
-        ccButt.setToolTipText("Clear all the SMDI to Midi Device couplings");
+        ccButt.setToolTipText("Clear all the SMDI to Midi device couplings");
 
 
         JPanel bottomPanel = new JPanel() {
@@ -120,19 +125,31 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
             public void actionPerformed(final ActionEvent e) {
                 if (e.getSource() instanceof Component) {
                     ((Component) e.getSource()).setEnabled(false);
-                    new ZDefaultThread("Refresh SMDI") {
-                        public void run() {
-                            try {
-                                SMDIAgent.refresh();
-                            } finally {
+                    try {
+                        Zoeos.getInstance().getSystemQ().getPostableTicket(new TicketRunnable() {
+                            public void run() throws Exception {
+                                try {
+                                    try {
+                                        SMDIAgent.refresh();
+                                    } catch (SmdiUnavailableException e1) {
+                                        UserMessaging.showInfo("SMDI unavailable");
+                                    }
+                                } finally {
+                                }
+                            }
+                        }, "refreshSMDI").post(new Callback() {
+                            public void result(Exception e1, boolean wasCancelled) {
                                 SwingUtilities.invokeLater(new Runnable() {
                                     public void run() {
                                         ((Component) e.getSource()).setEnabled(true);
                                     }
                                 });
                             }
-                        }
-                    }.start();
+                        });
+                    } catch (ResourceUnavailableException e1) {
+                        e1.printStackTrace();
+                        ((Component) e.getSource()).setEnabled(true);
+                    }
                 }
             }
         };
@@ -156,12 +173,10 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
         //ZUtilities.applyHideButton(this, false, false);
         smdiManagerTable.addComponentListener(this);
         adjustSize();
-        SMDIAgent.addSmdiListener(this);
     }
 
     public void dispose() {
         super.dispose();
-        SMDIAgent.removeSmdiListener(this);
     }
 
     private void adjustSize() {
@@ -170,13 +185,9 @@ public class ZSmdiManagerDialog extends ZDialog implements SMDIAgent.SmdiListene
 
         pack();
         Dimension d = getSize();
-        int maxHeight = Preferences.userNodeForPackage(this.getClass()).getInt(PREF_smdiManagerMaxHeight, 400);
 
-        if (d.getHeight() > maxHeight)
-            setSize(new Dimension((int) d.getWidth(), maxHeight));
-    }
-
-    public void SmdiChanged() {
+        if (d.getHeight() > 400)
+            setSize(new Dimension((int) d.getWidth(), 400));
     }
 
     public void componentResized(ComponentEvent e) {

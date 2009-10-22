@@ -5,7 +5,7 @@ import com.pcmsolutions.system.ZDisposable;
 import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
 
-public class ColumnData  implements ZDisposable{
+public class ColumnData implements ZDisposable {
     public String title;
     public int width;
     public int alignment;
@@ -14,11 +14,11 @@ public class ColumnData  implements ZDisposable{
     public TableCellRenderer renderer;
     public TableCellEditor editor;
 
-    public void zDispose(){
+    public void zDispose() {
         if (renderer instanceof ZDisposable)
-            ((ZDisposable)renderer).zDispose();
+            ((ZDisposable) renderer).zDispose();
         if (editor instanceof ZDisposable)
-            ((ZDisposable)editor).zDispose();
+            ((ZDisposable) editor).zDispose();
     }
 
     public ColumnData(String title, int width, int alignment, int sectionIndex, Class columnClass, TableCellRenderer renderer, TableCellEditor editor) {

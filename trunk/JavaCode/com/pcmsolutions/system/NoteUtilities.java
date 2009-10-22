@@ -1,9 +1,8 @@
 package com.pcmsolutions.system;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,13 +22,30 @@ public class NoteUtilities {
         return noteList.indexOf(note.toLowerCase());
     }
 
-    public static Map getNoteValueStringsMap() {
-        Map noteValueStrings = new TreeMap();
+
+    public static double getFreqForNote(int note) {
+        return 440 * Math.pow(2, ((note - 69) / 12.0));
+    }
+
+    public static boolean isWhite(int key) {
+        return !isBlack(key);
+    }
+
+    public static boolean isBlack(int key) {
+        int mod = key % 12;
+        if (mod == 1 || mod == 3 || mod == 6 || mod == 8 || mod == 10)
+            return true;
+        else
+            return false;
+    }
+
+    public static List<String> getNoteStrings() {
+        ArrayList<String> noteValueStrings = new ArrayList<String>();
         int oct = -2;
         for (int i = 0, n = 128; i < n; i++) {
             if (i != 0)
                 oct = i / 12 - 2;
-            noteValueStrings.put(IntPool.get(i), formattedNotes[i % 12] + (oct < 0 ? String.valueOf(oct) : " " + oct));
+            noteValueStrings.add(formattedNotes[i % 12] + (oct < 0 ? String.valueOf(oct) : " " + oct));
         }
         return noteValueStrings;
     }
@@ -63,6 +79,13 @@ public class NoteUtilities {
 
         public static Note[] getAllNotes() {
             return (Note[]) allNotes.clone();
+        }
+
+        public static String[] getAllNoteStrings() {
+            String[] strs = new String[allNotes.length];
+            for (int i = 0; i < strs.length; i++)
+                strs[i] = allNotes[i].getNoteString();
+            return strs;
         }
 
         public static Note[] getNoteRange(int low, int high) {

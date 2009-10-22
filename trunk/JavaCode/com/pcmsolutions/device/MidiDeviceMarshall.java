@@ -22,7 +22,7 @@ public class MidiDeviceMarshall implements DeviceMarshall {
     private static final MidiDeviceMarshall INSTANCE = new MidiDeviceMarshall();
 
     {
-        final List devicePackages = new ArrayList();
+        final List deviceClasses = new ArrayList();
 
         String s = ZoeosPreferences.ZPREF_deviceClasses.getValue();
 
@@ -30,10 +30,10 @@ public class MidiDeviceMarshall implements DeviceMarshall {
             Enumeration tok = new StringTokenizer(s, Zoeos.preferenceFieldSeperator);
 
             while (tok.hasMoreElements()) {
-                devicePackages.add(tok.nextElement());
+                deviceClasses.add(tok.nextElement());
             }
             String className;
-            for (Iterator i = devicePackages.iterator(); i.hasNext();) {
+            for (Iterator i = deviceClasses.iterator(); i.hasNext();) {
                 className = (String) i.next() + ".Marshall";
                 try {
                     Object o = (Class.forName(className)).newInstance();

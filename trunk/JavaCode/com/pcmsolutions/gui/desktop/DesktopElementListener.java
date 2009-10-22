@@ -7,5 +7,6 @@ package com.pcmsolutions.gui.desktop;
  */
 public interface DesktopElementListener {
     public void desktopElementStatusChanged(DesktopElement source);
+
     public void desktopElementExpired(DesktopElement source);
 }

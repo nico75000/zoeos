@@ -6,9 +6,19 @@
 
 package com.pcmsolutions.device.EMU.E4.sample;
 
+import com.pcmsolutions.device.EMU.E4.AuditionManager;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
+import com.pcmsolutions.device.EMU.E4.zcommands.E4ReadableSampleZCommandMarker;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContextElement;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.gui.IconAndTipCarrier;
+import com.pcmsolutions.system.AuditioningDisabledException;
+import com.pcmsolutions.system.ZCommandProviderHelper;
+import com.pcmsolutions.system.tasking.Ticket;
 
 
 /**
@@ -16,37 +26,51 @@ import com.pcmsolutions.gui.IconAndTipCarrier;
  * @author  pmeehan
  */
 
-public interface ReadableSample extends SampleModel, IconAndTipCarrier {
-    // EVENTS
-    public void addSampleListener(SampleListener pl);
+public interface ReadableSample extends ContextElement, SampleModel, IconAndTipCarrier {
+    final ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadableSampleZCommandMarker.class);
 
-    public void removeSampleListener(SampleListener pl);
+    // EVENTS
+    public void addListener(SampleListener pl) throws DeviceException;
+
+    public void removeListener(SampleListener pl);
 
     public ReadableSample getMostCapableNonContextEditableSampleDowngrade();
+
+    // AUDITION
+    public Ticket audition();
 
     // UTILITY
     public DeviceContext getDeviceContext();
 
     public void setToStringFormatExtended(boolean extended);
 
+    public void assertInitialized() throws SampleException;
+
     // SAMPLE
-    public void refreshSample() throws NoSuchSampleException;
+    public void refresh() throws SampleException;
 
-    public void lockSampleRead() throws NoSuchSampleException, NoSuchContextException;
+    public boolean isSampleInitialized() throws SampleException, DeviceException;
 
-    public void unlockSample();
+   // public double getInitializationStatus() throws SampleException, EmptyException;
 
-    public boolean isSampleInitialized() throws NoSuchSampleException;
+  //  public boolean isSampleWriteLocked() throws DeviceException, EmptyException;
 
-    public int getSampleState() throws NoSuchSampleException;
+    public String getName() throws SampleException, EmptyException;
 
-    public double getInitializationStatus() throws NoSuchSampleException, SampleEmptyException;
+    public String getString() throws SampleException;
 
-    public boolean isSampleWriteLocked() throws NoSuchSampleException, SampleEmptyException;
+    public String getDisplayName();
 
-    public String getSampleName() throws NoSuchSampleException, SampleEmptyException;
+    public Integer getIndex();
 
-    public String getSampleDisplayName() throws NoSuchSampleException;
+    public boolean isUser();
 
-    public Integer getSampleNumber();
+    public boolean isEmpty() throws SampleException;
+
+    public boolean isPending() throws SampleException;
+
+    public boolean isInitializing() throws SampleException;
+
+    public boolean isInitialized() throws SampleException;
+
 }

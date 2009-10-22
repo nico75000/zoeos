@@ -6,7 +6,7 @@ import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
 import com.pcmsolutions.device.EMU.E4.selections.CordParameterSelection;
 import com.pcmsolutions.device.EMU.E4.selections.VoiceParameterSelection;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.system.threads.Impl_ZThread;
 
 /**
  * Created by IntelliJ IDEA.
@@ -16,24 +16,29 @@ import com.pcmsolutions.system.ZDeviceNotRunningException;
  * To change this template use Options | File Templates.
  */
 public class EditableCordTable extends CordTable implements VoiceParameterSelectionAcceptor {
-     protected ContextEditablePreset.EditableVoice[]  voices;
-    public EditableCordTable(ContextEditablePreset.EditableVoice[] voices, EditableParameterModel[] parameterModels, String title) throws ZDeviceNotRunningException {
+    protected ContextEditablePreset.EditableVoice[] voices;
+
+    public EditableCordTable(ContextEditablePreset.EditableVoice[] voices, EditableParameterModel[] parameterModels, String title)  {
         this(voices, new EditableCordTableModel(parameterModels), title);
     }
 
-    public EditableCordTable(ContextEditablePreset.EditableVoice[] voices, EditableCordTableModel tm, String title) throws ZDeviceNotRunningException {
+    public EditableCordTable(ContextEditablePreset.EditableVoice[] voices, EditableCordTableModel tm, String title) {
         super(voices[0], tm, title);
         this.voices = voices;
         ParameterModelUtilities.registerTableForEditableParameterModelShortcuts(this);
         setDropChecker(defaultDropGridChecker);
     }
 
-    public void setSelection(VoiceParameterSelection sel) {
-        if (sel instanceof CordParameterSelection) {
-            ((CordParameterSelection) sel).render(voices, getSelectedRow(), true);
-        } else {
-            sel.render(voices);
-        }
+    public void setSelection(final VoiceParameterSelection sel) {
+      //  Impl_ZThread.ddTQ.postTask(new Impl_ZThread.Task(){
+       //     public void doTask() {
+                if (sel instanceof CordParameterSelection) {
+                    ((CordParameterSelection) sel).render(voices, getSelectedRow(), true);
+                } else {
+                    sel.render(voices);
+                }
+      //      }
+      //  });
     }
 
     public boolean willAcceptCategory(int category) {

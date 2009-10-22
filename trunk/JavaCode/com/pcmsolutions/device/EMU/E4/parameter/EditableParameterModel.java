@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.parameter;
 
 import com.pcmsolutions.device.EMU.E4.zcommands.E4EditableParameterModelZCommandMarker;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.ZCommandProvider;
 import com.pcmsolutions.system.ZCommandProviderHelper;
 
@@ -12,22 +13,17 @@ import com.pcmsolutions.system.ZCommandProviderHelper;
  * To change this template use Options | File Templates.
  */
 public interface EditableParameterModel extends ReadableParameterModel, ZCommandProvider {
-    public final static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4EditableParameterModelZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.ParameterDefaultZMTC;com.pcmsolutions.device.EMU.E4.zcommands.MaxParameterZMTC;com.pcmsolutions.device.EMU.E4.zcommands.MinParameterZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterRandomizeZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterPercentilesZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterLinearFadeZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterAllToFirstZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterUnitStepFromFirstZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterUnitStepFromCurrentZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterScaleCurrentZMTC;com.pcmsolutions.device.EMU.E4.zcommands.ParameterReflectionZMTC");
+    public final static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4EditableParameterModelZCommandMarker.class, ReadableParameterModel.cmdProviderHelper);
 
-    public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException;
+    public void setValue(Integer value) throws ParameterException;
 
-    public void setValueString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException;
+    public void offsetValue(Integer offset) throws ParameterException;
 
-    public void setValueUnitlessString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException;
+    public void offsetValue(Double offsetAsFOR) throws ParameterException;
 
-    public void defaultValue() throws ParameterUnavailableException, ParameterValueOutOfRangeException;
+    public void setValueString(String value) throws ParameterException;
 
-    public void setValue(EditChainValueProvider ecvp, EditableParameterModel[] chained) throws ParameterUnavailableException, ParameterValueOutOfRangeException;
+    public void setValueUnitlessString(String value) throws ParameterException;
 
-    public boolean isEditChainableWith(Object o);
-
-    public static interface EditChainValueProvider {
-        // might return null to signify no operation
-        public Integer getValue(EditableParameterModel model, EditableParameterModel leadModel) throws ParameterUnavailableException;
-    }
+    public void defaultValue() throws ParameterException;
 }

@@ -23,6 +23,7 @@ public abstract class FinalMidiMessage implements ByteStreamable, Serializable {
     private long timeStamp;
     private MidiDevice.Info source;
     private int matchRef = 0;
+
     {
         timeStamp = Zoeos.getZoeosTicks();
     }
@@ -31,7 +32,7 @@ public abstract class FinalMidiMessage implements ByteStreamable, Serializable {
         this(new byte[0], null);
     }
 
-    public void addMatchRef(){
+    public void addMatchRef() {
         matchRef++;
     }
 
@@ -52,8 +53,8 @@ public abstract class FinalMidiMessage implements ByteStreamable, Serializable {
     }
 
     //protected FinalMidiMessage() {
-   //     data = new byte[0];
-   // }
+    //     data = new byte[0];
+    // }
 
     protected FinalMidiMessage(byte[] data, MidiDevice.Info source) {
         this.data = new byte[data.length];

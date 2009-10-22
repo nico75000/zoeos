@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.gui;
 
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
+import com.pcmsolutions.system.Zoeos;
 
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
@@ -13,42 +14,41 @@ import java.awt.*;
  * To change this template use Options | File Templates.
  */
 public abstract class GeneralTableCellRenderer extends AbstractTableCellRenderer implements TableCellRenderer {
-    protected boolean drawFG = true;
-
+    {
+        setOpaque(false);
+    }
     protected void paintComponent(Graphics g) {
         Graphics2D g2d = ((Graphics2D) g);
-        int w = getWidth();
-        int h = getHeight();
-        Color e_bg = getBackground();
-        Color bg = UIColors.applyAlpha(e_bg, UIColors.tableAlpha);
-        Color sbg = e_bg;
-        Color e_fg = getForeground();
+        final int w = getWidth();
+        final int h = getHeight();
+        final Color bg = getBackground();
         if (isDropCell) {
+            setBorder(bdrNormal);
             GradientPaint gp;
             gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
             g2d.setPaint(gp);
             g2d.fillRoundRect(0, 0, w, h, 10, 10);
-            setBorder(bdrNormal);
-            setOpaque(true);
+            //Color e_bg = getBackground();
+            //setBackground(transparent);
+            //super.paintComponent(g); // should only draw text
+            //setBackground(e_bg);
         } else if (selected) {
+            setBorder(bdrSel);
+            Color sbg = UIColors.applyAlpha(getBackground(), UIColors.tableAlpha);
             GradientPaint gp;
             gp = new GradientPaint(0, h * UIColors.tableSelectionGradientFactor, bg, 0, 0, sbg, false);
             g2d.setPaint(gp);
             g2d.fillRect(0, 0, w, h);
-            setBorder(bdrSel);
-            setOpaque(false);
+            //Color e_bg = getBackground();
+            //setBackground(transparent);
+            //super.paintComponent(g); // should only draw text
+            //setBackground(e_bg);
         } else {
             setBorder(bdrNormal);
-            setOpaque(true);
+            g2d.setColor(getBackground());
+            g2d.fillRect(0, 0, w, h);
+            //g.setColor(getForeground());
         }
-
-        if (!drawFG) setForeground(bg);
-        setBackground(bg);
-
         super.paintComponent(g);
-
-        if (!drawFG)
-            setForeground(e_fg);
-        setBackground(e_bg);
     }
 }

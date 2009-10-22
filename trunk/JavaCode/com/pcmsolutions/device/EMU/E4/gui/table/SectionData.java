@@ -13,19 +13,21 @@ import java.awt.event.MouseListener;
 public class SectionData {
     public String sectionName;
     public int sectionWidth;
+    public Color sectionHeaderBG;
     public Color sectionBG;
     public Color sectionFG;
     public MouseListener ml;
 
-    public SectionData(Color sectionBG, Color sectionFG, int sectionLength, String sectionName) {
-        this(sectionBG, sectionFG, sectionLength, sectionName, null);
+    public SectionData(Color sectionBG,Color sectionHeaderBG, Color sectionFG, int sectionLength, String sectionName) {
+        this(sectionBG, sectionHeaderBG,sectionFG, sectionLength, sectionName, null);
     }
 
-    public SectionData(Color sectionBG, Color sectionFG, int sectionLength, String sectionName, MouseListener ml) {
+    public SectionData(Color sectionBG, Color sectionHeaderBG,Color sectionFG, int sectionLength, String sectionName, MouseListener ml) {
         this.sectionBG = sectionBG;
         this.sectionFG = sectionFG;
         this.sectionWidth = sectionLength;
         this.sectionName = sectionName;
+        this.sectionHeaderBG = sectionHeaderBG;
         this.ml = ml;
     }
 }

@@ -34,19 +34,27 @@ public class ParameterModelEncloser implements EditableParameterModel, ZDisposab
         parameterModel = null;
     }
 
-    public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void setValue(Integer value) throws ParameterException {
         parameterModel.setValue(value);
     }
 
-    public void setValueString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void offsetValue(Integer offset) throws ParameterException {
+        parameterModel.offsetValue(offset);
+    }
+
+    public void offsetValue(Double offsetAsFOR) throws ParameterException {
+        parameterModel.offsetValue(offsetAsFOR);
+    }
+
+    public void setValueString(String value) throws ParameterException{
         parameterModel.setValueString(value);
     }
 
-    public void setValueUnitlessString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void setValueUnitlessString(String value) throws ParameterException {
         parameterModel.setValueUnitlessString(value);
     }
 
-    public Integer getValue() throws ParameterUnavailableException {
+    public Integer getValue() throws ParameterException {
         return parameterModel.getValue();
     }
 
@@ -58,25 +66,16 @@ public class ParameterModelEncloser implements EditableParameterModel, ZDisposab
         return parameterModel.isTipShowingOwner();
     }
 
-    public String getValueString() throws ParameterUnavailableException {
+    public String getValueString() throws ParameterException {
         return parameterModel.getValueString();
     }
 
-    public String getValueUnitlessString() throws ParameterUnavailableException {
+    public String getValueUnitlessString() throws ParameterException {
         return parameterModel.getValueUnitlessString();
     }
 
-    public void defaultValue() throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+    public void defaultValue() throws ParameterException {
         parameterModel.defaultValue();
-    }
-
-    public void setValue(EditChainValueProvider ecvp, EditableParameterModel[] chained) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        parameterModel.setValue(ecvp, chained);
-    }
-
-    public boolean isEditChainableWith(Object o) {
-        return ((EditableParameterModel) parameterModel).isEditChainableWith(o);
-
     }
 
     public GeneralParameterDescriptor getParameterDescriptor() {
@@ -99,8 +98,13 @@ public class ParameterModelEncloser implements EditableParameterModel, ZDisposab
         return parameterModel.getShowUnits();
     }
 
-    public ZCommand[] getZCommands() {
-        return cmdProviderHelper.getCommandObjects(this);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return EditableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
+    }
+
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return EditableParameterModel.cmdProviderHelper.getSupportedMarkers();
     }
 
     public Icon getIcon() {

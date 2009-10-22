@@ -3,6 +3,7 @@ package com.pcmsolutions.device.EMU.E4.selections;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.preset.IsolatedSample;
 import com.pcmsolutions.device.EMU.E4.sample.*;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 import com.pcmsolutions.system.audio.AudioUtilities;
 
 /**
@@ -36,7 +37,7 @@ public class ContextSampleSelection extends AbstractE4Selection {
     public Integer[] getSampleIndexes() {
         Integer[] sampleIndexes = new Integer[readableSamples.length];
         for (int i = 0; i < sampleIndexes.length; i++)
-            sampleIndexes[i] = readableSamples[i].getSampleNumber();
+            sampleIndexes[i] = readableSamples[i].getIndex();
         return sampleIndexes;
     }
 
@@ -48,6 +49,12 @@ public class ContextSampleSelection extends AbstractE4Selection {
         return (ReadableSample[]) readableSamples.clone();
     }
 
+    public IsolatedSample[] getIsolatedSamples() throws IsolatedSampleUnavailableException {
+        IsolatedSample[] isoSamples = new IsolatedSample[getSampleCount()];
+        for (int i = 0; i < getSampleCount(); i++)
+            isoSamples[i] = getIsolatedSample(i);
+        return isoSamples;
+    }
 
     public IsolatedSample getIsolatedSample(int i) throws IsolatedSampleUnavailableException {
         if (isolatedSamples == null)
@@ -60,10 +67,10 @@ public class ContextSampleSelection extends AbstractE4Selection {
                     if (useTempNames)
                         isolatedSamples[i] = ((ContextEditableSample) readableSamples[i]).getIsolated(AudioUtilities.defaultAudioFormat);
                     else
-                        isolatedSamples[i] = ((ContextEditableSample) readableSamples[i]).getIsolated(AudioUtilities.makeLocalSampleName(((ContextEditableSample) readableSamples[i]).getSampleNumber(), ((ContextEditableSample) readableSamples[i]).getSampleName(), AudioUtilities.SAMPLE_NAMING_MODE_SIN), AudioUtilities.defaultAudioFormat);
-                } catch (NoSuchSampleException e) {
+                        isolatedSamples[i] = ((ContextEditableSample) readableSamples[i]).getIsolated(AudioUtilities.makeLocalSampleName(((ContextEditableSample) readableSamples[i]).getIndex(), ((ContextEditableSample) readableSamples[i]).getName(), AudioUtilities.SAMPLE_NAMING_MODE_IN), AudioUtilities.defaultAudioFormat);
+                } catch (EmptyException e) {
                     es = e.getMessage();
-                } catch (SampleEmptyException e) {
+                } catch (SampleException e) {
                     es = e.getMessage();
                 }
             if (isolatedSamples[i] != null)

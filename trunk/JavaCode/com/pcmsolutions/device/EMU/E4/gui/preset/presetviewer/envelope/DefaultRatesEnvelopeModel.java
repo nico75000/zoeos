@@ -70,7 +70,6 @@ public class DefaultRatesEnvelopeModel implements RatesEnvelopeModel {
     public void setAtk1Level(int atk1Level) {
         this.atk1Level = atk1Level;
         update();
-
     }
 
     public int getAtk1Rate() {

@@ -1,8 +1,8 @@
 package com.pcmsolutions.gui.desktop;
 
 import com.pcmsolutions.gui.ComponentGenerationException;
-import com.pcmsolutions.system.paths.ViewPath;
 import com.pcmsolutions.system.Linkable;
+import com.pcmsolutions.system.paths.ViewPath;
 
 /**
  * User: paulmeehan
@@ -23,7 +23,7 @@ public interface ZDesktopManager {
     String dockPRESETS = "Presets";
     String dockSAMPLES = "Samples";
     String dockMASTER = "Master";
-    //public static final int dockPIANO = 5;
+    String dockPIANO = "Piano";
 
     public boolean addDesktopElement(DesktopElement e, boolean activate) throws ComponentGenerationException, ChildViewNotAllowedException, LogicalHierarchyException;
 
@@ -33,13 +33,19 @@ public interface ZDesktopManager {
 
     public boolean removeElement(ViewPath vp);
 
+    public void sendMessage(DesktopElement e, String msg);
+
+    public void sendMessage(ViewPath vp, String msg);
+
+    public DesktopElement[] evaluateCondition(ViewPath vp, String condition);
+
     public DesktopElement[] getDesktopElementTree(ViewPath vp);
 
     public DesktopElement[] getDesktopElementTree(ViewPath vp, boolean originals);
 
     public boolean mutuallyLinkComponents(ViewPath v1, ViewPath v2) throws ComponentGenerationException, Linkable.InvalidLinkException;
 
-    public void modifyBranch(DesktopBranch branch, boolean activate,int clipIndex) throws LogicalHierarchyException, ChildViewNotAllowedException, ComponentGenerationException;
+    public void modifyBranch(DesktopBranch branch, boolean activate, int clipIndex) throws LogicalHierarchyException, ChildViewNotAllowedException, ComponentGenerationException;
 
     public void modifyBranch(DesktopBranch branch, boolean activate) throws LogicalHierarchyException, ChildViewNotAllowedException, ComponentGenerationException;
 }

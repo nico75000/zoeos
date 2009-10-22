@@ -7,10 +7,14 @@ package com.pcmsolutions.system.preferences;
  * Time: 05:31:35
  * To change this template use Options | File Templates.
  */
-public interface ZBoolPref extends ZPref{
+public interface ZBoolPref extends ZPref {
     public void putValue(Boolean b);
+
     public void putValue(boolean b);
+
     public void toggleValue();
+
     public boolean getValue();
+
     public boolean getDefault();
 }

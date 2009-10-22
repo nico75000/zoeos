@@ -18,8 +18,10 @@ public interface ID {
     final Integer sample = IntPool.get(38);
     final Integer group = IntPool.get(37);
     final Integer origKey = IntPool.get(44);
-    final Integer keyLow = IntPool.get(45);
-    final Integer keyHigh = IntPool.get(47);
+    final Integer lowKey = IntPool.get(45);
+    final Integer highKey = IntPool.get(47);
+    final Integer delay = IntPool.get(61);
+    final Integer latch = IntPool.get(67);
 
     final Integer[] voiceKeyWin = ZUtilities.fillIncrementally(new Integer[4], 45);
     final Integer[] voiceVelWin = ZUtilities.fillIncrementally(new Integer[4], 49);

@@ -7,13 +7,15 @@
 package com.pcmsolutions.device.EMU.E4.sample;
 
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.sample.*;
+import com.pcmsolutions.device.EMU.database.events.content.ContentListener;
 
 
 /**
  *
  * @author  pmeehan
  */
-public interface SampleListener {
+public interface SampleListener extends ContentListener{
     public void sampleInitialized(SampleInitializeEvent ev);
 
     public void sampleRefreshed(SampleRefreshEvent ev);

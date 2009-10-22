@@ -8,7 +8,7 @@ import java.io.Serializable;
  * Date: 24-Jan-2004
  * Time: 11:00:28
  */
-public interface DesktopNodeDescriptor extends Serializable{
+public interface DesktopNodeDescriptor extends Serializable {
     public boolean allowsChildren();
 
     public boolean showingWhenContainer();

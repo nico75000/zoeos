@@ -1,5 +1,7 @@
 package com.pcmsolutions.device.EMU.E4;
 
+import com.pcmsolutions.device.EMU.E4.remote.Remotable;
+
 /**
  * User: paulmeehan
  * Date: 02-Feb-2004

@@ -3,40 +3,40 @@ package com.pcmsolutions.device.EMU.E4;
 import com.pcmsolutions.device.EMU.E4.gui.preset.DesktopEditingMediator;
 import com.pcmsolutions.device.EMU.E4.preset.*;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4ContextReadablePresetZCommandMarker;
+import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.system.ZCommand;
 import com.pcmsolutions.system.ZCommandProvider;
 import com.pcmsolutions.system.ZCommandProviderHelper;
 import com.pcmsolutions.system.ZUtilities;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 
 class Impl_ContextReadablePreset extends Impl_ReadablePreset implements ContextReadablePreset, ZCommandProvider {
-    private static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ContextReadablePresetZCommandMarker.class, /*"com.pcmsolutions.device.EMU.E4.zcommands.CopyBlockContextPresetsZMTC;*/"com.pcmsolutions.device.EMU.E4.zcommands.CopyContextPresetZC;com.pcmsolutions.device.EMU.E4.zcommands.CopyRangeContextPresetZC;com.pcmsolutions.device.EMU.E4.zcommands.CopyBlockContextPresetsZMTC;com.pcmsolutions.device.EMU.E4.zcommands.CopyDeepContextPresetZMTC;");
 
     static {
         PresetClassManager.addPresetClass(Impl_ContextReadablePreset.class, null, "Readable Preset");
     }
 
     public Impl_ContextReadablePreset(PresetContext pc, Integer preset) {
-        this(pc, preset, null);
+        super(pc, preset);
     }
 
-    public Impl_ContextReadablePreset(PresetContext pc, Integer preset, DesktopEditingMediator dem) {
-        super(pc, preset, dem);
+    public ReadablePreset getMostCapableNonContextEditablePreset() {
+        return this;
     }
-    public ReadablePreset getMostCapableNonContextEditablePresetDowngrade() {
-          return this;
-      }
 
     public boolean equals(Object o) {
         ContextReadablePreset p;
         if (o instanceof ContextReadablePreset) {
             p = (ContextReadablePreset) o;
-            if (p.getPresetNumber().equals(preset) && p.getPresetContext().equals(pc))
+            if (p.getIndex().equals(preset) && p.getPresetContext().equals(pc))
                 return true;
         } else    // try and compare using just preset number
             if (o instanceof Integer) {
@@ -47,11 +47,11 @@ class Impl_ContextReadablePreset extends Impl_ReadablePreset implements ContextR
         return false;
     }
 
-    public void copyLink(Integer srcLink, Integer destPreset) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, TooManyVoicesException {
+    public void copyLink(Integer srcLink, Integer destPreset) throws PresetException{
         try {
-            pc.copyLink(preset, srcLink, destPreset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.copyLink(preset, srcLink, destPreset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
@@ -59,64 +59,61 @@ class Impl_ContextReadablePreset extends Impl_ReadablePreset implements ContextR
         return pc;
     }
 
-    public Set getPresetIndexesInContext() {
+    public SortedSet<Integer> getPresetIndexesInContext() throws PresetException {
         try {
-            return pc.getPresetIndexesInContext();
-        } catch (NoSuchContextException e) {
-            return new HashMap().keySet();
+            return pc.getIndexesInContext();
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Map getPresetNamesInContext() {
+    public Map<Integer,String> getPresetNamesInContext() throws PresetException {
         try {
-            return pc.getPresetNamesInContext();
-        } catch (NoSuchContextException e) {
-            return new HashMap();
+            return pc.getContextNamesMap();
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public List findEmptyPresets(Integer reqd, Integer beginIndex, Integer maxIndex) throws NoSuchContextException {
-        return pc.findEmptyPresetsInContext(reqd, beginIndex, maxIndex);
-    }
-
-    public boolean presetEmpty(Integer preset) throws NoSuchPresetException {
+    public SortedSet<Integer> findEmptyPresets(Integer reqd, Integer beginIndex, Integer maxIndex) throws PresetException {
         try {
-            return pc.isPresetEmpty(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            return pc.findEmpties(reqd, beginIndex, maxIndex);
+        } catch (DeviceException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void copyPreset(Integer destPreset) throws NoSuchPresetException, PresetEmptyException {
+    public void copyPreset(Integer destPreset) throws  PresetException {
         try {
-            pc.copyPreset(preset, destPreset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.copy(preset, destPreset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void copyPreset(Integer destPreset, String name) throws NoSuchPresetException, PresetEmptyException {
+    public void copyPreset(Integer destPreset, String name) throws PresetException {
         try {
-            pc.copyPreset(preset, destPreset, name);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.copy(preset, destPreset, name).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void copyVoice(Integer srcVoice, Integer destPreset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyVoicesException {
+    public void copyVoice(Integer srcVoice, Integer destPreset) throws PresetException{
         try {
-            pc.copyVoice(preset, srcVoice, destPreset, group);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.copyVoice(preset, srcVoice, destPreset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void getVoiceMultiSample(Integer srcVoice, Integer destPreset, Integer destVoice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
-        pc.getVoiceMultiSample(preset, srcVoice, destPreset, destVoice);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return ContextReadablePreset.cmdProviderHelper.getCommandObjects(markerClass, this);
     }
 
-    public ZCommand[] getZCommands() {
-        return ZUtilities.concatZCommands(super.getZCommands(), this.cmdProviderHelper.getCommandObjects(this));
-    }
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return ContextReadablePreset.cmdProviderHelper.getSupportedMarkers();
+    }  
 }
 

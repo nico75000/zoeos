@@ -28,12 +28,14 @@ public class SmdiManagerTableModel extends AbstractRowHeaderedAndSectionedTableM
         columnData[2] = new ColumnData("SCSI Id", 50, JLabel.LEFT, 0, String.class, null, null);
         columnData[3] = new ColumnData("Manufacturer", 150, JLabel.LEFT, 0, String.class, null, null);
         columnData[4] = new ColumnData("Coupled Midi Device", 200, JLabel.LEFT, 0, String.class, null, null);
-        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), 530, "")};
+        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionHeaderBG(),UIColors.getTableFirstSectionFG(), 530, "")};
     }
 
     protected void doRefresh() {
-        if (!SMDIAgent.isSmdiAvailable())
+        if (!SMDIAgent.isSmdiAvailable()) {
+            System.out.println("SMDI Manager table model: SMDI Unavailable ");
             return;
+        }
         SMDIAgent.removeSmdiListener(this);
         SMDIAgent.addSmdiListener(this);
         ScsiTarget[] devices = new ScsiTarget[0];
@@ -41,41 +43,44 @@ public class SmdiManagerTableModel extends AbstractRowHeaderedAndSectionedTableM
             devices = SMDIAgent.getDevices();
             for (int i = 0, n = devices.length; i < n; i++) {
                 final ScsiTarget st = devices[i];
-                tableRowObjects.add(new ColumnValueProvider() {
-                    public Object getValueAt(int col) {
-                        switch (col) {
-                            case 0:
-                                return st;
-                            case 1:
-                                return (st.isSMDI() ? "Yes" : "no");
-                            case 2:
-                                return String.valueOf(st.getHA_Id());
-                            case 3:
-                                return String.valueOf(st.getSCSI_Id());
-                            case 4:
-                                return st.getDeviceManufacturer();
-                            case 5:
-                                if (st instanceof SmdiTarget)
-                                    if (((SmdiTarget) st).isCoupled())
-                                        try {
-                                            String prefix;
-                                            ZExternalDevice d = Zoeos.getInstance().getDeviceManager().getDeviceMatchingIdentityMessageString(((SmdiTarget) st).getCouplingString());
-                                            if (d != null)
-                                                prefix = d.getName() + "   ";
-                                            else
-                                                prefix = DeviceNames.getNameForDevice(((SmdiTarget) st).getCouplingString(), "") + "   ";    // getCouplingString() should be toString() of identity message, so this alternative procedure may work
+                if (st.isDevice())
+                    tableRowObjects.add(new ColumnValueProvider() {
+                        public Object getValueAt(int col) {
+                            switch (col) {
+                                case 0:
+                                    return st;
+                                case 1:
+                                    return (st.isSMDI() ? "Yes" : "no");
+                                case 2:
+                                    return String.valueOf(st.getHA_Id());
+                                case 3:
+                                    return String.valueOf(st.getSCSI_Id());
+                                case 4:
+                                    return st.getDeviceManufacturer();
+                                case 5:
+                                    if (st instanceof SmdiTarget)
+                                        if (((SmdiTarget) st).isCoupled())
+                                            try {
+                                                String prefix;
+                                                ZExternalDevice d = Zoeos.getInstance().getDeviceManager().getDeviceMatchingIdentityMessageString(((SmdiTarget) st).getCouplingString());
+                                                if (d != null)
+                                                    prefix = d.getName() + "   ";
+                                                else
+                                                    prefix = DeviceNames.getNameForDevice(((SmdiTarget) st).getCouplingString(), "") + "   ";    // getCouplingString() should be toString() of identity message, so this alternative procedure may work
 
-                                            return prefix + "[" + ((SmdiTarget) st).getCouplingString() + " ]";
-                                        } catch (SmdiTargetNotCoupledException e) {
-                                            e.printStackTrace();
-                                        }
+                                                return prefix + "[" + ((SmdiTarget) st).getCouplingString() + " ]";
+                                            } catch (SmdiTargetNotCoupledException e) {
+                                                e.printStackTrace();
+                                            }
+                                        else
+                                            return "NOT COUPLED TO MIDI";
+                            }
+                            return "";
                         }
-                        return "";
-                    }
 
-                    public void zDispose() {
-                    }
-                });
+                        public void zDispose() {
+                        }
+                    });
             }
         } catch (SmdiUnavailableException e) {
             e.printStackTrace();
@@ -93,7 +98,7 @@ public class SmdiManagerTableModel extends AbstractRowHeaderedAndSectionedTableM
         SMDIAgent.removeSmdiListener(this);
     }
 
-    public void SmdiChanged() {
+    public void smdiChanged() {
         refresh(true);
     }
 }

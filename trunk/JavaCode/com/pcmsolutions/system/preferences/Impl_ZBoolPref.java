@@ -38,7 +38,7 @@ public class Impl_ZBoolPref extends Impl_ZPref implements ZBoolPref {
         putValue(b.booleanValue());
     }
 
-    public synchronized void toggleValue(){
+    public synchronized void toggleValue() {
         getPrefs().putBoolean(getKey(), !getValue());
     }
 

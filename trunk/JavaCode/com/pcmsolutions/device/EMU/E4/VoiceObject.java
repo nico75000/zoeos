@@ -1,13 +1,19 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.events.PresetRefreshEvent;
-import com.pcmsolutions.device.EMU.E4.events.VoiceChangeEvent;
-import com.pcmsolutions.device.EMU.E4.events.ZoneAddEvent;
-import com.pcmsolutions.device.EMU.E4.events.ZoneRemoveEvent;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.events.preset.VoiceAddEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.VoiceChangeEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.VoiceCopyEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.ZoneRemoveEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.requests.VoiceParametersRequestEvent;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
-import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.E4.preset.IsolatedPreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.remote.DumpParsingUtilities;
+import com.pcmsolutions.device.EMU.E4.remote.SysexHelper;
+import com.pcmsolutions.device.EMU.database.events.content.ContentEventHandler;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.system.SystemErrors;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.util.IntegerUseMap;
 
@@ -18,16 +24,13 @@ import java.io.Serializable;
 import java.util.*;
 
 /**
- * Created by IntelliJ IDEA.
- * User: pmeehan
- * Date: 03-May-2003
- * Time: 16:34:47
- * To change this template use Options | File Templates.
+ * User: paulmeehan
+ * Date: 16-Aug-2004
+ * Time: 16:30:12
  */
-class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.IsolatedVoice, Serializable {
-    private boolean postingEvents = true;
+class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.IsolatedVoice, Serializable, DatabaseVoice {
     private static final int MAX_ZONES = 255;
-
+    //private boolean postingEvents = true;
     // this is a vector because refreshPreset && getPresetRead change preset objects on the fly and may call zDispose while somebody else is reading
     private final Vector zones = new Vector();
 
@@ -37,7 +40,9 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
     private final static Integer[] zoneSwitchIds = new Integer[]{IntPool.get(38), IntPool.get(44)};
     private final static Integer[] zoneMergeIds = new Integer[]{IntPool.get(39), IntPool.get(40), IntPool.get(42)};
     protected DeviceParameterContext deviceParameterContext;
-    protected PresetEventHandler presetEventHandler;
+    protected ContentEventHandler contentEventHandler;
+
+    private boolean postingEvents = true;
 
     public boolean isPostingEvents() {
         return postingEvents;
@@ -45,23 +50,25 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
 
     public void setPostingEvents(boolean postingEvents) {
         this.postingEvents = postingEvents;
+        for (int i = 0; i < zones.size(); i++)
+            ((ZoneObject) zones.get(i)).setPostingEvents(postingEvents);
     }
 
     // new constructor from preset dump
-    public VoiceObject(ByteArrayInputStream dis, Integer preset, Integer voice, DeviceParameterContext dpc, PresetEventHandler peh) throws InvalidPresetDumpException, TooManyZonesException {
-        super(dpc.getVoiceContext(), false);
+    public void initDump(ByteArrayInputStream dis, Integer preset, Integer voice, DeviceParameterContext dpc, ContentEventHandler ceh) throws InvalidPresetDumpException, TooManyZonesException {
+        super.initNew(dpc.getVoiceContext(), false);
         this.deviceParameterContext = dpc;
-        this.presetEventHandler = peh;
+        this.contentEventHandler = ceh;
         this.voice = voice;
         this.preset = preset;
         byte[] field = new byte[2];
 
         dis.read(field, 0, 2);
-        Integer group = com.pcmsolutions.device.EMU.E4.SysexHelper.DataIn(field);
+        Integer group = com.pcmsolutions.device.EMU.E4.remote.SysexHelper.DataIn(field);
 
         dis.read(field, 0, 2);
         // sample might be a sample number of 0x3FFF ( multisample )
-        int sample = com.pcmsolutions.device.EMU.E4.SysexHelper.DataIn_int(field);
+        int sample = com.pcmsolutions.device.EMU.E4.remote.SysexHelper.DataIn_int(field);
 
         //this.setValues(new Integer[]{IntPool.get(37), IntPool.get(38)}, new Integer[]{group, IntPool.get(sample)});
         initValues(new Integer[]{IntPool.get(37), group, IntPool.get(38), IntPool.get(sample)});
@@ -76,60 +83,125 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         Integer[] ids = new Integer[s.size()];
         s.toArray(ids);
 
-        initValues(PresetDatabase.parseDumpStream(dis, ids));
+        initValues(DumpParsingUtilities.parseDumpStream(dis, ids));
 
         dis.read(field, 0, 2);
         int numZones = SysexHelper.DataIn_int(field);
-        postingEvents = false;
         if (numZones > 1)
             for (int n = 0; n < numZones; n++)
-                addZone(dis);
-        postingEvents = true;
+                addZoneFromDump(dis);
     }
 
-    // copy constructor
-    public VoiceObject(VoiceObject src, Integer preset, Integer voice, DeviceParameterContext dpc, PresetEventHandler peh) {
-        super(src, dpc.getVoiceContext());
+    // drop constructor
+    public void initDrop(Integer preset, Integer voice, IsolatedPreset.IsolatedVoice src, DeviceParameterContext dpc, ContentEventHandler ceh) {
+        super.initDrop(src, dpc.getVoiceContext());
         this.preset = preset;
         this.deviceParameterContext = dpc;
-        this.presetEventHandler = peh;
+        this.contentEventHandler = ceh;
         this.voice = voice;
-
-        int znCount = src.zones.size();
+        if (postingEvents) {
+            contentEventHandler.postEvent(new VoiceAddEvent(this, preset, voice), false);
+            contentEventHandler.postExternalEvent(new VoiceChangeEvent(this, preset, voice, getAllIds(), getAllValues()));
+        }
+        int znCount = src.numZones();
         for (int n = 0; n < znCount; n++)
-            zones.add(new ZoneObject(preset, voice, IntPool.get(n), (ZoneObject) src.zones.get(n), dpc, peh));
+            try {
+                ZoneObject z = new ZoneObject();
+                z.initVoiceDrop(preset, voice, IntPool.get(n), src.getIsolatedZone(IntPool.get(n)), dpc, ceh);
+                zones.add(z);
+            } catch (PresetException e) {
+                e.printStackTrace();
+            }
     }
 
-    // copy constructor
-    public VoiceObject(Integer preset, Integer voice, IsolatedPreset.IsolatedVoice src, DeviceParameterContext dpc, PresetEventHandler peh) {
-        super(src, dpc.getVoiceContext());
+    // preset drop constructor
+    public void initPresetDrop(Integer preset, Integer voice, IsolatedPreset.IsolatedVoice src, DeviceParameterContext dpc, ContentEventHandler ceh) {
+        super.initDrop(src, dpc.getVoiceContext());
         this.preset = preset;
         this.deviceParameterContext = dpc;
-        this.presetEventHandler = peh;
+        this.contentEventHandler = ceh;
         this.voice = voice;
 
         int znCount = src.numZones();
         for (int n = 0; n < znCount; n++)
             try {
-                zones.add(new ZoneObject(preset, voice, IntPool.get(n), src.getIsolatedZone(IntPool.get(n)), dpc, peh));
-            } catch (NoSuchZoneException e) {
+                ZoneObject z = new ZoneObject();
+                z.initPresetDrop(preset, voice, IntPool.get(n), src.getIsolatedZone(IntPool.get(n)), dpc, ceh);
+                zones.add(z);
+            } catch (PresetException e) {
                 e.printStackTrace();
-                // Should never get here
             }
     }
 
     // new constructor
-    public VoiceObject(Integer preset, Integer voice, DeviceParameterContext dpc, PresetEventHandler peh) {
-        super(dpc.getVoiceContext(), true);
+    public void initNew(Integer preset, Integer voice, DeviceParameterContext dpc, ContentEventHandler ceh) {
+        super.initNew(dpc.getVoiceContext(), true);
         this.preset = preset;
         this.voice = voice;
         this.deviceParameterContext = dpc;
-        this.presetEventHandler = peh;
+        this.contentEventHandler = ceh;
+        if (postingEvents)
+            contentEventHandler.postEvent(new VoiceAddEvent(this, preset, voice), false);
+    }
+
+    // copy constructor
+    public void initCopy(VoiceObject src, Integer preset, Integer voice, DeviceParameterContext dpc, ContentEventHandler ceh) {
+        super.initCopy(src, dpc.getVoiceContext());
+        this.preset = preset;
+        this.deviceParameterContext = dpc;
+        this.contentEventHandler = ceh;
+        this.voice = voice;
+        if (postingEvents)
+            try {
+                contentEventHandler.postEvent(new VoiceCopyEvent(this, preset, voice, src.preset, src.voice, src.getValue(IntPool.get(37))));
+            } catch (IllegalParameterIdException e) {
+                SystemErrors.internal(e);
+            }
+
+        int znCount = src.zones.size();
+        for (int n = 0; n < znCount; n++) {
+            ZoneObject z = new ZoneObject();
+            z.initCopy(preset, voice, IntPool.get(n), (ZoneObject) src.zones.get(n), dpc, ceh);
+            zones.add(z);
+        }
+    }
+
+    // preset copy constructor
+    public void initPresetCopy(VoiceObject src, Integer preset, Integer voice, DeviceParameterContext dpc, ContentEventHandler ceh) {
+        super.initCopy(src, dpc.getVoiceContext());
+        this.preset = preset;
+        this.deviceParameterContext = dpc;
+        this.contentEventHandler = ceh;
+        this.voice = voice;
+
+        int znCount = src.zones.size();
+        for (int n = 0; n < znCount; n++) {
+            ZoneObject z = new ZoneObject();
+            z.initCopy(preset, voice, IntPool.get(n), (ZoneObject) src.zones.get(n), dpc, ceh);
+            zones.add(z);
+        }
+        // no event needed
     }
 
     // copy constructor for same preset database
-    public VoiceObject(Integer preset, Integer voice, VoiceObject src) {
-        this(src, preset, voice, src.deviceParameterContext, src.presetEventHandler);
+    public void initCopy(Integer preset, Integer voice, VoiceObject src) {
+        initCopy(src, preset, voice, src.deviceParameterContext, src.contentEventHandler);
+    }
+
+    // isolated constructor for same preset database
+    public void initIsolated(Integer preset, Integer voice, VoiceObject src) {
+        super.initCopy(src, src.deviceParameterContext.getVoiceContext());
+        this.preset = preset;
+        this.deviceParameterContext = src.deviceParameterContext;
+        this.contentEventHandler = null;
+        this.voice = voice;
+
+        int znCount = src.zones.size();
+        for (int n = 0; n < znCount; n++) {
+            ZoneObject z = new ZoneObject();
+            z.initIsolated(preset, voice, IntPool.get(n), (ZoneObject) src.zones.get(n));
+            zones.add(z);
+        }
     }
 
     public ByteArrayOutputStream getDumpBytes() throws IOException {
@@ -148,13 +220,13 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
             os.write(SysexHelper.DataOut(values[1]));
 
         // VOICE PARAMETERS
-        for (int i = 2,j = values.length; i < j; i++)
+        for (int i = 2, j = values.length; i < j; i++)
             os.write(SysexHelper.DataOut(values[i]));
 
         // ZONES
         if (zones.size() > 0) {
             os.write(SysexHelper.DataOut(zones.size()));
-            for (int i = 0,j = zones.size(); i < j; i++)
+            for (int i = 0, j = zones.size(); i < j; i++)
                 ((ZoneObject) zones.get(i)).getDumpBytes().writeTo(os);
         } else
             os.write(SysexHelper.DataOut(1));
@@ -167,13 +239,28 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
     }
 
     public void applySingleSample(Integer sample) throws ParameterValueOutOfRangeException {
-        Integer[] sid = new Integer[]{IntPool.get(38)};
-        Integer[] sval = new Integer[]{sample};
-        for (int i = 0,j = zones.size(); i < j; i++) {
+        Integer sid = IntPool.get(38);
+        for (int i = 0, j = zones.size(); i < j; i++) {
             try {
-                ((ZoneObject) zones.get(i)).setValues(sid, sval);
+                ((ZoneObject) zones.get(i)).setValue(sid, sample);
             } catch (IllegalParameterIdException e) {
                 e.printStackTrace();
+            }
+        }
+    }
+
+    public void refreshParameters(Integer[] ids) throws IllegalParameterIdException {
+        if (!(deviceParameterContext.getVoiceContext().getIds().containsAll(Arrays.asList(ids))))
+            throw new IllegalParameterIdException();
+        VoiceParametersRequestEvent vpre = new VoiceParametersRequestEvent(this, preset, voice, ids);
+        if (contentEventHandler.sendRequest(vpre)) {
+            try {
+                List<Integer> values = vpre.getRequestedData();
+                Integer[] aValues = values.toArray(new Integer[values.size()]);
+                putValues(ids, aValues);
+                contentEventHandler.postInternalEvent(new VoiceChangeEvent(this, preset, voice, ids, aValues));
+            } catch (ParameterValueOutOfRangeException e) {
+                SystemErrors.internal(e);
             }
         }
     }
@@ -185,8 +272,8 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         if (s != null & s.intValue() >= 0)
             useMap.addIntegerReference(s);
 
-        for (int i = 0,j = zones.size(); i < j; i++) {
-            s = ((ZoneObject) zones.get(i)).getSample();
+        for (int i = 0, j = zones.size(); i < j; i++) {
+            s = ((DatabaseZone) zones.get(i)).getSample();
             if (s != null & s.intValue() >= 0)
                 useMap.addIntegerReference(s);
         }
@@ -201,16 +288,26 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         return val;
     }
 
-    protected Integer checkValue(Integer id, Integer value) throws ParameterValueOutOfRangeException, IllegalParameterIdException {
-        if (id.intValue() == 38) {
-            GeneralParameterDescriptor pd = parameterContext.getParameterDescriptor(id);
-            if (!pd.isValidValue(value))
-                throw new ParameterValueOutOfRangeException();
-            if (value.intValue() == -1 && pd.getMinValue().intValue() == -1)
-                value = IntPool.get(0);
-            return value;
-        } else
-            return super.checkValue(id, value);
+    protected Integer finalizeValue(Integer id, Integer value) throws ParameterValueOutOfRangeException, IllegalParameterIdException {
+        try {
+            if (id.intValue() == 38) {
+                GeneralParameterDescriptor pd = parameterContext.getParameterDescriptor(id);
+                if (!pd.isValidValue(value))
+                    throw new ParameterValueOutOfRangeException(id);
+                if (value.intValue() == -1 && pd.getMinValue().intValue() == -1)
+                    value = IntPool.get(0);
+                return value;
+            } else
+                return super.finalizeValue(id, value);
+
+        } catch (ParameterValueOutOfRangeException e) {
+            // LFO1 shape or LFO2 shape ( the remote may have returned Random shape which we can't handle)
+            if ((id.intValue() == 106 || id.intValue() == 111) && (value.intValue() == 255 || value.intValue() == -1)) {
+                GeneralParameterDescriptor pd = parameterContext.getParameterDescriptor(id);
+                return pd.getMaxValue();
+            } else
+                throw e;
+        }
     }
 
     public Integer getPreset() {
@@ -227,6 +324,11 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
 
     public void setVoice(Integer voice) {
         this.voice = voice;
+        int znCount = zones.size();
+        for (int n = 0; n < znCount; n++) {
+            ZoneObject z = (ZoneObject) zones.get(n);
+            z.setVoice(voice);
+        }
     }
 
     public DeviceParameterContext getDeviceParameterContext() {
@@ -237,14 +339,14 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         this.deviceParameterContext = dpc;
     }
 
-    public PresetEventHandler getPresetEventHandler() {
-        return presetEventHandler;
+    public ContentEventHandler getContentEventHandler() {
+        return contentEventHandler;
     }
 
-    public void setPresetEventHandler(PresetEventHandler presetEventHandler) {
-        this.presetEventHandler = presetEventHandler;
-          for (int i = 0,j = zones.size(); i < j; i++)
-            ((ZoneObject) zones.get(i)).setPresetEventHandler(presetEventHandler);
+    public void setContentEventHandler(ContentEventHandler contentEventHandler) {
+        this.contentEventHandler = contentEventHandler;
+        for (int i = 0, j = zones.size(); i < j; i++)
+            ((ZoneObject) zones.get(i)).setContentEventHandler(contentEventHandler);
     }
 
     public Map offsetSampleIndexes(Integer sampleOffset, boolean user) {
@@ -252,7 +354,7 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         Integer[] sval = new Integer[]{sampleOffset};
         HashMap outMap = new HashMap();
         ZoneObject zobj;
-        for (int i = 0,j = zones.size(); i < j; i++) {
+        for (int i = 0, j = zones.size(); i < j; i++) {
             try {
                 zobj = (ZoneObject) zones.get(i);
                 if ((user && zobj.getValue(ID.sample).intValue() <= DeviceContext.MAX_USER_SAMPLE)
@@ -273,14 +375,14 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         Integer sid = IntPool.get(38);
         Integer sval;
         HashMap outMap = new HashMap();
-        for (int i = 0,j = zones.size(); i < j; i++) {
+        for (int i = 0, j = zones.size(); i < j; i++) {
             try {
                 sval = ((ZoneObject) zones.get(i)).getValue(sid);
                 if (translationMap.get(sval) instanceof Integer) {
-                    ((ZoneObject) zones.get(i)).setValue(sid, (Integer) translationMap.get(sval));
+                    ((DatabaseZone) zones.get(i)).setValue(sid, (Integer) translationMap.get(sval));
                     outMap.put(IntPool.get(i), ((ZoneObject) zones.get(i)).getValue(sid));
                 } else if (defaultSampleTranslation != null) {
-                    ((ZoneObject) zones.get(i)).setValue(sid, defaultSampleTranslation);
+                    ((DatabaseZone) zones.get(i)).setValue(sid, defaultSampleTranslation);
                     outMap.put(IntPool.get(i), defaultSampleTranslation);
                 }
             } catch (IllegalParameterIdException e) {
@@ -290,26 +392,226 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         return outMap;
     }
 
-    public void setValues(Integer[] ids, Integer[] values) throws IllegalParameterIdException, ParameterValueOutOfRangeException {
-        super.setValues(ids, values);
-        if (postingEvents)
-            presetEventHandler.postPresetEvent(new VoiceChangeEvent(this, preset, voice, ids));
+    public void offsetValue(Integer id, Integer offset, boolean constrain) throws IllegalParameterIdException, ParameterValueOutOfRangeException {
+        int idv = id.intValue();
+        if (idv >= 129 && idv <= 182 && (idv - 129) % 3 != 2) {
+            GeneralParameterDescriptor pd = getDeviceParameterContext().getParameterDescriptor(id);
+            Integer nextVal = getDeviceParameterContext().discontinuousOffset(pd, getValue(id), offset.intValue(), constrain);
+            if (nextVal == null)
+                throw new ParameterValueOutOfRangeException(id);
+            setValue(id, nextVal);
+            return;
+        }
+        super.offsetValue(id, offset, constrain);
+        //if (postingEvents)
+          //  contentEventHandler.postEvent(new VoiceChangeEvent(this, preset, voice, new Integer[]{id}, new Integer[]{getValue(id)}), false);
     }
 
-    public void offsetValues(Integer[] ids, Integer[] values, boolean constrain) throws IllegalParameterIdException, ParameterValueOutOfRangeException {
-        super.offsetValues(ids, values, constrain);
-        if (postingEvents)
-            presetEventHandler.postPresetEvent(new VoiceChangeEvent(this, preset, voice, ids));
-    }
+    public void setValue(Integer id, Integer val) throws IllegalParameterIdException, ParameterValueOutOfRangeException {
+        Integer[] ivals;
+        int diff;
+        ArrayList changedIdList = new ArrayList();
+        int idv = id.intValue();
+        if (idv >= 129 && idv <= 182) {
+            if ((idv - 129) % 3 == 0) {
+                // we've got a cord src parameter
+                putValue(id, getDeviceParameterContext().getNearestCordSrcValue(val));
+            } else if ((idv - 129) % 3 == 1) {
+                // we've got a cord dest parameter
+                putValue(id, getDeviceParameterContext().getNearestCordDestValue(val));
+            } else
+                putValue(id, val);
 
-    public void setValue(Integer id, Integer value) throws IllegalParameterIdException, ParameterValueOutOfRangeException {
-        setValues(new Integer[]{id}, new Integer[]{value});
-    }
+            changedIdList.add(id);
+        } else
+            switch (idv) {
+                default:
+                    putValue(id, val);
+                    changedIdList.add(id);
+                    break;
 
-    public void offsetValues(Integer[] ids, Integer[] values) throws IllegalParameterIdException {
-        super.offsetValues(ids, values);
+                    // Key Win Low Key
+                case 45:
+                    ivals = getValues(new Integer[]{IntPool.get(46), IntPool.get(47), IntPool.get(48)});
+                    if (ivals[1].intValue() < val.intValue())
+                        putValue(id, ivals[1]);
+                    else
+                        putValue(id, val);
+
+                    changedIdList.add(id);
+
+                    diff = Math.abs(ivals[1].intValue() - val.intValue());
+                    if (ivals[0].intValue() > diff) {
+                        putValue(IntPool.get(46), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(46));
+                    }
+                    if (ivals[2].intValue() > diff) {
+                        putValue(IntPool.get(48), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(48));
+                    }
+                    break;
+
+                    // Key Win Low Fade
+                case 46:
+                    ivals = getValues(new Integer[]{IntPool.get(45), IntPool.get(47)});
+
+                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
+                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    break;
+
+                    // Key Win High Key
+                case 47:
+                    ivals = getValues(new Integer[]{IntPool.get(45), IntPool.get(46), IntPool.get(48)});
+                    if (ivals[0].intValue() > val.intValue())
+                        val = ivals[0];
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    diff = Math.abs(val.intValue() - ivals[0].intValue());
+
+                    if (ivals[1].intValue() > diff) {
+                        putValue(IntPool.get(46), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(46));
+                    }
+                    if (ivals[2].intValue() > diff) {
+                        putValue(IntPool.get(48), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(48));
+                    }
+                    break;
+                    // Key Win High Fade
+                case 48:
+                    ivals = getValues(new Integer[]{IntPool.get(45), IntPool.get(47)});
+                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
+                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+                    break;
+
+                    // Vel Win Low Key
+                case 49:
+                    ivals = getValues(new Integer[]{IntPool.get(50), IntPool.get(51), IntPool.get(52)});
+                    if (ivals[1].intValue() < val.intValue())
+                        val = ivals[1];
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    diff = Math.abs(ivals[1].intValue() - val.intValue());
+                    if (ivals[0].intValue() > diff) {
+                        putValue(IntPool.get(50), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(50));
+                    }
+                    if (ivals[2].intValue() > diff) {
+                        putValue(IntPool.get(52), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(52));
+                    }
+                    break;
+                    // Vel Win Low Fade
+                case 50:
+                    ivals = getValues(new Integer[]{IntPool.get(49), IntPool.get(51)});
+                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
+                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+                    break;
+                    // Vel Win High Key
+                case 51:
+                    ivals = getValues(new Integer[]{IntPool.get(49), IntPool.get(50), IntPool.get(52)});
+                    if (ivals[0].intValue() > val.intValue())
+                        val = ivals[0];
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    diff = Math.abs(val.intValue() - ivals[0].intValue());
+
+                    if (ivals[1].intValue() > diff) {
+                        putValue(IntPool.get(50), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(50));
+                    }
+                    if (ivals[2].intValue() > diff) {
+                        putValue(IntPool.get(52), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(52));
+                    }
+                    break;
+                    // Vel Win High Fade
+                case 52:
+                    ivals = getValues(new Integer[]{IntPool.get(49), IntPool.get(51)});
+                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
+                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+                    break;
+                    // RT Win Low Key
+                case 53:
+                    ivals = getValues(new Integer[]{IntPool.get(54), IntPool.get(55), IntPool.get(56)});
+                    if (ivals[1].intValue() < val.intValue())
+                        val = ivals[1];
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    diff = Math.abs(ivals[1].intValue() - val.intValue());
+                    if (ivals[0].intValue() > diff) {
+                        putValue(IntPool.get(54), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(54));
+                    }
+                    if (ivals[2].intValue() > diff) {
+                        putValue(IntPool.get(56), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(56));
+                    }
+                    break;
+                    // RT Win Low Fade
+                case 54:
+                    ivals = getValues(new Integer[]{IntPool.get(53), IntPool.get(55)});
+                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
+                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+                    break;
+                    // RT Win High Key
+                case 55:
+                    ivals = getValues(new Integer[]{IntPool.get(53), IntPool.get(54), IntPool.get(56)});
+                    if (ivals[0].intValue() > val.intValue())
+                        val = ivals[0];
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    diff = Math.abs(val.intValue() - ivals[0].intValue());
+
+                    if (ivals[1].intValue() > diff) {
+                        putValue(IntPool.get(54), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(54));
+                    }
+                    if (ivals[2].intValue() > diff) {
+                        putValue(IntPool.get(56), IntPool.get(diff));
+                        changedIdList.add(IntPool.get(56));
+                    }
+                    break;
+                    // RT Win High Fade
+                case 56:
+                    ivals = getValues(new Integer[]{IntPool.get(53), IntPool.get(55)});
+                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
+                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
+
+                    putValue(id, val);
+                    changedIdList.add(id);
+
+                    break;
+            }
+        Integer[] changedIds = (Integer[]) changedIdList.toArray(new Integer[changedIdList.size()]);
         if (postingEvents)
-            presetEventHandler.postPresetEvent(new VoiceChangeEvent(this, preset, voice, ids));
+            contentEventHandler.postEvent(new VoiceChangeEvent(this, preset, voice, changedIds, getValues(changedIds)), false);
     }
 
     private void setVoiceNumber(Integer voice) {
@@ -320,7 +622,7 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         return ("V" + voice.toString());
     }
 
-    public void sortZones(final Integer[] ids) {
+    void sortZones(final Integer[] ids) {
         Collections.sort(zones, new Comparator() {
             public int compare(Object o1, Object o2) {
                 int c = 0;
@@ -334,127 +636,119 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
                 return c;
             }
         });
-        if (postingEvents)
-            presetEventHandler.postPresetEvent(new PresetRefreshEvent(this, preset));
+        remapZones(0);        
     }
 
-    public void defaultValues(Integer[] ids) throws IllegalParameterIdException {
-        super.defaultValues(ids);
-        if (postingEvents)
-            presetEventHandler.postPresetEvent(new VoiceChangeEvent(this, preset, voice, ids));
-    }
-
-    public ZoneObject getZone(Integer z) throws NoSuchZoneException {
+    public DatabaseZone getZone(Integer z) throws NoSuchZoneException {
         if (z.intValue() >= zones.size())
             throw new NoSuchZoneException();
         return (ZoneObject) zones.get(z.intValue());
     }
 
-    public Integer addZones(Integer n) throws TooManyZonesException {
-        int enz = zones.size();
-        int nnz = n.intValue();
-        Integer nextIndex;
-
-        int added = 0;
-
+    public Integer newZone() throws TooManyZonesException {
+        return newZone(false);
+        /* int enz = zones.size();
         enz = checkForFirstZone(enz);
+        Integer nextIndex = IntPool.get(enz);
         try {
-            for (int i = 0; i < nnz; i++) {
-                if (enz + i >= MAX_ZONES)
-                    throw new TooManyZonesException();
+            if (enz >= MAX_ZONES)
+                throw new TooManyZonesException();
 
-                nextIndex = IntPool.get(enz + i);
-                ZoneObject z = new ZoneObject(preset, voice, nextIndex, deviceParameterContext, presetEventHandler);
-                zones.add(z);
-                added++;
-                try {
-                    z.setValues(zoneSwitchIds, getZone(IntPool.get(enz + i - 1)).getValues(zoneSwitchIds), false); // zone sample
-                } catch (IllegalParameterIdException e) {
-                    throw new IllegalStateException(this.getClass().toString() + ":addZones -> setValues returned IllegalParameterIdException - id should be valid!");
-                } catch (ParameterValueOutOfRangeException e) {
-                    e.printStackTrace();
-                } catch (NoSuchZoneException e) {
-                    e.printStackTrace();
-                }
+            ZoneObject z = new ZoneObject();
+            z.setPostingEvents(isPostingEvents());
+            z.initNew(preset, voice, nextIndex, deviceParameterContext, presetEventHandler);
+            zones.add(z);
+            try {
+                // put values directly so we don't updateModel an event (the transfer of values happens automatically at the remote)
+                z.putValues(zoneSwitchIds, ((ZoneObject) getZone(IntPool.get(enz - 1))).getValues(zoneSwitchIds)); // zone sample
+            } catch (IllegalParameterIdException e) {
+                throw new IllegalStateException(this.getClass().toString() + ":copyDatabaseZones -> setValues returned IllegalParameterIdException - id should be valid!");
+            } catch (ParameterValueOutOfRangeException e) {
+                e.printStackTrace();
+            } catch (NoSuchZoneException e) {
+                e.printStackTrace();
             }
         } finally {
-            if (added > 0)
-                if (postingEvents)
-                    presetEventHandler.postPresetEvent(new ZoneAddEvent(this, preset, voice, IntPool.get(enz), added));
+            //  presetEventHandler.postPresetEvent(new ZoneAddEvent(this, preset, voice, IntPool.get(enz), 1));
         }
 
         return IntPool.get(enz);
+        */
     }
 
-    private int checkForFirstZone(int enz) {
+    Integer newZone(boolean externalOnly) throws TooManyZonesException {
+        int enz = zones.size();
+        enz = checkForFirstZone(enz, externalOnly);
+        Integer nextIndex = IntPool.get(enz);
+        if (enz >= MAX_ZONES)
+            throw new TooManyZonesException();
+
+        ZoneObject z = new ZoneObject();
+        z.setPostingEvents(isPostingEvents());
+        if (externalOnly)
+            z.initExternalNew(preset, voice, nextIndex, deviceParameterContext, contentEventHandler);
+        else
+            z.initNew(preset, voice, nextIndex, deviceParameterContext, contentEventHandler);
+
+        zones.add(z);
+        try {
+            // put values directly so we don't updateModel an event (the transfer of values happens automatically at the remote)
+            z.putValues(zoneSwitchIds, ((ZoneObject) getZone(IntPool.get(enz - 1))).getValues(zoneSwitchIds)); // zone sample
+        } catch (IllegalParameterIdException e) {
+            throw new IllegalStateException(this.getClass().toString() + ":copyDatabaseZones -> setValues returned IllegalParameterIdException - id should be valid!");
+        } catch (ParameterValueOutOfRangeException e) {
+            e.printStackTrace();
+        } catch (NoSuchZoneException e) {
+            e.printStackTrace();
+        }
+        return IntPool.get(enz);
+    }
+
+    private int checkForFirstZone(int enz, boolean externalOnly) {
         if (enz == 0) {
-            // create zone for voice
-            ZoneObject z = new ZoneObject(preset, voice, IntPool.get(enz++), deviceParameterContext, presetEventHandler);
+            // create default zone for voice
+            ZoneObject z = new ZoneObject();
+            z.setPostingEvents(isPostingEvents());
+            if (externalOnly)
+                z.initExternalNew(preset, voice, IntPool.get(enz++), deviceParameterContext, contentEventHandler);
+            else
+                z.initNew(preset, voice, IntPool.get(enz++), deviceParameterContext, contentEventHandler);
             try {
                 z.setValues(zoneSwitchIds, getValues(zoneSwitchIds));
-                //super.setValues(new Integer[]{IntPool.get(38)}, new Integer[]{IntPool.get(-1)});
             } catch (IllegalParameterIdException e) {
                 e.printStackTrace();
             } catch (ParameterValueOutOfRangeException e) {
                 e.printStackTrace();
             }
             zones.add(z);
-            if (postingEvents)
-                presetEventHandler.postPresetEvent(new ZoneAddEvent(this, preset, voice, IntPool.get(0), 1));
         }
         return enz;
     }
 
-    public Integer addZones(ZoneObject[] newZones, boolean check) throws TooManyZonesException {
-        int nnz = newZones.length;
-        int enz = zones.size();
-        Integer nextIndex;
-
-        int added = 0;
-        if (check)
-            enz = checkForFirstZone(enz);
-        try {
-            for (int i = 0; i < nnz; i++) {
-                if (enz + i >= MAX_ZONES)
-                    throw new TooManyZonesException();
-                nextIndex = IntPool.get(enz + i);
-                zones.add(new ZoneObject(preset, voice, nextIndex, newZones[i]));
-                added++;
-            }
-        } finally {
-            if (added > 0)
-                if (postingEvents)
-                    presetEventHandler.postPresetEvent(new ZoneAddEvent(this, preset, voice, IntPool.get(enz), added));
-        }
-        return IntPool.get(enz);
-    }
-
-    public Integer addZone(ByteArrayInputStream dis) throws TooManyZonesException, InvalidPresetDumpException {
+    public Integer addZoneFromDump(ByteArrayInputStream dis) throws TooManyZonesException, InvalidPresetDumpException {
         int enz = zones.size();
         if (enz + 1 >= MAX_ZONES)
             throw new TooManyZonesException();
         Integer newIndex = IntPool.get(enz);
-        zones.add(new ZoneObject(dis, preset, voice, newIndex, deviceParameterContext, presetEventHandler));
-
-        if (postingEvents)
-            presetEventHandler.postPresetEvent(new ZoneAddEvent(this, preset, voice, IntPool.get(enz), 1));
-
+        ZoneObject z = new ZoneObject();
+        z.setPostingEvents(isPostingEvents());
+        z.initDump(dis, preset, voice, newIndex, deviceParameterContext, contentEventHandler);
+        zones.add(z);
         return newIndex;
     }
 
-    public Integer addZone(IsolatedPreset.IsolatedVoice.IsolatedZone iz) throws TooManyZonesException {
+    public Integer dropZone(IsolatedPreset.IsolatedVoice.IsolatedZone iz) throws TooManyZonesException {
         int enz = zones.size();
 
-        enz = checkForFirstZone(enz);
+        enz = checkForFirstZone(enz, false);
 
         if (enz + 1 >= MAX_ZONES)
             throw new TooManyZonesException();
         Integer newIndex = IntPool.get(enz);
-        zones.add(new ZoneObject(preset, voice, newIndex, iz, deviceParameterContext, presetEventHandler));
-
-        if (postingEvents)
-            presetEventHandler.postPresetEvent(new ZoneAddEvent(this, preset, voice, IntPool.get(enz), 1));
-
+        ZoneObject z = new ZoneObject();
+        z.setPostingEvents(isPostingEvents());
+        z.initDrop(preset, voice, newIndex, iz, deviceParameterContext, contentEventHandler);
+        zones.add(z);
         return newIndex;
     }
 
@@ -467,14 +761,14 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
 
         ((ZoneObject) zones.remove(zone.intValue())).zDispose();
         if (zones.size() == 1) {
-            ZoneObject z = getZone(IntPool.get(0));
+            ZoneObject z = (ZoneObject) getZone(IntPool.get(0));
             try {
                 setValues(zoneSwitchIds, z.getValues(zoneSwitchIds));
                 offsetValues(zoneMergeIds, z.getValues(zoneMergeIds), true);
                 ((ZoneObject) zones.remove(0)).zDispose();
                 if (postingEvents) {
-                    presetEventHandler.postPresetEvent(new ZoneRemoveEvent(this, preset, voice, zone));
-                    presetEventHandler.postPresetEvent(new ZoneRemoveEvent(this, preset, voice, IntPool.get(0)));
+                    contentEventHandler.postEvent(new ZoneRemoveEvent(this, preset, voice, zone), false);
+                    contentEventHandler.postEvent(new ZoneRemoveEvent(this, preset, voice, IntPool.get(0)), false);
                 }
             } catch (IllegalParameterIdException e) {
                 e.printStackTrace();
@@ -484,7 +778,7 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
         } else {
             remapZones(zone.intValue());
             if (postingEvents)
-                presetEventHandler.postPresetEvent(new ZoneRemoveEvent(this, preset, voice, zone));
+                contentEventHandler.postEvent(new ZoneRemoveEvent(this, preset, voice, zone), false);
         }
     }
 
@@ -503,13 +797,12 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
 
     public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer z) throws NoSuchZoneException {
         final String pname = getOriginalPresetName();
-        ZoneObject zobj = new ZoneObject(preset, voice, z, (ZoneObject) zones.get(z.intValue())) {
+        ZoneObject zobj = new ZoneObject() {
             public String getOrginalPresetName() {
                 return pname;
             }
         };
-        //zobj.setDeviceParameterContext(null);
-        zobj.setPresetEventHandler(null);
+        zobj.initIsolated(preset, voice, z, (ZoneObject) zones.get(z.intValue()));
         return zobj;
     }
 
@@ -523,12 +816,10 @@ class VoiceObject extends Parameterized implements ZDisposable, IsolatedPreset.I
 
     public String getOriginalPresetName() {
         try {
-            return deviceParameterContext.getDeviceContext().getDefaultPresetContext().getPresetName(preset);
-        } catch (NoSuchPresetException e) {
+            return deviceParameterContext.getDeviceContext().getDefaultPresetContext().getString(preset);
+        } catch (DeviceException e) {
             e.printStackTrace();
-        } catch (PresetEmptyException e) {
-            e.printStackTrace();
-        } catch (ZDeviceNotRunningException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return DeviceContext.UNTITLED_PRESET;

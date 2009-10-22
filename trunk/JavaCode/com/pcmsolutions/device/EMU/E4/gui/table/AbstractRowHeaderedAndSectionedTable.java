@@ -8,6 +8,7 @@ import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableModel;
+import java.awt.*;
 import java.awt.dnd.DropTargetListener;
 import java.awt.event.MouseEvent;
 import java.util.Enumeration;
@@ -37,7 +38,6 @@ abstract public class AbstractRowHeaderedAndSectionedTable extends DragAndDropTa
                 throw new IllegalArgumentException("Model is not a ColumnAndSectionDataProvider");
         else
             this.columnAndSectionDataProvider = csdp;
-
         setShowGrid(false);
         setColumnSelectionAllowed(true);
         setRowSelectionAllowed(true);
@@ -51,7 +51,7 @@ abstract public class AbstractRowHeaderedAndSectionedTable extends DragAndDropTa
         this.getTableHeader().setReorderingAllowed(false);
         this.getTableHeader().setDefaultRenderer(TableHeaderCellRenderer.INSTANCE);
 
-        setupRowHeader(/*rowHeaderRenderer,*/ popupName);
+        setupRowHeader(popupName);
         //setMaximumSize(getPreferredSize());
     }
 
@@ -79,10 +79,6 @@ abstract public class AbstractRowHeaderedAndSectionedTable extends DragAndDropTa
     public void setCustomRowHeaderMenuItems(JMenuItem[] jmi) {
         customRowHeaderMenuItems = jmi;
 
-    }
-
-    protected JMenuItem[] getCustomMenuItems() {
-        return super.getCustomMenuItems();
     }
 
     public ColumnAndSectionDataProvider getColumnAndSectionDataProvider() {
@@ -118,9 +114,9 @@ abstract public class AbstractRowHeaderedAndSectionedTable extends DragAndDropTa
             public void zDispose() {
             }
 
-            protected JMenuItem[] getCustomMenuItems() {
+            protected Component[] getCustomMenuItems() {
                 return customRowHeaderMenuItems;
-            }
+            }      
 
             public void mouseClicked(MouseEvent e) {
                 super.mouseClicked(e);
@@ -153,8 +149,8 @@ abstract public class AbstractRowHeaderedAndSectionedTable extends DragAndDropTa
         rowHeader.addColumn(tc);
 
         // Make sure that selections between the main table and the header stay
-        // in sync (by sharing the same model)
-        setSelectionModel(rowHeader.getSelectionModel());
+        // in sync (by sharing the same model)            
+        //setSelectionModel(rowHeader.getSelectionModel());
 
         // With out shutting off autoResizeMode, our tables won't scroll
         // correctly (horizontally, anyway)
@@ -164,16 +160,23 @@ abstract public class AbstractRowHeaderedAndSectionedTable extends DragAndDropTa
         rowHeader.setDragEnabled(true);
     }
 
-    public JTable getRowHeader() {
+    public PopupTable getRowHeader() {
         return rowHeader;
     }
 
-    public JTable getTable() {
+    public PopupTable getTable() {
         return this;
     }
 
+    /*protected boolean checkPopup(MouseEvent e) {
+        if (!this.contains(e.getPoint()))
+            return rowHeader.checkPopup(e);
+        else
+            return super.checkPopup(e);
+    } */
+
     public void zDispose() {
-       super.zDispose();
+        super.zDispose();
         if (rowHeader instanceof ZDisposable)
             ((ZDisposable) rowHeader).zDispose();
     }

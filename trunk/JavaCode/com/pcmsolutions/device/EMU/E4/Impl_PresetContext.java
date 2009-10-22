@@ -1,17 +1,22 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.gui.preset.DesktopEditingMediator;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetChangeEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.requests.PresetRequestEvent;
+import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
 import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
-import com.pcmsolutions.device.EMU.E4.sample.SampleEmptyException;
-import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.NoteUtilities;
-import com.pcmsolutions.system.ZUtilities;
+import com.pcmsolutions.device.EMU.database.*;
+import com.pcmsolutions.gui.ProgressCallback;
+import com.pcmsolutions.system.*;
+import com.pcmsolutions.system.tasking.*;
+import com.pcmsolutions.system.threads.ZThread;
 import com.pcmsolutions.util.IntegerUseMap;
 
-import javax.swing.*;
+import javax.sound.midi.Sequence;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
@@ -22,31 +27,37 @@ import java.util.*;
  * Date: 02-Feb-2004
  * Time: 13:58:44
  */
-class Impl_PresetContext implements PresetContext, RemoteObjectStates, Serializable {
-    protected transient Vector listeners;
-    protected PresetDatabaseProxy presetDatabaseProxy;
-    protected DeviceContext device;
-
+class Impl_PresetContext extends AbstractContext<ReadablePreset, DatabasePreset, IsolatedPreset, PresetContext, PresetEvent, PresetRequestEvent, PresetListener> implements PresetContext, Serializable {
+    protected E4Device device;
     protected String name;
+    protected PresetDatabase db;
+    protected transient ManageableTicketedQ presetContextQ;
 
-    public Impl_PresetContext(DeviceContext device, String name, PresetDatabaseProxy pdbp) {
+    public Impl_PresetContext(E4Device device, String name, PresetDatabase db) {
+        super(db);
         this.device = device;
         this.name = name;
-        this.presetDatabaseProxy = pdbp;
-        makeTransients();
+        this.db = db;
+        buildTransients();
     }
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
         ois.defaultReadObject();
-        makeTransients();
+        buildTransients();
     }
 
-    private void makeTransients(){
-        listeners = new Vector();
+    void buildTransients() {
+        presetContextQ = QueueFactory.createTicketedQueue(this, "presetContext", 6);
+        presetContextQ.start();
     }
+
+    public TicketedQ getContextQ() {
+        return presetContextQ;
+    }
+
     public boolean equals(Object o) {
         // identity comparison
-        if (o == getDelegatingPresetContext())
+        if (o == this)
             return true;
         return false;
     }
@@ -55,912 +66,876 @@ class Impl_PresetContext implements PresetContext, RemoteObjectStates, Serializa
         return "Presets";
     }
 
-    public void addPresetContextListener(PresetContextListener pl) {
-        listeners.add(pl);
-    }
-
-    public void removePresetContextListener(PresetContextListener pl) {
-        listeners.remove(pl);
-
-    }
-
-    public void addPresetListener(PresetListener pl, Integer[] presets) {
-        presetDatabaseProxy.addPresetListener(pl, presets);
-    }
-
-    public void removePresetListener(PresetListener pl, Integer[] presets) {
-        presetDatabaseProxy.removePresetListener(pl, presets);
-    }
-
-    private void firePresetsAddedToContext(final Integer[] presets) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                synchronized (listeners) {
-                    for (Enumeration e = listeners.elements(); e.hasMoreElements();) {
-                        try {
-                            ((PresetContextListener) e.nextElement()).presetsAddedToContext(getDelegatingPresetContext(), presets);
-                        } catch (Exception e1) {
-                            e1.printStackTrace();
-                        }
-                    }
+    public Ticket assertRemote(final Integer preset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                try {
+                    task_dropContent(Impl_PresetContext.this.getIsolatedPreset(preset, false), preset, getName(preset), ProgressCallback.DUMMY);
+                } catch (EmptyException e) {
+                    erase(preset).post();
                 }
             }
-        });
+        }, "assertRemote");
     }
 
-    private void firePresetsRemovedFromContext(final Integer[] presets) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                synchronized (listeners) {
-                    for (Enumeration e = listeners.elements(); e.hasMoreElements();) {
-                        try {
-                            ((PresetContextListener) e.nextElement()).presetsRemovedFromContext(getDelegatingPresetContext(), presets);
-                        } catch (Exception e1) {
-                            e1.printStackTrace();
-                        }
-                    }
-                }
+    public String getPresetSummary(Integer preset) throws DeviceException, NoSuchContextIndexException {
+        db.access();
+        try {
+            return db.tryGetPresetSummary(this, preset);
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket newContent(final Integer index, final String name) {
+        return device.queues.presetContextQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_newContent(index, name);
             }
-        });
+        }, "newContent");
     }
 
-    private void fireContextReleased() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                synchronized (listeners) {
-                    for (Enumeration e = listeners.elements(); e.hasMoreElements();) {
-                        ((PresetContextListener) e.nextElement()).contextReleased(getDelegatingPresetContext());
-                    }
-                }
-            }
-        });
-    }
-
-    public boolean isPresetInitialized(Integer preset) throws NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    void task_newContent(final Integer index, final String name) throws DeviceException, ContentUnavailableException {
+        db.access();
         try {
-            return reader.isPresetInitialized(preset);
+            db.newContent(Impl_PresetContext.this, index, (name == null ? DeviceContext.UNTITLED_PRESET : name), null);
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public void assertPresetInitialized(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        if (!isPresetInitialized(preset))
-            refreshPreset(preset);
-    }
-
-    public void assertPresetRemote(Integer preset) throws NoSuchPresetException, NoSuchContextException {
+    public final boolean newIfEmpty(Integer index, String name) throws DeviceException, ContentUnavailableException {
+        db.access();
         try {
-            newPreset(this.getIsolatedPreset(preset), preset, getPresetName(preset));
-        } catch (PresetEmptyException e) {
-            erasePreset(preset);
-        }
-    }
-
-    public void assertPresetNamed(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.assertPresetNamed(getDelegatingPresetContext(), preset);
+            if (db.isEmpty(index)) {
+                db.newContent(this, index, name, null);
+                return true;
+            } else
+                return false;
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int getPresetState(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public final boolean newIfReallyEmpty(Integer index, String name) throws DeviceException, ContentUnavailableException, NoSuchContextException, ContentUnavailableException {
+        db.access();
         try {
-            return reader.getPresetState(getDelegatingPresetContext(), preset);
+            task_refreshIfEmpty(index);
+            return false;
+        } catch (EmptyException e) {
+            db.newContent(this, index, name, null);
         } finally {
-            reader.release();
+            db.release();
         }
+        return true;
     }
 
-    public String getPresetSummary(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Set getPresetsDeepSet(Integer[] presets) throws DeviceException, ContentUnavailableException {
+        Set s = new TreeSet();
+        for (int i = 0; i < presets.length; i++)
+            s.addAll(getPresetDeepSet(presets[i]));
+
+        return s;
+    }
+
+    public Set<Integer> getPresetDeepSet(Integer preset) throws DeviceException, ContentUnavailableException {
+        db.access();
         try {
-            return reader.tryGetPresetSummary(getDelegatingPresetContext(), preset);
+            return taskGetPresetSet(preset, new HashSet<Integer>());
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public boolean isPresetWriteLocked(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    private Set<Integer> taskGetPresetSet(Integer preset, Set<Integer> handledPresets) throws DeviceException, ContentUnavailableException {
+        if (Thread.currentThread() instanceof ZThread && !((ZThread) Thread.currentThread()).isShouldRun())
+            return handledPresets;
         try {
-            return reader.isPresetWriteLocked(getDelegatingPresetContext(), preset);
-        } finally {
-            reader.release();
+            assertInitialized(preset, false).send(0);
+        } catch (Exception e) {
+            throw new ContentUnavailableException(e.getMessage());
         }
-    }
-
-    public boolean isPresetWritable(Integer preset) {
-        return isPresetInContext(preset);
-    }
-
-    public Set getPresetSet(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            Set s = taskGetPresetSet(preset, new HashSet());
-            return s;
-        } finally {
-            reader.release();
-        }
-    }
-
-    private Set taskGetPresetSet(Integer preset, Set handledPresets) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        Set s;
         handledPresets.add(preset);
+        db.access();
+        Set<Integer> s;
         try {
-            PresetObject pobj = reader.getPresetWrite(getDelegatingPresetContext(), preset);
+            DatabasePreset pobj = db.getRead(this, preset);
             try {
                 s = pobj.referencedPresetSet();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
-            s.removeAll(handledPresets);
+            s.removeAll((Set) handledPresets);
             handledPresets.addAll(s);
 
             for (Iterator i = s.iterator(); i.hasNext();)
                 taskGetPresetSet((Integer) i.next(), handledPresets);
 
-        } catch (PresetEmptyException e) {
+        } catch (EmptyException e) {
         } finally {
-            reader.release();
+            db.release();
         }
         return handledPresets;
-    }
-
-    public void release() throws NoSuchContextException {
-        PDBWriter writer = presetDatabaseProxy.getDBWrite();
-        try {
-            writer.releaseContext(getDelegatingPresetContext());
-        } finally {
-            writer.release();
-        }
-        fireContextReleased();
-    }
-
-    public IntegerUseMap getSampleIndexesInUseForUserPresets() throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.getSampleIndexesInUseForUserPresets(getDelegatingPresetContext());
-        } finally {
-            reader.release();
-        }
-    }
-
-    public IntegerUseMap getSampleIndexesInUseForFlashPresets() throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.getSampleIndexesInUseForFlashPresets(getDelegatingPresetContext());
-        } finally {
-            reader.release();
-        }
-    }
-
-    public IntegerUseMap getSampleIndexesInUseForAllPresets() throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.getSampleIndexesInUseForAllPresets(getDelegatingPresetContext());
-        } finally {
-            reader.release();
-        }
     }
 
     // PRESET
     // value between 0 and 1 representing fraction of dump completed
     // value < 0 means no dump in progress
-    public double getInitializationStatus(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public double getInitializationStatus(Integer preset) throws DeviceException {
+        db.access();
         try {
-            return reader.getInitializationStatus(getDelegatingPresetContext(), preset);
+            return db.getInitializationStatus(this, preset);
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public void newPreset(Integer preset, String name) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.lockPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                PresetObject np;
-                if (name != null)
-                    np = new PresetObject(preset, name, presetDatabaseProxy.getPresetEventHandler(), device.getDeviceParameterContext());
-                else
-                    np = new PresetObject(preset, DeviceContext.UNTITLED_PRESET, presetDatabaseProxy.getPresetEventHandler(), device.getDeviceParameterContext());
+    // AUDITION
+    private static String SAMPLE_AUDITION_PRESET_NAME = "Z_AUD_SAMPLE";
+    private static String VOICE_AUDITION_PRESET_NAME = "Z_AUD_VOICE";
 
-                reader.changePresetObject(getDelegatingPresetContext(), preset, np);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
+    void checkAuditionEnabled() throws AuditioningDisabledException {
+        if (!device.getDevicePreferences().ZPREF_enableAuditioning.getValue())
+            throw new AuditioningDisabledException();
     }
 
-    public void newPreset(IsolatedPreset ip, Integer preset, String name) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.lockPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                PresetObject np;
-                if (name != null)
-                    np = new PresetObject(preset, name, ip, presetDatabaseProxy.getPresetEventHandler(), device.getDeviceParameterContext());
-                else
-                    np = new PresetObject(preset, DeviceContext.UNTITLED_PRESET, ip, presetDatabaseProxy.getPresetEventHandler(), device.getDeviceParameterContext());
-
-                reader.changePresetObject(getDelegatingPresetContext(), preset, np);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void newPreset(IsolatedPreset ip, Integer preset, String name, Map sampleTranslationMap, Integer defaultSampleTranslation, Map linkTranslationMap) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.lockPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                newPreset(ip, preset, name);
-                if (linkTranslationMap != null)
-                    remapLinkIndexes(preset, linkTranslationMap);
-                if (sampleTranslationMap != null)
-                    remapSampleIndexes(preset, sampleTranslationMap, defaultSampleTranslation);
-            } catch (PresetEmptyException e) {
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Map offsetLinkIndexes(Integer preset, Integer offset, boolean user) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                return p.offsetLinkIndexes(offset, user);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Map offsetSampleIndexes(Integer preset, Integer offset, boolean user) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                return p.offsetSampleIndexes(offset, user);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Map remapLinkIndexes(Integer preset, Map translationMap) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                return p.remapLinkIndexes(translationMap);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Map remapSampleIndexes(Integer preset, Map translationMap, Integer defaultSampleTranslation) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                return p.remapSampleIndexes(translationMap, defaultSampleTranslation);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public IsolatedPreset getIsolatedPreset(Integer preset) throws NoSuchContextException, NoSuchPresetException, PresetEmptyException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject pobj = reader.getPresetRead(getDelegatingPresetContext(), preset);
-            try {
-                PresetObject np;
-                np = new PresetObject(preset, pobj.getName(), pobj, presetDatabaseProxy.getPresetEventHandler(), device.getDeviceParameterContext());
-                np.setDeviceParameterContext(null);
-                np.setPresetEventHandler(null);
-                return np;
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void applySampleToPreset(Integer preset, Integer sample, int mode) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, ParameterValueOutOfRangeException, TooManyVoicesException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.applySingleSample(sample, mode);
-                if (mode == PresetContext.MODE_APPLY_SAMPLE_TO_NEW_VOICE && prefs.getBoolean(PREF_autoGroup, true)) {
-                    p.getVoice(IntPool.get(p.numVoices() - 1)).setValue(IntPool.get(37), this.getNextAvailableGroup(preset, prefs.getBoolean(PREF_autoGroupAtTail, false)));
-                }
-                if (ZPREF_tryMatchAppliedSamples.getValue()) {
-                    try {
-                        this.trySetOriginalKeyFromSampleName(preset, IntPool.get(p.numVoices() - 1));
-                    } catch (SampleEmptyException e) {
-                    } catch (NoSuchSampleException e) {
-                    }
-                }
-            } catch (NoSuchVoiceException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
-            } catch (IllegalParameterIdException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void applySamplesToPreset(Integer preset, Integer[] samples, int mode) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, ParameterValueOutOfRangeException, TooManyVoicesException, TooManyZonesException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.applySamples(samples, mode);
-                if (mode == PresetContext.MODE_APPLY_SAMPLES_TO_NEW_VOICE_AND_ZONES) {
-                    if (prefs.getBoolean(PREF_autoGroup, true))
-                        p.getVoice(IntPool.get(p.numVoices() - 1)).setValue(IntPool.get(37), this.getNextAvailableGroup(preset, prefs.getBoolean(PREF_autoGroupAtTail, false)));
-                    if (ZPREF_tryMatchAppliedSamples.getValue()) {
-                        VoiceObject v = p.getVoice(IntPool.get(p.numVoices() - 1));
-                        for (int i = 0,j = v.numZones(); i < j; i++)
-                            try {
-                                this.trySetOriginalKeyFromSampleName(preset, v.getVoice(), IntPool.get(i));
-                            } catch (SampleEmptyException e) {
-                            } catch (NoSuchSampleException e) {
-                            }
-                    }
-                } else if (mode == PresetContext.MODE_APPLY_SAMPLES_TO_NEW_VOICES) {
-                    if (prefs.getBoolean(PREF_autoGroup, true)) {
-                        Integer ng = this.getNextAvailableGroup(preset, prefs.getBoolean(PREF_autoGroupAtTail, false));
-                        for (int i = 0; i < samples.length; i++) {
-                            p.getVoice(IntPool.get(p.numVoices() - samples.length + i)).setValue(IntPool.get(37), ng);
-                        }
-                    }
-                    if (ZPREF_tryMatchAppliedSamples.getValue()) {
-                        try {
-                            for (int i = 0; i < samples.length; i++) {
-                                this.trySetOriginalKeyFromSampleName(preset, IntPool.get(p.numVoices() - samples.length + i));
-                            }
-                        } catch (SampleEmptyException e) {
-                        } catch (NoSuchSampleException e) {
-                        }
-                    }
-                }
-            } catch (NoSuchVoiceException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
-            } catch (NoSuchZoneException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
-            } catch (IllegalParameterIdException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void lockPresetWrite(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.lockPresetWrite(getDelegatingPresetContext(), preset);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void unlockPreset(Integer preset) {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.unlockPreset(preset);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public PresetContext newContext(String name, Integer[] presets) throws NoSuchPresetException, NoSuchContextException {
-        PDBWriter writer = presetDatabaseProxy.getDBWrite();
-        PresetContext rv;
-        try {
-            rv = writer.newContext(getDelegatingPresetContext(), name, presets);
-        } finally {
-            writer.release();
-        }
-        firePresetsRemovedFromContext(presets);
-        return rv;
-    }
-
-    public void expandContext(PresetContext dpc, Integer[] presets) throws NoSuchContextException, NoSuchPresetException {
-        if (dpc == getDelegatingPresetContext())
-            throw new NoSuchContextException("Can't expand self");
-        if (!(dpc instanceof Impl_PresetContext))
-            throw new NoSuchContextException("Destination context is not compatible");
-        Impl_PresetContext real_dpc = (Impl_PresetContext) dpc;
-        removeFromContext(presets);
-        real_dpc.addToContext(presets);
-    }
-
-    private void addToContext(Integer[] presets) throws NoSuchContextException, NoSuchPresetException {
-        PDBWriter writer = presetDatabaseProxy.getDBWrite();
-        try {
-            writer.addPresetsToContext(getDelegatingPresetContext(), presets);
-        } finally {
-            writer.release();
-        }
-        firePresetsAddedToContext(presets);
-    }
-
-    private void removeFromContext(Integer[] presets) throws NoSuchContextException, NoSuchPresetException {
-        PDBWriter writer = presetDatabaseProxy.getDBWrite();
-        try {
-            writer.removePresetsFromContext(getDelegatingPresetContext(), presets);
-        } finally {
-            writer.release();
-        }
-        firePresetsRemovedFromContext(presets);
-    }
-
-    public List expandContextWithEmptyPresets(PresetContext dpc, Integer reqd) throws NoSuchContextException {
-        List removed;
-        if (dpc == getDelegatingPresetContext())
-            throw new NoSuchContextException();
-        PDBWriter writer = presetDatabaseProxy.getDBWrite();
-        try {
-            removed = writer.expandContextWithEmptyPresets(getDelegatingPresetContext(), dpc, reqd);
-        } finally {
-            writer.release();
-        }
-        for (int n = 0; n < removed.size(); n++)
-            firePresetsRemovedFromContext((Integer[]) removed.toArray());
-
-        return removed;
-    }
-
-    public int numEmpties(Integer[] presets) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            int num = 0;
-            for (int i = 0; i < presets.length; i++)
-                if (reader.getPresetNameExtended(getDelegatingPresetContext(), presets[i]).equals(DeviceContext.EMPTY_PRESET))
-                    num++;
-            return num;
-        } finally {
-            reader.release();
-        }
-    }
-
-    public int numEmpties(Integer lowPreset, int num) throws NoSuchPresetException, NoSuchContextException {
-        Integer[] presets = new Integer[num];
-
-        ZUtilities.fillIncrementally(presets, lowPreset.intValue());
-
-        return numEmpties(presets);
-    }
-
-    public List findEmptyPresetsInContext(Integer reqd, Integer beginIndex, Integer maxIndex) throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.findEmptyPresets(getDelegatingPresetContext(), reqd, beginIndex, maxIndex);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Integer firstEmptyPresetInContext() throws NoSuchContextException, NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            Set s = reader.getPresetIndexesInContext(getDelegatingPresetContext());
-            for (Iterator i = s.iterator(); i.hasNext();) {
-                Integer index = (Integer) i.next();
+    public Ticket auditionVoices(final Integer preset, final Integer[] voices, final boolean stepped) {
+        return device.queues.auditionQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
                 try {
-                    if (isPresetEmpty(index))
-                        return index;
-                } catch (NoSuchPresetException e) {
+                    checkAuditionEnabled();
+                    DeviceContext dc = getDeviceContext();
+                    doVoiceAudition(preset, voices, IntPool.get(dc.getDevicePreferences().ZPREF_sampleAuditionPreset.getValue()), stepped);
+                } catch (Exception e) {
                 }
             }
-        } finally {
-            reader.release();
-        }
-        throw new NoSuchPresetException(IntPool.get(Integer.MIN_VALUE));
+        }, "auditionVoices");
     }
 
-    // high is exclusive
-    public Integer firstEmptyPresetInDatabaseRange(Integer lowPreset, Integer highPreset) throws NoSuchContextException, NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    // TODO!! this needs to be fixed up after we setup sample DB and throw exceptions from device locks on device not running conditions
+    private void doVoiceAudition(Integer srcPreset, Integer[] voices, Integer audPreset, boolean consecutive) throws PresetException, DeviceException, AuditionManager.MultimodeChannelUnreachableException, IllegalMultimodeChannelException, AuditioningException, ContentUnavailableException, EmptyException, ParameterException, ResourceUnavailableException {
+        int note = NoteUtilities.Note.getValueForString(getDeviceContext().getDevicePreferences().ZPREF_quickAuditionNote.getValue());
+        db.access();
         try {
-            Set s = reader.getReadablePresetIndexes(getDelegatingPresetContext());
-            int hi = highPreset.intValue();
-            int li = lowPreset.intValue();
-            if (hi < li)
-                throw new IllegalArgumentException("lowPreset is higher than highPreset");
-            for (int i = li; i < hi; i++) {
-                Integer index = IntPool.get(i);
-                if (s.contains(index))
-                    try {
-                        if (isPresetEmpty(index))
-                            return index;
-                    } catch (NoSuchPresetException e) {
+            final boolean ignoreLatch = getDeviceContext().getDevicePreferences().ZPREF_disableLatchDuringVoiceAudition.getValue();
+            RCContent<DatabasePreset> rcc = db.getRC(this, srcPreset, audPreset);
+            try {
+                if (consecutive) {
+                    task_newContent(audPreset, VOICE_AUDITION_PRESET_NAME);
+                    for (int i = 0; i < voices.length; i++) {
+                        int origKey = rcc.getReadable().getVoice(voices[i]).getValue(ID.origKey).intValue();
+                        int lowKey = rcc.getReadable().getVoice(voices[i]).getValue(ID.lowKey).intValue();
+                        int highKey = rcc.getReadable().getVoice(voices[i]).getValue(ID.highKey).intValue();
+
+                        if (ZUtilities.inRange(origKey, lowKey, highKey))
+                            note = origKey;
+                        else
+                            note = ZUtilities.constrain(note, lowKey, highKey);
+                        int nv = numVoices(audPreset);
+                        if (nv > 1)
+                            task_rmvVoices(audPreset, new Integer[]{IntPool.get(nv - 1)});
+                        task_copyVoice(srcPreset, voices[i], audPreset);
+                        task_setVoiceParam(audPreset, IntPool.get(numVoices(audPreset) - 1), ID.delay, IntPool.zero);
+                        if (ignoreLatch)
+                            task_setVoiceParam(audPreset, IntPool.get(numVoices(audPreset) - 1), ID.latch, IntPool.zero);
+                        performPresetAudition(audPreset, note);
                     }
+                } else {
+                    task_newContent(audPreset, VOICE_AUDITION_PRESET_NAME);
+                    Integer[] lh = PresetContextMacros.getCommonKeyRange(this, srcPreset, voices);
+                    if (lh != null)
+                        note = ZUtilities.constrain(note, lh[0].intValue(), lh[1].intValue());
+                    else
+                        throw new AuditioningException("Voices have no common keyboard range");
+
+                    final boolean truncateDelay = getDeviceContext().getDevicePreferences().ZPREF_truncateDelayDuringVoiceAudition.getValue();
+                    for (int i = 0; i < voices.length; i++) {
+                        task_copyVoice(srcPreset, voices[i], audPreset);
+                        if (truncateDelay)
+                            task_setVoiceParam(audPreset, IntPool.get(numVoices(audPreset) - 1), ID.delay, IntPool.zero);
+                        if (ignoreLatch)
+                            task_setVoiceParam(audPreset, IntPool.get(numVoices(audPreset) - 1), ID.latch, IntPool.zero);
+                    }
+                    performPresetAudition(audPreset, note, Math.min(voices.length * 20, 2000));
+                }
+            } finally {
+                rcc.release();
             }
         } finally {
-            reader.release();
+            db.release();
         }
-        throw new NoSuchPresetException(IntPool.get(Integer.MIN_VALUE));
     }
 
-    public Set getPresetIndexesInContext() throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Ticket auditionSamples(final Integer[] samples, final boolean consecutive) {
+        return device.queues.auditionQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                try {
+                    checkAuditionEnabled();
+                    DeviceContext dc = getDeviceContext();
+                    Integer audPreset = IntPool.get(dc.getDevicePreferences().ZPREF_sampleAuditionPreset.getValue());
+                    doSampleAudition(samples, audPreset, consecutive);
+                } catch (Exception e) {
+                }
+            }
+        }, "auditionSamples");
+    }
+
+    private void doSampleAudition(Integer[] samples, Integer audPreset, boolean consecutive) throws DeviceException, AuditionManager.MultimodeChannelUnreachableException, IllegalMultimodeChannelException, AuditioningException, ContentUnavailableException, ParameterValueOutOfRangeException, NoSuchVoiceException, IllegalParameterIdException, EmptyException, ResourceUnavailableException, TooManyZonesException, NoSuchZoneException {
+        db.access();
         try {
-            return reader.getPresetIndexesInContext(getDelegatingPresetContext());
+            if (consecutive) {
+                task_newContent(audPreset, SAMPLE_AUDITION_PRESET_NAME);
+                for (int i = 0; i < samples.length; i++) {
+                    task_setVoiceParam(audPreset, IntPool.zero, ID.sample, samples[i]);
+                    performPresetAudition(audPreset);
+                }
+            } else {
+                DatabasePreset p = db.getFreePreset();
+                try {
+                    int index = 0;
+                    DatabaseVoice v = p.getVoice(IntPool.zero);
+                    for (Integer s : samples) {
+                        v.newZone();
+                        v.getZone(index++).setValue(ID.sample, s);
+                    }
+                    task_dropContent(p.getIsolated(), audPreset, SAMPLE_AUDITION_PRESET_NAME, ProgressCallback.DUMMY);
+                } finally {
+                }
+                performPresetAudition(audPreset, 150);
+            }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    private Object getMostCapablePresetObject(Integer preset) throws NoSuchPresetException {
+    public Ticket auditionPreset(final Integer preset) {
+        return device.queues.auditionQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                try {
+                    checkAuditionEnabled();
+                    performPresetAudition(preset);
+                } catch (Exception e) {
+                }
+            }
+        }, "auditionPreset");
+    }
+
+    void performPresetAudition(Integer preset) throws AuditionManager.MultimodeChannelUnreachableException, DeviceException, AuditioningException, ResourceUnavailableException {
+        performPresetAudition(preset, 50);
+    }
+
+    void performPresetAudition(Integer preset, long sleep) throws AuditionManager.MultimodeChannelUnreachableException, DeviceException, AuditioningException, ResourceUnavailableException {
+        performPresetAudition(preset, NoteUtilities.Note.getValueForString(getDeviceContext().getDevicePreferences().ZPREF_quickAuditionNote.getValue()), sleep);
+    }
+
+    void performPresetAudition(Integer preset, Sequence seq, float bpm) throws AuditionManager.MultimodeChannelUnreachableException, DeviceException, AuditioningException, ResourceUnavailableException {
+        DeviceContext dc = getDeviceContext();
+        Integer audChnl = IntPool.get(dc.getDevicePreferences().ZPREF_auditionChnl.getValue());
+        Ticket as = dc.getAuditionManager().playSequence(seq, (audChnl.intValue() > 16 ? false : true), bpm);
+        finalizePresetAudition(preset, 50);
+        try {
+            as.send(0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    Ticket getDefaultNoteTicket(int note) throws DeviceException {
+        DeviceContext dc = getDeviceContext();
+        Integer audChnl = IntPool.get(dc.getDevicePreferences().ZPREF_auditionChnl.getValue());
+        int gate = dc.getDevicePreferences().ZPREF_quickAuditionGate.getValue();
+        int vel = dc.getDevicePreferences().ZPREF_quickAuditionVel.getValue();
+        return dc.getAuditionManager().getNote(note, audChnl.intValue(), vel, gate);
+    }
+
+    Ticket getDefaultNoteTicket() throws DeviceException {
+        return getDefaultNoteTicket(NoteUtilities.Note.getValueForString(getDeviceContext().getDevicePreferences().ZPREF_quickAuditionNote.getValue()));
+    }
+
+    void performPresetAudition(Integer preset, int note, long sleep) throws AuditionManager.MultimodeChannelUnreachableException, DeviceException, AuditioningException, ResourceUnavailableException {
+        Ticket noteTicket = getDefaultNoteTicket(note);
+        finalizePresetAudition(preset, sleep);
+        try {
+            noteTicket.send(0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void finalizePresetAudition(Integer preset, long sleep) throws DeviceException {
+        DeviceContext dc = getDeviceContext();
+        Integer audChnl = IntPool.get(dc.getDevicePreferences().ZPREF_auditionChnl.getValue());
+        int vol = dc.getDevicePreferences().ZPREF_auditionChnlVol.getValue();
+        try {
+            dc.getMultiModeContext().setPreset(audChnl, preset).send(250);
+            dc.getMultiModeContext().setVolume(audChnl, IntPool.get(vol)).send(250);
+        } catch (Exception e) {
+            throw new DeviceException(e.getMessage());
+        }
+
+        db.getEventHandler().sync();
+        dc.getMultiModeContext().syncToEdits();
+
+        try {
+            Thread.sleep(sleep);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        //if (dc.getDevicePreferences().ZPREF_allNotesOffBetweenAuditions.getValue())
+        //    dc.getAuditionManager().allNotesOff(audChnl.intValue());
+
+        /*
+        try {
+                dc.sampleMemoryDefrag(false).post();
+            } catch (ResourceUnavailableException e) {
+                e.printStackTrace();
+            }
+            */
+    }
+
+    public IsolatedPreset getIsolated(Integer index, Object flags) throws DeviceException, ContentUnavailableException, EmptyException {
+        db.access();
+        try {
+            return db.getIsolatedContent(index, flags);
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket dropContent(final IsolatedPreset ip, final Integer preset, final String name, final ProgressCallback prog) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_dropContent(ip, preset, name, prog);
+            }
+        }, "dropContent");
+    }
+
+    private void task_dropContent(final IsolatedPreset ip, final Integer preset, final String name, ProgressCallback prog) throws DeviceException, ContentUnavailableException {
+        db.access();
+        try {
+            if (name != null)
+                db.dropContent(this, ip, preset, name, prog);
+            else
+                db.dropContent(this, ip, preset, DeviceContext.UNTITLED_PRESET, prog);
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket dropContent(final IsolatedPreset ip, final Integer preset, final String name, final Map sampleTranslationMap, final Integer defaultSampleTranslation, final Map linkTranslationMap, final ProgressCallback prog) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    task_dropContent(ip, preset, name, prog);
+                    if (linkTranslationMap != null)
+                        task_remapLinkIndexes(preset, linkTranslationMap);
+                    if (sampleTranslationMap != null)
+                        task_remapSampleIndexes(preset, sampleTranslationMap, defaultSampleTranslation);
+                } finally {
+                    db.release();
+                }
+            }
+        }, "dropContent");
+    }
+
+    public Ticket offsetLinkIndexes(final Integer preset, final Integer offset, final boolean user) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.offsetLinkIndexes(offset, user);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "offsetLinkIndexes");
+    }
+
+    public Ticket offsetSampleIndexes(final Integer preset, final Integer offset, final boolean user) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.offsetSampleIndexes(offset, user);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "offsetSampleIndexes");
+    }
+
+    public Ticket remapLinkIndexes(final Integer preset, final Map translationMap) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_remapLinkIndexes(preset, translationMap);
+            }
+        }, "remapLinkIndexes");
+    }
+
+    private void task_remapLinkIndexes(final Integer preset, final Map translationMap) throws DeviceException, EmptyException, ContentUnavailableException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(this, preset);
+            try {
+                p.remapLinkIndexes(translationMap);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket remapSampleIndexes(final Integer preset, final Map translationMap, final Integer defaultSampleTranslation) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_remapSampleIndexes(preset, translationMap, defaultSampleTranslation);
+            }
+        }, "remapSampleIndexes");
+    }
+
+    private void task_remapSampleIndexes(final Integer preset, final Map translationMap, final Integer defaultSampleTranslation) throws DeviceException, EmptyException, ContentUnavailableException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(this, preset);
+            try {
+                p.remapSampleIndexes(translationMap, defaultSampleTranslation);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket refreshPresetSamples(final Integer preset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_refreshPresetSamples(preset);
+            }
+        }, "refreshPresetSamples");
+    }
+
+    private void task_refreshPresetSamples(final Integer preset) throws DeviceException, EmptyException, ContentUnavailableException, ResourceUnavailableException {
+        db.access();
+        try {
+            DatabasePreset dp = db.getRead(this, preset);
+            try {
+                for (Integer s : dp.referencedSampleUsage().getIntegers())
+                    getRootSampleContext().refresh(s).post();
+            } finally {
+                db.releaseReadContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public IsolatedPreset getIsolatedPreset(Integer preset, boolean refreshSamples) throws DeviceException, EmptyException, ContentUnavailableException {
+        db.access();
+        try {
+            if (refreshSamples)
+                try {
+                    task_refreshPresetSamples(preset);
+                } catch (ResourceUnavailableException e) {
+                    throw new DeviceException(e.getMessage());
+                }
+            //return db.getIsolatedContent(this, preset);
+            return db.getIsolatedContent(preset, null);
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket applySampleToPreset(final Integer preset, final Integer sample, final int mode) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    boolean newed = newIfReallyEmpty(preset, DeviceContext.UNTITLED_PRESET);
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        if (newed) {
+                            p.getVoice(IntPool.get(p.numVoices() - 1)).setValue(IntPool.get(38), sample);
+                        } else {
+                            p.applySingleSample(sample, mode);
+                            // TODO !! handle > 1 voice
+                            if (mode == PresetContext.MODE_APPLY_SAMPLE_TO_NEW_VOICE && prefs.getBoolean(PREF_autoGroup, true))
+                                p.getVoice(IntPool.get(p.numVoices() - 1)).setValue(IntPool.get(37), Impl_PresetContext.this.getNextAvailableGroup(preset, prefs.getBoolean(PREF_autoGroupAtTail, false)));
+                        }
+                        if (ZPREF_tryMatchAppliedSamples.getValue() && mode == MODE_APPLY_SAMPLE_TO_NEW_VOICE) {
+                            // TODO !! handle > 1 voice
+                            try {
+                                Impl_PresetContext.this.trySetOriginalKeyFromSampleName(preset, IntPool.get(p.numVoices() - 1)).post();
+                            } catch (ResourceUnavailableException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    } catch (NoSuchVoiceException e) {
+                        uninitialize(preset).post();
+                        device.logInternalError(e);
+                    } catch (IllegalParameterIdException e) {
+                        uninitialize(preset).post();
+                        device.logInternalError(e);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "applySampleToPreset");
+    }
+
+    public Ticket applySamplesToPreset(final Integer preset, final Integer[] samples, final int mode) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    boolean newed = newIfReallyEmpty(preset, DeviceContext.UNTITLED_PRESET);
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.applySamples(samples, mode);
+                        if (newed)
+                            p.rmvVoices(new Integer[]{IntPool.get(0)});
+                        if (mode == PresetContext.MODE_APPLY_SAMPLES_TO_NEW_VOICE_AND_ZONES) {
+                            if (prefs.getBoolean(PREF_autoGroup, true) && !newed)
+                                p.getVoice(IntPool.get(p.numVoices() - 1)).setValue(IntPool.get(37), Impl_PresetContext.this.getNextAvailableGroup(preset, prefs.getBoolean(PREF_autoGroupAtTail, false)));
+                            if (ZPREF_tryMatchAppliedSamples.getValue()) {
+                                DatabaseVoice v = p.getVoice(IntPool.get(p.numVoices() - 1));
+                                for (int i = 0, j = v.numZones(); i < j; i++)
+                                    Impl_PresetContext.this.trySetOriginalKeyFromSampleName(preset, v.getVoice(), IntPool.get(i)).post();
+                            }
+                        } else if (mode == PresetContext.MODE_APPLY_SAMPLES_TO_NEW_VOICES) {
+                            if (prefs.getBoolean(PREF_autoGroup, true) && !newed) {
+                                Integer ng = Impl_PresetContext.this.getNextAvailableGroup(preset, prefs.getBoolean(PREF_autoGroupAtTail, false));
+                                for (int i = 0; i < samples.length; i++) {
+                                    p.getVoice(IntPool.get(p.numVoices() - samples.length + i)).setValue(IntPool.get(37), ng);
+                                }
+                            }
+                            if (ZPREF_tryMatchAppliedSamples.getValue()) {
+                                try {
+                                    for (int i = 0; i < samples.length; i++)
+                                        trySetOriginalKeyFromSampleName(preset, IntPool.get(p.numVoices() - samples.length + i)).post();
+                                } catch (ResourceUnavailableException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }
+                    } catch (CannotRemoveLastVoiceException e) {
+                        SystemErrors.internal(e);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } catch (NoSuchVoiceException e) {
+                    Impl_PresetContext.this.uninitialize(preset).post();
+                    device.logInternalError(e);
+                } catch (IllegalParameterIdException e) {
+                    Impl_PresetContext.this.uninitialize(preset).post();
+                    device.logInternalError(e);
+                } finally {
+                    db.release();
+                }
+            }
+        }, "applySamplesToPreset");
+    }
+
+    public ContextEditablePreset[] getEditablePresets() throws DeviceException {
+        Set s = getIndexesInContext();
+        ArrayList ep = new ArrayList();
+        for (Iterator i = s.iterator(); i.hasNext();) {
+            Integer p = (Integer) i.next();
+            if (p.intValue() < DeviceContext.BASE_ROM_SAMPLE)
+                ep.add(new Impl_ContextEditablePreset(this, p));
+        }
+        return (ContextEditablePreset[]) ep.toArray(new ContextEditablePreset[ep.size()]);
+    }
+
+
+    private Object getMostCapablePresetObject(Integer preset) throws DeviceException, NoSuchContextException {
         PresetModel impl = getPresetImplementation(preset);
         try {
-            impl = PresetClassManager.getMostDerivedPresetInstance(impl, getPresetName(preset));
+            impl = PresetClassManager.getMostDerivedPresetInstance(impl, getString(preset));
         } catch (InstantiationException e) {
             e.printStackTrace();
         } catch (IllegalAccessException e) {
             e.printStackTrace();
-        } catch (PresetEmptyException e) {
         }
         //if (mainView != null)
         //    impl.setPresetEditingMediator(((DeviceInternalFrame) mainView).getDesktopEditingMediator());
         return impl;
     }
 
+    public ReadablePreset getContextItemForIndex(Integer index) throws DeviceException {
+        return (ReadablePreset) getMostCapablePresetObject(index);
+    }
+
     // returns List of ContextReadablePreset/ReadablePreset ( e.g FLASH/ROM samples returned as ReadablePreset)
-    public List getContextPresets() throws NoSuchContextException {
-        ArrayList outList = new ArrayList();
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public List<ReadablePreset> getContextPresets() throws DeviceException {
+        ArrayList<ReadablePreset> outList = new ArrayList<ReadablePreset>();
+        db.access();
         try {
-            Set indexes = getPresetIndexesInContext();
-            Integer p;
-            for (Iterator i = indexes.iterator(); i.hasNext();)
+            Set<Integer> indexes = getIndexesInContext();
+            for (Integer p : indexes)
                 try {
-                    p = (Integer) i.next();
-                    outList.add(getMostCapablePresetObject(p));
-                } catch (NoSuchPresetException e) {
+                    outList.add((ReadablePreset) getMostCapablePresetObject(p));
+                } catch (NoSuchContextIndexException e) {
+                    e.printStackTrace();
                 }
             return outList;
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
     // returns List of ReadablePreset or better
     // e.g FLASH/ROM and out of context samples returned as ReadablePreset
     // possibly more derived than ReadablePreset if preset is in context etc... )
-    public List getDatabasePresets() throws NoSuchContextException {
-        ArrayList outList = new ArrayList();
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public List<ReadablePreset> getDatabasePresets() throws DeviceException {
+        ArrayList<ReadablePreset> outList = new ArrayList<ReadablePreset>();
+        db.access();
         try {
-            Set indexes = reader.getReadablePresetIndexes(getDelegatingPresetContext());
-            for (Iterator i = indexes.iterator(); i.hasNext();)
+            Set<Integer> indexes = db.getDBIndexes(this);
+            for (Iterator<Integer> i = indexes.iterator(); i.hasNext();)
                 try {
-                    outList.add(getMostCapablePresetObject((Integer) i.next()));
-                } catch (NoSuchPresetException e) {
+                    outList.add(getPresetImplementation(i.next()));
+                } catch (NoSuchContextIndexException e) {
+                    e.printStackTrace();
                 }
             return outList;
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Set getDatabaseIndexes() throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.getReadablePresetIndexes(getDelegatingPresetContext());
-        } finally {
-            reader.release();
-        }
-    }
 
-    public Map getPresetNamesInContext() throws NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.getPresetNamesInContext(getDelegatingPresetContext());
-        } finally {
-            reader.release();
-        }
-    }
-
-    public boolean isPresetInContext(Integer preset) {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            return reader.hasPreset(getDelegatingPresetContext(), preset);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public int size() {
-        try {
-            return getPresetIndexesInContext().size();
-        } catch (NoSuchContextException e) {
-            return 0;
-        }
-    }
-
-    public boolean isPresetEmpty(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        return getPresetState(preset) == RemoteObjectStates.STATE_EMPTY;
-    }
-
-    private Impl_ReadablePreset getPresetImplementation(Integer preset) throws NoSuchPresetException {
-        DesktopEditingMediator dem = null;
-        //  if (mainView != null)
-        //    dem = ((DeviceInternalFrame) mainView).getDesktopEditingMediator();
-
-        if (isPresetInContext(preset))
+    private Impl_ReadablePreset getPresetImplementation(Integer preset) throws DeviceException, NoSuchContextIndexException {
+        if (containsIndex(preset))
             if (preset.intValue() <= DeviceContext.MAX_USER_PRESET)
-                return new Impl_ContextEditablePreset(getDelegatingPresetContext(), preset, dem);
+                return new Impl_ContextEditablePreset(this, preset);
             else
-                return new Impl_ContextBasicEditablePreset(getDelegatingPresetContext(), preset, dem);
+                return new Impl_ContextBasicEditablePreset(this, preset);
         else {
-            PDBReader reader = presetDatabaseProxy.getDBRead();
+            db.access();
             try {
-                if (reader.readsPreset(getDelegatingPresetContext(), preset))
-                    return new Impl_ReadablePreset(getDelegatingPresetContext(), preset, dem);
+                if (db.readsIndex(this, preset))
+                    return new Impl_ReadablePreset(this, preset);
                 else
-                    throw new NoSuchPresetException(preset);
+                    throw new NoSuchContextIndexException(preset);
             } finally {
-                reader.release();
+                db.release();
             }
         }
-
-        // return getMostCapablePresetObject(preset);
     }
 
-    /*private Impl_ContextReadablePreset getContextPresetImplementation(Integer preset) throws NoSuchPresetException {
+    /*private Impl_ContextReadablePreset getContextPresetImplementation(Integer preset) throws DeviceException {
         if (isPresetInContext(preset))
-            return new Impl_ContextReadablePreset(getDelegatingPresetContext(), preset);
+            return new Impl_ContextReadablePreset(this, preset);
 
-        throw new NoSuchPresetException(preset);
+        throw new DeviceException(preset);
     }
 
-    private Impl_ReadablePreset getReadablePresetImplementation(Integer preset) throws NoSuchPresetException {
-        PDBReader reader = sdbp.getDBRead();
+    private Impl_ReadablePreset getReadablePresetImplementation(Integer preset) throws DeviceException {
+        PDBReader getReader = sdbp.getDBRead();
         try {
-            if (reader.readsPreset(getDelegatingPresetContext(), preset))
-                return new Impl_ReadablePreset(getDelegatingPresetContext(), preset);
+            if (getReader.readsPreset(this, preset))
+                return new Impl_ReadablePreset(this, preset);
             else
-                throw new NoSuchPresetException(preset);
+                throw new DeviceException(preset);
         } finally {
-            reader.release();
+            getReader.release();
         }
     } */
 
-    public ContextReadablePreset getContextPreset(Integer preset) throws NoSuchPresetException {
+    public ContextReadablePreset getContextPreset(Integer preset) throws DeviceException, NoSuchContextException {
         Object rv = getPresetImplementation(preset);
         if (rv instanceof ContextReadablePreset)
             return (ContextReadablePreset) rv;
         else
-            throw new NoSuchPresetException(preset);
+            throw new NoSuchContextIndexException(preset);
     }
 
-    public ReadablePreset getReadablePreset(Integer preset) throws NoSuchPresetException {
+    public ReadablePreset getReadablePreset(Integer preset) throws DeviceException, NoSuchContextException {
         return getPresetImplementation(preset);
     }
 
     // TODO!! fix semantics of this to handle FLASH samples that cannot be returned as ContextEditablePreset
-    public ContextEditablePreset getEditablePreset(Integer preset) throws NoSuchPresetException {
+    /*
+    public ContextEditablePreset getEditablePreset(Integer preset) throws DeviceException {
         if (isPresetInContext(preset))
-            return new Impl_ContextEditablePreset(getDelegatingPresetContext(), preset);
+            return new Impl_ContextEditablePreset(this, preset);
 
-        throw new NoSuchPresetException(preset);
+        throw new DeviceException(preset);
+    }
+    */
+    public Ticket sortLinks(final Integer preset, final Integer[] ids) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.sortLinks(ids);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "sortLinks");
     }
 
-    public void sortLinks(Integer preset, Integer[] ids) throws PresetEmptyException, NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.sortLinks(ids);
-            } finally {
-                reader.unlockPreset(preset);
+    public Ticket sortZones(final Integer preset, final Integer[] ids) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.sortZones(ids);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
             }
-        } finally {
-            reader.release();
-        }
-    }
+        }, "sortZones");
 
-    public void sortZones(Integer preset, Integer[] ids) throws PresetEmptyException, NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.sortZones(ids);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
     }
 
     // VOICE
-    public void splitVoice(Integer preset, Integer voice, int splitKey) throws NoSuchContextException, NoSuchPresetException, PresetEmptyException, TooManyVoicesException, ParameterValueOutOfRangeException, NoSuchVoiceException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.splitVoice(voice, splitKey);
-            } finally {
-                reader.unlockPreset(preset);
+    public Ticket splitVoice(final Integer preset, final Integer voice, final int splitKey) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.splitVoice(voice, splitKey);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
             }
-        } finally {
-            reader.release();
-        }
+        }, "splitVoice");
     }
 
-    public void sortVoices(Integer preset, Integer[] ids) throws PresetEmptyException, NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.sortVoices(ids);
-            } finally {
-                reader.unlockPreset(preset);
+    public Ticket sortVoices(final Integer preset, final Integer[] ids) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.sortVoices(ids);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
             }
-        } finally {
-            reader.release();
-        }
+        }, "sortVoices");
     }
 
-    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer preset, Integer voice) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, NoSuchVoiceException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public IsolatedPreset.IsolatedVoice getIsolatedVoice(Integer preset, Integer voice) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException, NoSuchVoiceException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.getIsolatedVoice(voice);
-
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Integer newVoice(Integer preset, IsolatedPreset.IsolatedVoice iv) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException, TooManyVoicesException, TooManyZonesException {
-        return null;
-    }
-
-    private final Integer[] z_mergeIds = new Integer[]{IntPool.get(39), IntPool.get(40), IntPool.get(42)};
-    private final Integer[] z_rtIds = new Integer[]{IntPool.get(53), IntPool.get(54), IntPool.get(55), IntPool.get(56)};
-
-    public void combineVoices(Integer preset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                VoiceObject[] vig = p.getVoicesInGroup(group);
-                if (vig.length < 2)
-                    return;
-                //int fv_nz = vig[0].numZones();
-
-                IsolatedPreset.IsolatedVoice.IsolatedZone iz;
-                int nz; // num zones
-                Integer nzi; // new zone index
-                ParameterContext zpc = device.getDeviceParameterContext().getZoneContext();
-                Set z_ids = zpc.getIds();
-                Integer[] zoneIds = (Integer[]) z_ids.toArray(new Integer[z_ids.size()]);
-                Integer[] vals;
-                Integer[] vals2 = null;
-
-                boolean postProcessingReqd = vig[0].numZones() == 0;
-
-                if (postProcessingReqd)
-                    vals2 = vig[0].getValues(zoneIds);
-
-                for (int i = 1; i < vig.length; i++) {
-                    nz = vig[i].numZones();
-                    if (nz == 0) {
-                        vals = vig[i].getValues(zoneIds);
-                        nzi = vig[0].addZones(IntPool.get(1));
-                        vig[0].getZone(nzi).setValues(zoneIds, vals);
-                    } else
-                        for (int j = 0; j < nz; j++) {
-                            iz = vig[i].getIsolatedZone(IntPool.get(j));
-                            vig[0].getZone(vig[0].addZone(iz)).offsetValues(z_mergeIds, vig[i].getValues(z_mergeIds));
-                        }
+    public Ticket newVoice(final Integer preset, final IsolatedPreset.IsolatedVoice iv) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    boolean newed = false;
+                    newed = newIfReallyEmpty(preset, DeviceContext.UNTITLED_PRESET);
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.dropVoice(iv);
+                        if (newed)
+                            try {
+                                p.rmvVoices(new Integer[]{IntPool.get(0)});
+                            } catch (NoSuchVoiceException e) {
+                                e.printStackTrace();
+                            } catch (CannotRemoveLastVoiceException e) {
+                                e.printStackTrace();
+                            }
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
                 }
-
-                if (postProcessingReqd) {
-                    vig[0].defaultValues(zoneIds);
-                    // realtime stuff needs to be defaulted as well
-                    vig[0].defaultValues(z_rtIds);
-                    vig[0].getZone(IntPool.get(0)).setValues(zoneIds, vals2);
-                }
-                for (int i = vig.length - 1; i > 0; i--)
-                    p.rmvVoice(vig[i].getVoice());
-
-            } catch (IllegalParameterIdException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (NoSuchVoiceException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (CannotRemoveLastVoiceException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (NoSuchZoneException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (TooManyZonesException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (ParameterValueOutOfRangeException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } finally {
-                reader.unlockPreset(preset);
             }
-        } finally {
-            reader.release();
-        }
+        }, "newVoice");
     }
 
-    public Set getUsedGroupIndexes(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Ticket combineVoices(final Integer preset, final Integer group) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.combineVoices(group);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "combineVoices");
+    }
+
+    public Set getUsedGroupIndexes(Integer preset) throws DeviceException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 HashSet usedGroups = new HashSet();
                 for (int i = 0, j = p.numVoices(); i < j; i++)
                     usedGroups.add(p.getVoice(IntPool.get(i)).getValue(IntPool.get(37)));
-                //return (Integer[]) usedGroups.toArray(new Integer[usedGroups.size()]);
                 return usedGroups;
             } catch (NoSuchVoiceException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
             } catch (IllegalParameterIdException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-                device.logInternalError(e);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
         //return new Integer[0];
         return new HashSet();
     }
 
-    public Integer getNextAvailableGroup(Integer preset, boolean atTail) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
+    public Integer getNextAvailableGroup(Integer preset, boolean atTail) throws DeviceException, EmptyException, ContentUnavailableException {
         Set usedGroups = getUsedGroupIndexes(preset);
         if (atTail) {
             Integer max = (Integer) Collections.max(usedGroups);
@@ -976,275 +951,320 @@ class Impl_PresetContext implements PresetContext, RemoteObjectStates, Serializa
         }
     }
 
-    public void purgeZones(Integer preset) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int i = 0, j = p.numVoices(); i < j; i++) {
-                    VoiceObject v = p.getVoice(IntPool.get(i));
-                    for (int x = v.numZones() - 1; x > 0; x--)
-                        v.rmvZone(IntPool.get(x));
-                }
-            } catch (NoSuchVoiceException e) {
-            } catch (NoSuchZoneException e) {
-            } finally {
-                reader.unlockPreset(preset);
+    private interface ZoneMatcher {
+        ZoneMatcher ALL = new ZoneMatcher() {
+            public boolean isMatch(DatabaseZone z) {
+                return true;
             }
-        } finally {
-            reader.release();
-        }
+        };
+
+        boolean isMatch(DatabaseZone z);
     }
 
-    public void copyLink(Integer srcPreset, Integer srcLink, Integer destPreset) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, TooManyVoicesException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject[] pobjs = reader.getPresetRW(getDelegatingPresetContext(), srcPreset, destPreset);
-
-            try {
-                LinkObject l = pobjs[0].getLink(srcLink);
-                pobjs[1].addLinks(new LinkObject[]{l});
-            } finally {
-                reader.unlockPreset(srcPreset);
-                reader.unlockPreset(destPreset);
+    private interface VoiceMatcher {
+        VoiceMatcher ALL = new VoiceMatcher() {
+            public boolean isMatch(DatabaseVoice v) {
+                return true;
             }
-        } finally {
-            reader.release();
-        }
+        };
+
+        boolean isMatch(DatabaseVoice v);
     }
 
-    public void copyPreset(Integer srcPreset, Integer destPreset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        copyPreset(srcPreset, destPreset, (String) null);
-    }
-
-    public void copyPreset(Integer srcPreset, Integer destPreset, Map presetLinkTranslationMap) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            copyPreset(srcPreset, destPreset, (String) null);
-            remapLinkIndexes(destPreset, presetLinkTranslationMap);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void copyPreset(Integer srcPreset, Integer destPreset, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        if (srcPreset.intValue() == destPreset.intValue())
-            return;
-        if (isPresetEmpty(srcPreset))
-            throw new PresetEmptyException(srcPreset);
-
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            Object[] pobjs = reader.getPresetRC(getDelegatingPresetContext(), srcPreset, destPreset);
-            try {
-                PresetObject np = new PresetObject((PresetObject) pobjs[0], destPreset, presetDatabaseProxy.getPresetEventHandler(), device.getDeviceParameterContext());
-                reader.changePresetObject(getDelegatingPresetContext(), destPreset, np);
-                if (name != null)
-                    np.setName(name);
-            } catch (NoSuchPresetException e) {
-                // error!
-                throw new IllegalStateException(this.getClass().toString() + ":copyPreset->Cannot find destination preset after locking it!");
-            } finally {
-                reader.unlockPreset(srcPreset);
-                reader.unlockPreset(destPreset);
+    private interface LinkMatcher {
+        LinkMatcher ALL = new LinkMatcher() {
+            public boolean isMatch(DatabaseLink l) {
+                return true;
             }
-        } finally {
-            reader.release();
-        }
+        };
+
+        boolean isMatch(DatabaseLink l);
     }
 
-    public void copyVoice(Integer srcPreset, Integer srcVoice, Integer destPreset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyVoicesException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject[] pobjs = reader.getPresetRW(getDelegatingPresetContext(), srcPreset, destPreset);
+    private void task_purgeZones(DatabaseVoice v, ZoneMatcher m) throws NoSuchZoneException {
+        for (int x = v.numZones() - 1; x >= 0; x--)
+            if (((x == 0 && v.numZones() > 0) || (x > 0)) && m.isMatch(v.getZone(IntPool.get(x))))
+                v.rmvZone(IntPool.get(x));
+    }
 
-            try {
-                VoiceObject v = pobjs[0].getVoice(srcVoice);
-                v = pobjs[1].getVoice(pobjs[1].addVoices(new VoiceObject[]{v}));
+    private void task_purgeVoices(DatabasePreset p, VoiceMatcher m) throws NoSuchVoiceException {
+        for (int x = p.numVoices() - 1; x >= 0; x--)
+            if (m.isMatch(p.getVoice(IntPool.get(x))))
                 try {
-                    v.setValues(new Integer[]{IntPool.get(37)}, new Integer[]{group});  // group number
-                } catch (IllegalParameterIdException e) {
-                    throw new IllegalStateException(this.getClass().toString() + ":removeVoice->setting group number failed!");
-                } catch (ParameterValueOutOfRangeException e) {
-                    throw new IllegalStateException(this.getClass().toString() + ":removeVoice->setting group number value failed!");
+                    p.rmvVoices(new Integer[]{IntPool.get(x)});
+                } catch (CannotRemoveLastVoiceException e) {
+                    e.printStackTrace();
                 }
-            } finally {
-                reader.unlockPreset(srcPreset);
-                reader.unlockPreset(destPreset);
-            }
-        } finally {
-            reader.release();
-        }
     }
 
-    public void erasePreset(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.changePresetObject(getDelegatingPresetContext(), preset, EmptyPreset.getInstance());
-        } finally {
-            reader.release();
-        }
+    private void task_purgeLinks(DatabasePreset p, LinkMatcher m) throws NoSuchLinkException {
+        for (int x = p.numLinks() - 1; x >= 0; x--)
+            if (m.isMatch(p.getLink(IntPool.get(x))))
+                p.rmvLink(IntPool.get(x));
     }
 
-    private final Integer[] exceptIds = new Integer[]{IntPool.get(39), IntPool.get(40), IntPool.get(42)};
-
-    public void expandVoice(Integer preset, Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException, TooManyVoicesException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                VoiceObject v = p.getVoice(voice);
-                VoiceObject nv;
-                Integer addIndex;
-                IsolatedPreset.IsolatedVoice.IsolatedZone[] zones = new IsolatedPreset.IsolatedVoice.IsolatedZone[v.numZones()];
-                Integer[] voiceVals = v.getAllValues();
-                Integer[] voiceIds = v.getAllIds();
-
-                if (zones.length > 0) {
-
-                    int nz = v.numZones();
-
-                    for (int i = 0, j = nz; i < j; i++)
-                        zones[i] = v.getIsolatedZone(IntPool.get(i));
-
-                    for (int i = nz - 1; i > 0; i--)
-                        v.rmvZone(IntPool.get(i));
-
-                    for (int i = 0, j = zones.length; i < j; i++) {
-                        addIndex = p.addVoices(IntPool.get(1), new Integer[]{IntPool.get(0)});
-                        nv = p.getVoice(addIndex);
-                        nv.setValues(voiceIds, voiceVals);
-                        nv.setValues(zones[i].getAllIdsExcept(exceptIds), zones[i].getAllValuesExcept(exceptIds));
-                        nv.offsetValues(exceptIds, zones[i].getValues(exceptIds));  // addDesktopElement zone vol, pan and ftune to corresponding voice values
+    public Ticket purgeZones(final Integer preset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        for (int i = 0, j = p.numVoices(); i < j; i++) {
+                            DatabaseVoice v = p.getVoice(IntPool.get(i));
+                            task_purgeZones(v, ZoneMatcher.ALL);
+                        }
+                    } catch (NoSuchVoiceException e) {
+                        e.printStackTrace();
+                    } catch (NoSuchZoneException e) {
+                    } finally {
+                        db.releaseWriteContent(preset);
                     }
-
-                    p.rmvVoice(voice);
+                } finally {
+                    db.release();
                 }
-            } catch (NoSuchZoneException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (IllegalParameterIdException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (ParameterValueOutOfRangeException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            } catch (CannotRemoveLastVoiceException e) {
-                reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
+            }
+        }, "purgeZones");
+    }
+
+    public Ticket purgeLinks(final Integer preset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        task_purgeLinks(p, LinkMatcher.ALL);
+                    } catch (NoSuchLinkException e) {
+                        e.printStackTrace();
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "purgeLinks");
+    }
+
+    public Ticket purgeEmpties(final Integer preset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        for (int i = p.numVoices() - 1; i >= 0; i--)
+                            task_purgeZones(p.getVoice(IntPool.get(i)), new ZoneMatcher() {
+                                public boolean isMatch(DatabaseZone z) {
+                                    try {
+                                        if (Impl_PresetContext.this.getRootSampleContext().isEmpty(z.getSample()))
+                                            return true;
+                                    } catch (DeviceException e) {
+                                        e.printStackTrace();
+                                    }
+                                    return false;
+                                }
+                            });
+                        task_purgeVoices(p, new VoiceMatcher() {
+                            public boolean isMatch(DatabaseVoice v) {
+                                try {
+                                    if (v.numZones() == 0 && Impl_PresetContext.this.getRootSampleContext().isEmpty(v.getSample()))
+                                        return true;
+                                } catch (DeviceException e) {
+                                    e.printStackTrace();
+                                }
+                                return false;
+                            }
+                        });
+
+                    } catch (NoSuchZoneException e) {
+                        e.printStackTrace();
+                    } catch (NoSuchVoiceException e) {
+                        e.printStackTrace();
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "purgeEmpties");
+
+    }
+
+    public Ticket copyLink(final Integer srcPreset, final Integer srcLink, final Integer destPreset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    RWContent<DatabasePreset> rwc = db.getRW(Impl_PresetContext.this, srcPreset, destPreset);
+                    try {
+                        DatabaseLink l = rwc.getReadable().getLink(srcLink);
+                        rwc.getWritable().copyDatabaseLink(l);
+                    } finally {
+                        rwc.release();
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "");
+    }
+
+    public Ticket copy(final Integer srcPreset, final Integer destPreset, final Map presetLinkTranslationMap) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    if (srcPreset.intValue() == destPreset.intValue())
+                        return;
+                    db.copyContent(Impl_PresetContext.this, srcPreset, destPreset, null, null);
+                    remapLinkIndexes(destPreset, presetLinkTranslationMap).post();
+                } finally {
+                    db.release();
+                }
+            }
+        }, "copy");
+    }
+
+    public Ticket copyVoice(final Integer srcPreset, final Integer srcVoice, final Integer destPreset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_copyVoice(srcPreset, srcVoice, destPreset);
+            }
+        }, "copyVoice");
+    }
+
+    void task_copyVoice(final Integer srcPreset, final Integer srcVoice, final Integer destPreset) throws DeviceException, NoSuchVoiceException, ContentUnavailableException, EmptyException, TooManyVoicesException {
+        db.access();
+        try {
+            RWContent<DatabasePreset> rwc = db.getRW(Impl_PresetContext.this, srcPreset, destPreset);
+            try {
+                DatabaseVoice v = rwc.getReadable().getVoice(srcVoice);
+                rwc.getWritable().copyDatabaseVoice(v);
             } finally {
-                reader.unlockPreset(preset);
+                rwc.release();
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public boolean trySetOriginalKeyFromName(Integer preset, Integer voice, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException {
+    public Ticket expandVoice(final Integer preset, final Integer voice) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.expandVoice(voice);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "expandVoice");
+    }
+
+    public Ticket trySetOriginalKeyFromName(final Integer preset, final Integer voice, final String name) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_trySetOriginalKeyFromName(preset, voice, name);
+            }
+        }, "trySetOriginalKeyFromName");
+    }
+
+    private void task_trySetOriginalKeyFromName(final Integer preset, final Integer voice, final String name) throws ResourceUnavailableException {
         NoteUtilities.Note n = NoteUtilities.getNoteFromName(name);
         if (n != null) {
-            try {
-                setVoicesParam(preset, new Integer[]{voice}, IntPool.get(44), new Integer[]{IntPool.get(n.getNoteValue())});
-                return true;
-            } catch (IllegalParameterIdException e) {
-            } catch (ParameterValueOutOfRangeException e) {
+            setVoiceParam(preset, voice, IntPool.get(44), IntPool.get(n.getNoteValue())).post();
+        }
+    }
+
+    public Ticket trySetOriginalKeyFromName(final Integer preset, final Integer voice, final Integer zone, final String name) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                NoteUtilities.Note n = NoteUtilities.getNoteFromName(name);
+                if (n != null) {
+                    setZoneParam(preset, voice, zone, IntPool.get(44), IntPool.get(n.getNoteValue())).post();
+                }
             }
-        }
-        return false;
+        }, "trySetOriginalKeyFromName");
     }
 
-    public boolean trySetOriginalKeyFromName(Integer preset, Integer voice, Integer zone, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchZoneException {
-        NoteUtilities.Note n = NoteUtilities.getNoteFromName(name);
-        if (n != null) {
-            try {
-                setZonesParam(preset, voice, new Integer[]{zone}, IntPool.get(44), new Integer[]{IntPool.get(n.getNoteValue())});
-                return true;
-            } catch (IllegalParameterIdException e) {
-            } catch (ParameterValueOutOfRangeException e) {
+    public Ticket trySetOriginalKeyFromSampleName(final Integer preset, final Integer voice) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    String name = Impl_PresetContext.this.getRootSampleContext().getName(Impl_PresetContext.this.getVoiceParams(preset, voice, new Integer[]{ID.sample})[0]);
+                    trySetOriginalKeyFromName(preset, voice, name).post();
+                } catch (IllegalParameterIdException e) {
+                } finally {
+                    db.release();
+                }
             }
-        }
-        return false;
+        }, "trySetOriginalKeyFromSampleName");
     }
 
-    public boolean trySetOriginalKeyFromSampleName(Integer preset, Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException, SampleEmptyException, NoSuchSampleException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            String name = this.getRootSampleContext().getSampleName(this.getVoiceParams(preset, voice, new Integer[]{ID.sample})[0]);
-            return trySetOriginalKeyFromName(preset, voice, name);
-        } catch (IllegalParameterIdException e) {
-            reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            device.logInternalError(e);
-        } finally {
-            reader.release();
-        }
-        return false;
+    public Ticket trySetOriginalKeyFromSampleName(final Integer preset, final Integer voice, final Integer zone) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                String name = null;
+                try {
+                    name = Impl_PresetContext.this.getRootSampleContext().getName(Impl_PresetContext.this.getZoneParams(preset, voice, zone, new Integer[]{ID.sample})[0]);
+                    trySetOriginalKeyFromName(preset, voice, zone, name).post();
+                } catch (IllegalParameterIdException e) {
+                    e.printStackTrace();
+                } catch (ResourceUnavailableException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, "");
     }
 
-    public boolean trySetOriginalKeyFromSampleName(Integer preset, Integer voice, Integer zone) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException, NoSuchVoiceException, NoSuchZoneException, SampleEmptyException, NoSuchSampleException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            String name = this.getRootSampleContext().getSampleName(this.getZoneParams(preset, voice, zone, new Integer[]{ID.sample})[0]);
-            return trySetOriginalKeyFromName(preset, voice, zone, name);
-        } catch (IllegalParameterIdException e) {
-            reader.changePresetObject(getDelegatingPresetContext(), preset, new UninitPresetObject(preset));
-            device.logInternalError(e);
-        } finally {
-            reader.release();
-        }
-        return false;
-    }
-
-    public Integer[] getLinkParams(Integer preset, Integer link, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Integer[] getLinkParams(Integer preset, Integer link, Integer[] ids) throws IllegalParameterIdException, NoSuchLinkException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         Integer[] vals;
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 vals = p.getLink(link).getValues(ids);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
 
         return vals;
     }
 
-    public String getPresetName(Integer preset) throws NoSuchPresetException, PresetEmptyException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            String name = reader.getPresetName(preset);
-            if (name == DeviceContext.EMPTY_PRESET)
-                throw new PresetEmptyException(preset);
-            else
-                return name;
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Integer[] getPresetParams(Integer preset, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Integer[] getPresetParams(Integer preset, Integer[] ids) throws IllegalParameterIdException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         Integer[] vals;
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 vals = p.getValues(ids);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
         return vals;
     }
 
-    public void getVoiceMultiSample(Integer srcPreset, Integer srcVoice, Integer destPreset, Integer destVoice) {
-    }
-
-    public Integer[] getVoiceIndexesInGroupFromVoice(Integer preset, Integer voice) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException, NoSuchVoiceException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Integer[] getVoiceIndexesInGroupFromVoice(Integer preset, Integer voice) throws DeviceException, NoSuchVoiceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
-                VoiceObject v = p.getVoice(voice);
+                DatabaseVoice v = p.getVoice(voice);
                 Integer group = v.getValues(new Integer[]{IntPool.get(37)})[0];
                 return getVoiceIndexesInGroup(preset, group);
             } catch (NoSuchGroupException e) {
@@ -1253,1069 +1273,789 @@ class Impl_PresetContext implements PresetContext, RemoteObjectStates, Serializa
                 throw new IllegalStateException("Group missing!");
 
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Integer[] getVoiceIndexesInGroup(Integer preset, Integer group) throws NoSuchGroupException, PresetEmptyException, NoSuchContextException, NoSuchPresetException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Integer[] getVoiceIndexesInGroup(Integer preset, Integer group) throws NoSuchGroupException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 Integer[] vi = p.getVoiceIndexesInGroup(group);
                 if (vi.length == 0)
                     throw new NoSuchGroupException();
                 return vi;
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
     // LINK
-    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer preset, Integer link) throws NoSuchLinkException, NoSuchPresetException, NoSuchContextException, PresetEmptyException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public IsolatedPreset.IsolatedLink getIsolatedLink(Integer preset, Integer link) throws NoSuchLinkException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.getIsolatedLink(link);
-
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
     // LINK
-    public Integer newLink(Integer preset, IsolatedPreset.IsolatedLink il) throws TooManyVoicesException, PresetEmptyException, NoSuchContextException, NoSuchPresetException {
-        return null;
+    public Ticket newLink(final Integer preset, final IsolatedPreset.IsolatedLink il) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                Integer addedIndex;
+                try {
+                    newIfReallyEmpty(preset, DeviceContext.UNTITLED_PRESET);
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        addedIndex = p.dropLink(il);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "newLink");
     }
 
-    public Integer[] getGroupParams(Integer preset, Integer group, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Integer[] getGroupParams(Integer preset, Integer group, Integer[] ids) throws IllegalParameterIdException, NoSuchGroupException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 Integer lv = p.getLeadVoiceIndexInGroup(group);
-
                 if (lv == null)
                     throw new NoSuchGroupException();
                 return getVoiceParams(preset, lv, ids);
             } catch (NoSuchVoiceException e) {
                 throw new NoSuchGroupException(); // should never get here!!!
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Integer[] getVoiceParams(Integer preset, Integer voice, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Integer[] getVoiceParams(final Integer preset, Integer voice, Integer[] ids) throws IllegalParameterIdException, NoSuchVoiceException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         Integer[] vals;
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 vals = p.getVoice(voice).getValues(ids);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
         return vals;
     }
 
-    public Integer[] setGroupParamFromVoice(Integer preset, Integer voice, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+
+    public Integer[] getVoicesParam(Integer preset, Integer[] voices, Integer id) throws IllegalParameterIdException, NoSuchVoiceException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
+        Integer[] vals = new Integer[voices.length];
         try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
+            try {
+                for (int i = 0; i < voices.length; i++)
+                    vals[i] = p.getVoice(voices[i]).getValue(id);
+            } finally {
+                db.releaseReadContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+        return vals;
+    }
+
+    public Ticket setGroupParamFromVoice(final Integer preset, final Integer voice, final Integer id, final Integer value) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_setGroupParamFromVoice(preset, voice, id, value);
+            }
+        }, "setGroupParamFromVoice");
+    }
+
+    void task_setGroupParamFromVoice(final Integer preset, final Integer voice, final Integer id, final Integer value) throws ParameterValueOutOfRangeException, IllegalParameterIdException, NoSuchVoiceException, DeviceException, ContentUnavailableException, NoSuchContextException, EmptyException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
             try {
                 Integer group = p.getVoice(voice).getValues(new Integer[]{IntPool.get(37)})[0];
-                return setGroupParam(preset, group, id, value);
-            } catch (NoSuchGroupException e) {
-                throw new NoSuchVoiceException();  // should never get here!!!
+                p.setGroupValue(group, id, value);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseWriteContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Integer[] setGroupParam(Integer preset, Integer group, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        Integer[] changed = new Integer[0];
+    public Ticket offsetGroupParamFromVoice(final Integer preset, final Integer voice, final Integer id, final Integer offset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_offsetGroupParamFromVoice(preset, voice, id, offset);
+            }
+        }, "setGroupParamFromVoice");
+    }
+
+    public Ticket offsetGroupParamFromVoice(final Integer preset, final Integer voice, final Integer id, final Double offsetAsFOR) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                Integer offset = ParameterModelUtilities.calcIntegerOffset(device.deviceParameterContext.getVoiceContext().getParameterDescriptor(id), offsetAsFOR);
+                task_offsetGroupParamFromVoice(preset, voice, id, offset);
+            }
+        }, "setGroupParamFromVoice");
+    }
+
+    void task_offsetGroupParamFromVoice(final Integer preset, final Integer voice, final Integer id, final Integer offset) throws ParameterValueOutOfRangeException, IllegalParameterIdException, NoSuchVoiceException, DeviceException, ContentUnavailableException, NoSuchContextException, EmptyException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
             try {
-                Integer[] vIndexes = p.getVoiceIndexesInGroup(group);
-                if (vIndexes.length == 0)
+                Integer group = p.getVoice(voice).getValues(new Integer[]{IntPool.get(37)})[0];
+                p.offsetGroupValue(group, id, offset, true);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket setGroupParam(final Integer preset, final Integer group, final Integer id, final Integer value) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_setGroupParam(preset, group, id, value);
+            }
+        }, "setGroupParam");
+    }
+
+    void task_setGroupParam(final Integer preset, final Integer group, final Integer id, final Integer value) throws ParameterValueOutOfRangeException, IllegalParameterIdException, NoSuchGroupException, DeviceException, ContentUnavailableException, NoSuchContextException, EmptyException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+            try {
+                if (p.getVoiceIndexesInGroup(group).length == 0)
                     throw new NoSuchGroupException();
-                //Integer[] vals = new Integer[vIndexes.elementCount];
-                //Arrays.fill(vals, value);
-                changed = setGroupParamHelper(preset, vIndexes, group, id, value);
-                //setVoicesParam(preset, vIndexes, id, vals);
-            } catch (NoSuchVoiceException e) {
-                throw new NoSuchGroupException(); // should never get here!!!
+                p.setGroupValue(group, id, value);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseWriteContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
-        return changed;
     }
 
-    protected Integer[] setGroupParamHelper(Integer preset, Integer[] updateVoices, Integer group, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-
-        int len = updateVoices.length;
-        //Integer[] changedValues;
-        Integer[] changed = new Integer[0];
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int n = 0; n < len; n++) {
-                    changed = setVoiceValue(p.getVoice(updateVoices[n]), id, value);
-                    //VoiceObject v = p.getVoice(updateVoices[n]);
-                    //v.setValues(changedValues, v.);
-                }
-
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-        return changed;
+    /*
+    void queue_setGroupParam(final Integer preset, final Integer group, final Integer[] voicesInGroup, final Integer id, final Integer value) throws QueueUnavailableException {
+        internalParamQ.postTask(new SetGroupParameterValueTask(preset, group, voicesInGroup, id, value));
     }
-
-    public Integer[] getZoneParams(Integer preset, Integer voice, Integer zone, Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    */
+    public Integer[] getZoneParams(Integer preset, Integer voice, Integer zone, Integer[] ids) throws IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         Integer[] vals;
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 vals = p.getVoice(voice).getZone(zone).getValues(ids);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
         return vals;
     }
 
-    public Integer newLinks(Integer preset, Integer num, Integer[] presetNums) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        Integer addedIndex;
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                addedIndex = p.addLinks(num, presetNums);
-            } finally {
-                reader.unlockPreset(preset);
+    public Ticket newLinks(final Integer preset, final Integer[] presetNums) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    newIfReallyEmpty(preset, DeviceContext.UNTITLED_PRESET);
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.newLinks(presetNums);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
             }
-        } finally {
-            reader.release();
-        }
-        return addedIndex;
+        }, "newLinks");
     }
 
-    public Integer newVoices(Integer preset, Integer num, Integer[] sampleNums) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        Integer addedIndex;
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                addedIndex = p.addVoices(num, sampleNums);
-            } finally {
-                reader.unlockPreset(preset);
+    public Ticket newVoices(final Integer preset, final Integer[] sampleNums) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                if (sampleNums.length == 0)
+                    throw new IllegalArgumentException("need some sample numbers to create new voices");
+                boolean newed = false;
+                Integer[] t_sampleNums = sampleNums;
+                db.access();
+                try {
+                    newed = newIfReallyEmpty(preset, DeviceContext.UNTITLED_PRESET);
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        if (newed) {
+                            try {
+                                p.getVoice(IntPool.get(0)).setValue(ID.sample, sampleNums[0]);
+                            } catch (IllegalParameterIdException e) {
+                            } catch (ParameterValueOutOfRangeException e) {
+                            } catch (NoSuchVoiceException e) {
+                            }
+                            if (sampleNums.length == 1)
+                                return;
+                            t_sampleNums = new Integer[sampleNums.length - 1];
+                            System.arraycopy(sampleNums, 1, t_sampleNums, 0, sampleNums.length - 1);
+                        }
+                        p.newVoices(t_sampleNums);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
             }
-        } finally {
-            reader.release();
-        }
-        return addedIndex;
+        }, "newVoices");
     }
 
-    public Integer newZones(Integer preset, Integer voice, Integer num) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyZonesException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        Integer addedIndex;
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                addedIndex = p.getVoice(voice).addZones(num);
-            } finally {
-                reader.unlockPreset(preset);
+    public Ticket newZones(final Integer preset, final Integer voice, final Integer num) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                Integer addedIndex;
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        addedIndex = IntPool.get(p.getVoice(voice).numZones());
+                        DatabaseVoice v = p.getVoice(voice);
+                        for (int i = 0, j = num.intValue(); i < j; i++)
+                            v.newZone();
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
             }
-        } finally {
-            reader.release();
-        }
-        return addedIndex;
+        }, "newZones");
     }
 
-    public int numLinks(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public int numLinks(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.numLinks();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int numPresetSamples(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public int numPresetSamples(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.numReferencedSamples();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Set presetSampleSet(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Set presetSampleSet(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.referencedSampleSet();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public IntegerUseMap presetSampleUsage(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public IntegerUseMap presetSampleUsage(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.referencedSampleUsage();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int numPresetLinkPresets(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public int numPresetLinkPresets(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.numReferencedPresets();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public Set presetLinkPresetSet(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public Set presetLinkPresetSet(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.referencedPresetSet();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public IntegerUseMap presetLinkPresetUsage(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public IntegerUseMap presetLinkPresetUsage(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.referencedPresetUsage();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int numPresetZones(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public int numPresetZones(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.numZones();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int numVoices(Integer preset) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public int numVoices(Integer preset) throws DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.numVoices();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int numZones(Integer preset, Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public int numZones(Integer preset, Integer voice) throws NoSuchVoiceException, DeviceException, NoSuchContextIndexException, EmptyException, ContentUnavailableException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.getVoice(voice).numZones();
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public void refreshPreset(Integer preset) throws NoSuchPresetException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.refreshPreset(getDelegatingPresetContext(), preset);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void refreshVoiceParameters(Integer preset, Integer voice, Integer[] ids) throws NoSuchContextException, PresetEmptyException, NoSuchPresetException, NoSuchVoiceException, ParameterValueOutOfRangeException, IllegalParameterIdException {
-
-    }
-
-    public void rmvLinks(Integer preset, Integer[] links) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int i = links.length - 1; i >= 0; i--)
-                    p.rmvLink(links[i]);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void rmvVoices(Integer preset, Integer[] voices) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchContextException, CannotRemoveLastVoiceException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int i = voices.length - 1; i >= 0; i--)
-                    p.rmvVoice(voices[i]);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void rmvZones(Integer preset, Integer voice, Integer[] zones) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int i = zones.length - 1; i >= 0; i--)
-                    p.getVoice(voice).rmvZone(zones[i]);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Integer[] setLinksParam(Integer preset, Integer[] links, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        int len = links.length;
-        Integer[] changed = new Integer[0];
-        try {
-            if (links.length != values.length)
-                throw new IllegalArgumentException(this.getClass().toString() + ":setLinksParam -> mismatch between number of links and number of parameter values!");
-
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int n = 0; n < len; n++) {
-                    changed = setLinkValue(p.getLink(links[n]), id, values[n]);
+    public Ticket refreshVoiceParameters(final Integer preset, final Integer voice, final Integer[] ids) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                if (preset.intValue() >= DeviceContext.BASE_FLASH_PRESET)
+                    refresh(preset);
+                else {
+                    db.access();
+                    try {
+                        DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                        try {
+                            p.getVoice(voice).refreshParameters(ids);
+                        } finally {
+                            db.releaseWriteContent(preset);
+                        }
+                    } finally {
+                        db.release();
+                    }
                 }
+            }
+        }, "refreshVoiceParameters");
+    }
+
+    public Ticket rmvLinks(final Integer preset, final Integer[] links) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        for (int i = links.length - 1; i >= 0; i--)
+                            p.rmvLink(links[i]);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "rmvLinks");
+    }
+
+    public Ticket rmvVoices(final Integer preset, final Integer[] voices) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_rmvVoices(preset, voices);
+            }
+        }, "rmvVoices");
+    }
+
+    void task_rmvVoices(final Integer preset, final Integer[] voices) throws DeviceException, ContentUnavailableException, EmptyException, CannotRemoveLastVoiceException, NoSuchVoiceException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+            try {
+                p.rmvVoices(voices);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseWriteContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
-        return changed;
+    }
+
+    public Ticket rmvZones(final Integer preset, final Integer voice, final Integer[] zones) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    Collections.sort(Arrays.asList(zones));
+                    try {
+                        for (int i = zones.length - 1; i >= 0; i--)
+                            p.getVoice(voice).rmvZone(zones[i]);
+                    } catch (NoSuchZoneException e) {
+                        e.printStackTrace();
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "rmvZones");
+    }
+
+    public Ticket setLinkParam(final Integer preset, final Integer link, final Integer id, final Integer value) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_setLinkParam(preset, link, id, value);
+            }
+        }, "setLinksParam");
+    }
+
+    void task_setLinkParam(final Integer preset, final Integer link, final Integer id, final Integer value) throws DeviceException, ContentUnavailableException, EmptyException, NoSuchLinkException, ParameterValueOutOfRangeException, IllegalParameterIdException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+            try {
+                p.getLink(link).setValue(id, value);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket offsetLinkParam(final Integer preset, final Integer link, final Integer id, final Integer offset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.getLink(link).offsetValue(id, offset, true);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "offsetLinkParam");
+    }
+
+    public Ticket offsetLinkParam(final Integer preset, final Integer link, final Integer id, final Double offsetAsFOR) throws IllegalParameterIdException {
+        Integer offset = ParameterModelUtilities.calcIntegerOffset(device.deviceParameterContext.getLinkContext().getParameterDescriptor(id), offsetAsFOR);
+        return offsetLinkParam(preset, link, id, offset);
     }
 
     // ZONE
-    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer preset, Integer voice, Integer zone) throws NoSuchPresetException, NoSuchContextException, PresetEmptyException, NoSuchVoiceException, NoSuchZoneException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
+    public IsolatedPreset.IsolatedVoice.IsolatedZone getIsolatedZone(Integer preset, Integer voice, Integer zone) throws DeviceException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextIndexException, ContentUnavailableException, EmptyException {
+        db.access();
         try {
-            PresetObject p = reader.getPresetRead(getDelegatingPresetContext(), preset);
+            DatabasePreset p = db.getRead(this, preset);
             try {
                 return p.getVoice(voice).getIsolatedZone(zone);
             } finally {
-                reader.unlockPreset(preset);
+                db.releaseReadContent(preset);
             }
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
     // ZONE
-    public Integer newZone(Integer preset, Integer voice, IsolatedPreset.IsolatedVoice.IsolatedZone iz) throws PresetEmptyException, NoSuchContextException, NoSuchPresetException, NoSuchVoiceException, TooManyZonesException {
-        return null;
-    }
-
-    public void setPresetName(Integer preset, String name) throws NoSuchPresetException, PresetEmptyException, NoSuchContextException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            reader.setPresetName(getDelegatingPresetContext(), preset, name);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Integer[] setPresetParams(Integer preset, Integer[] ids, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                p.setValues(ids, values);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-        return ids;
-    }
-
-    public Integer[] setVoicesParam(Integer preset, Integer[] voices, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        Integer[] changed = new Integer[0];
-        try {
-            if (voices.length != values.length)
-                throw new IllegalArgumentException(this.getClass().toString() + ":setVoicesParam -> mismatch between number of voices and number of parameter2 values!");
-
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int n = 0; n < voices.length; n++) {
-                    changed = setVoiceValue(p.getVoice(voices[n]), id, values[n]);
-                    //p.getVoice(voices[n]).setValues(new Integer[]{id}, new Integer[]{values[n]});
-                }
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-        return changed;
-    }
-
-    public Integer[] setZonesParam(Integer preset, Integer voice, Integer[] zones, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, NoSuchContextException, ParameterValueOutOfRangeException {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        //int len = zones.length;
-        Integer[] changed = new Integer[0];
-        try {
-            if (zones.length != values.length)
-                throw new IllegalArgumentException(this.getClass().toString() + ":setZonesParam -> mismatch between number of zones and number of parameter2 values!");
-
-            PresetObject p = reader.getPresetWrite(getDelegatingPresetContext(), preset);
-            try {
-                for (int n = 0; n < zones.length; n++)
-                    changed = setZoneValue(p.getVoice(voice).getZone(zones[n]), id, values[n]);
-            } finally {
-                reader.unlockPreset(preset);
-            }
-        } finally {
-            reader.release();
-        }
-        return changed;
-    }
-
-    public void setDiversePresetParams(PresetContext.AbstractPresetParameterProfile[] paramProfiles) {
-        PDBReader reader = presetDatabaseProxy.getDBRead();
-        try {
-            for (int i = 0; i < paramProfiles.length; i++) {
-                if (paramProfiles[i] instanceof ZoneParameterProfile) {
-                    ZoneParameterProfile p = (ZoneParameterProfile) paramProfiles[i];
+    public Ticket newZone(final Integer preset, final Integer voice, final IsolatedPreset.IsolatedVoice.IsolatedZone iz) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
                     try {
-                        setZonesParam(p.getPreset(), p.getVoice(), new Integer[]{p.getZone()}, p.getId(), new Integer[]{p.getValue()});
-                    } catch (NoSuchPresetException e) {
-                    } catch (PresetEmptyException e) {
-                    } catch (IllegalParameterIdException e) {
-                    } catch (NoSuchVoiceException e) {
-                    } catch (NoSuchZoneException e) {
-                    } catch (NoSuchContextException e) {
-                    } catch (ParameterValueOutOfRangeException e) {
+                        p.getVoice(voice).dropZone(iz);
+                    } finally {
+                        db.releaseWriteContent(preset);
                     }
-                } else if (paramProfiles[i] instanceof VoiceParameterProfile) {
-                    VoiceParameterProfile p = (VoiceParameterProfile) paramProfiles[i];
-                    try {
-                        setVoicesParam(p.getPreset(), new Integer[]{p.getVoice()}, p.getId(), new Integer[]{p.getValue()});
-                    } catch (NoSuchPresetException e) {
-                    } catch (PresetEmptyException e) {
-                    } catch (IllegalParameterIdException e) {
-                    } catch (NoSuchVoiceException e) {
-                    } catch (NoSuchContextException e) {
-                    } catch (ParameterValueOutOfRangeException e) {
-                    }
-                } else if (paramProfiles[i] instanceof GroupParameterProfile) {
-                    GroupParameterProfile p = (GroupParameterProfile) paramProfiles[i];
-                    try {
-                        setGroupParam(p.getPreset(), p.getGroup(), p.getId(), p.getValue());
-                    } catch (NoSuchPresetException e) {
-                    } catch (PresetEmptyException e) {
-                    } catch (IllegalParameterIdException e) {
-                    } catch (NoSuchGroupException e) {
-                    } catch (NoSuchContextException e) {
-                    } catch (ParameterValueOutOfRangeException e) {
-                    }
-                } else if (paramProfiles[i] instanceof LinkParameterProfile) {
-                    LinkParameterProfile p = (LinkParameterProfile) paramProfiles[i];
-                    try {
-                        setLinksParam(p.getPreset(), new Integer[]{p.getLink()}, p.getId(), new Integer[]{p.getValue()});
-                    } catch (NoSuchPresetException e) {
-                    } catch (PresetEmptyException e) {
-                    } catch (IllegalParameterIdException e) {
-                    } catch (NoSuchLinkException e) {
-                    } catch (NoSuchContextException e) {
-                    } catch (ParameterValueOutOfRangeException e) {
-                    }
-                } else if (paramProfiles[i] instanceof PresetParameterProfile) {
-                    PresetParameterProfile p = (PresetParameterProfile) paramProfiles[i];
-                    try {
-                        setPresetParams(p.getPreset(), new Integer[]{p.getId()}, new Integer[]{p.getValue()});
-                    } catch (NoSuchPresetException e) {
-                    } catch (PresetEmptyException e) {
-                    } catch (IllegalParameterIdException e) {
-                    } catch (NoSuchContextException e) {
-                    } catch (ParameterValueOutOfRangeException e) {
-                    }
+                } finally {
+                    db.release();
                 }
             }
+        }, "newZone");
+    }
 
-            /*for (int i = 0; i < paramProfiles.length; i++)
-                paramProfiles[i].setNewValues(this);
+    private Integer[] fxaIds = new Integer[]{IntPool.get(7), IntPool.get(8), IntPool.get(9), IntPool.get(10), IntPool.get(11), IntPool.get(12), IntPool.get(13)};
+    private Integer[] fxbIds = new Integer[]{IntPool.get(15), IntPool.get(16), IntPool.get(17), IntPool.get(18), IntPool.get(19), IntPool.get(20), IntPool.get(21)};
+
+    public Ticket setPresetParam(final Integer preset, final Integer id, final Integer value) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_setPresetParam(preset, id, value);
+            }
+        }, "setPresetParams");
+    }
+
+    void task_setPresetParam(final Integer preset, final Integer id, final Integer value) throws DeviceException, ContentUnavailableException, EmptyException, ParameterValueOutOfRangeException, IllegalParameterIdException {
+        // fxA = id6 (6-13) & fxB = id14 (14-21)
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(this, preset);
+            try {
+                p.setValue(id, value);
+                /*
+                if (id.equals(IntPool.get(6)))
+                    refreshPresetParams(preset, fxaIds);
+                if (id.equals(IntPool.get(14)))
+                    refreshPresetParams(preset, fxbIds);
+                    */
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket offsetPresetParam(final Integer preset, final Integer id, final Integer offset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                // fxA = id6 (6-13) & fxB = id14 (14-21)
+                taskOffsetPresetParam(preset, id, offset);
+            }
+        }, "offsetPresetParam");
+    }
+
+    private void taskOffsetPresetParam(final Integer preset, final Integer id, final Integer offset) throws DeviceException, EmptyException, ContentUnavailableException, IllegalParameterIdException, ParameterValueOutOfRangeException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(this, preset);
+            try {
+                p.offsetValue(id, offset, true);
+                /*
+                if (id.equals(IntPool.get(6))){
+                    taskRefreshPresetParams(preset, fxaIds);
+                    // HACK!! - not updating properly without this
+                    db.getEventHandler().postInternalEvent(new PresetChangeEvent(this, preset, new Integer[]{id}, new Integer[]{p.getValue(id)}));
+                }
+                if (id.equals(IntPool.get(14))){
+                    taskRefreshPresetParams(preset, fxbIds);
+                    // HACK!! - not updating properly without this
+                    db.getEventHandler().postInternalEvent(new PresetChangeEvent(this, preset, new Integer[]{id}, new Integer[]{p.getValue(id)}));
+                }
                 */
-        } finally {
-            reader.release();
-        }
-    }
-
-    protected Integer[] setVoiceValue(VoiceObject v, Integer id, Integer val) throws PresetEmptyException, NoSuchVoiceException, IllegalParameterIdException, NoSuchContextException, NoSuchPresetException, ParameterValueOutOfRangeException {
-        Integer[] ivals;
-        int diff;
-        ArrayList changed = new ArrayList();
-        int idv = id.intValue();
-        if (idv >= 129 && idv <= 182) {
-            if ((idv - 129) % 3 == 0) {
-                // we've got a cord src parameter
-                v.setValue(id, getDeviceParameterContext().getNearestCordSrcValue(val));
-            } else if ((idv - 129) % 3 == 1) {
-                // we've got a cord dest parameter
-                v.setValue(id, getDeviceParameterContext().getNearestCordDestValue(val));
-            } else
-                v.setValue(id, val);
-
-            changed.add(id);
-        } else
-            switch (idv) {
-                default:
-                    v.setValue(id, val);
-                    changed.add(id);
-                    break;
-
-                    // Key Win Low Key
-                case 45:
-                    ivals = v.getValues(new Integer[]{IntPool.get(46), IntPool.get(47), IntPool.get(48)});
-                    if (ivals[1].intValue() < val.intValue())
-                        v.setValue(id, ivals[1]);
-                    else
-                        v.setValue(id, val);
-
-                    changed.add(id);
-
-                    diff = Math.abs(ivals[1].intValue() - val.intValue());
-                    if (ivals[0].intValue() > diff) {
-                        v.setValue(IntPool.get(46), IntPool.get(diff));
-                        changed.add(IntPool.get(46));
-                    }
-                    if (ivals[2].intValue() > diff) {
-                        v.setValue(IntPool.get(48), IntPool.get(diff));
-                        changed.add(IntPool.get(48));
-                    }
-                    break;
-
-                    // Key Win Low Fade
-                case 46:
-                    ivals = v.getValues(new Integer[]{IntPool.get(45), IntPool.get(47)});
-
-                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    break;
-
-                    // Key Win High Key
-                case 47:
-                    ivals = v.getValues(new Integer[]{IntPool.get(45), IntPool.get(46), IntPool.get(48)});
-                    if (ivals[0].intValue() > val.intValue())
-                        val = ivals[0];
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                    if (ivals[1].intValue() > diff) {
-                        v.setValue(IntPool.get(46), IntPool.get(diff));
-                        changed.add(IntPool.get(46));
-                    }
-                    if (ivals[2].intValue() > diff) {
-                        v.setValue(IntPool.get(48), IntPool.get(diff));
-                        changed.add(IntPool.get(48));
-                    }
-                    break;
-                    // Key Win High Fade
-                case 48:
-                    ivals = v.getValues(new Integer[]{IntPool.get(45), IntPool.get(47)});
-                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                    v.setValue(id, val);
-                    changed.add(id);
-                    break;
-
-                    // Vel Win Low Key
-                case 49:
-                    ivals = v.getValues(new Integer[]{IntPool.get(50), IntPool.get(51), IntPool.get(52)});
-                    if (ivals[1].intValue() < val.intValue())
-                        val = ivals[1];
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    diff = Math.abs(ivals[1].intValue() - val.intValue());
-                    if (ivals[0].intValue() > diff) {
-                        v.setValue(IntPool.get(50), IntPool.get(diff));
-                        changed.add(IntPool.get(50));
-                    }
-                    if (ivals[2].intValue() > diff) {
-                        v.setValue(IntPool.get(52), IntPool.get(diff));
-                        changed.add(IntPool.get(52));
-                    }
-                    break;
-                    // Vel Win Low Fade
-                case 50:
-                    ivals = v.getValues(new Integer[]{IntPool.get(49), IntPool.get(51)});
-                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                    v.setValue(id, val);
-                    changed.add(id);
-                    break;
-                    // Vel Win High Key
-                case 51:
-                    ivals = v.getValues(new Integer[]{IntPool.get(49), IntPool.get(50), IntPool.get(52)});
-                    if (ivals[0].intValue() > val.intValue())
-                        val = ivals[0];
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                    if (ivals[1].intValue() > diff) {
-                        v.setValue(IntPool.get(50), IntPool.get(diff));
-                        changed.add(IntPool.get(50));
-                    }
-                    if (ivals[2].intValue() > diff) {
-                        v.setValue(IntPool.get(52), IntPool.get(diff));
-                        changed.add(IntPool.get(52));
-                    }
-                    break;
-                    // Vel Win High Fade
-                case 52:
-                    ivals = v.getValues(new Integer[]{IntPool.get(49), IntPool.get(51)});
-                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                    v.setValue(id, val);
-                    changed.add(id);
-                    break;
-                    // RT Win Low Key
-                case 53:
-                    ivals = v.getValues(new Integer[]{IntPool.get(54), IntPool.get(55), IntPool.get(56)});
-                    if (ivals[1].intValue() < val.intValue())
-                        val = ivals[1];
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    diff = Math.abs(ivals[1].intValue() - val.intValue());
-                    if (ivals[0].intValue() > diff) {
-                        v.setValue(IntPool.get(54), IntPool.get(diff));
-                        changed.add(IntPool.get(54));
-                    }
-                    if (ivals[2].intValue() > diff) {
-                        v.setValue(IntPool.get(56), IntPool.get(diff));
-                        changed.add(IntPool.get(56));
-                    }
-                    break;
-                    // RT Win Low Fade
-                case 54:
-                    ivals = v.getValues(new Integer[]{IntPool.get(53), IntPool.get(55)});
-                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                    v.setValue(id, val);
-                    changed.add(id);
-                    break;
-                    // RT Win High Key
-                case 55:
-                    ivals = v.getValues(new Integer[]{IntPool.get(53), IntPool.get(54), IntPool.get(56)});
-                    if (ivals[0].intValue() > val.intValue())
-                        val = ivals[0];
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                    if (ivals[1].intValue() > diff) {
-                        v.setValue(IntPool.get(54), IntPool.get(diff));
-                        changed.add(IntPool.get(54));
-                    }
-                    if (ivals[2].intValue() > diff) {
-                        v.setValue(IntPool.get(56), IntPool.get(diff));
-                        changed.add(IntPool.get(56));
-                    }
-                    break;
-                    // RT Win High Fade
-                case 56:
-                    ivals = v.getValues(new Integer[]{IntPool.get(53), IntPool.get(55)});
-                    if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                        val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                    v.setValue(id, val);
-                    changed.add(id);
-
-                    break;
+            } finally {
+                db.releaseWriteContent(preset);
             }
-        return (Integer[]) changed.toArray(new Integer[changed.size()]);
-    }
-
-    protected Integer[] setZoneValue(ZoneObject z, Integer id, Integer val) throws PresetEmptyException, NoSuchZoneException, NoSuchVoiceException, IllegalParameterIdException, NoSuchContextException, NoSuchPresetException, ParameterValueOutOfRangeException {
-        Integer[] ivals;
-        int diff;
-        ArrayList changed = new ArrayList();
-        switch (id.intValue()) {
-            default:
-                z.setValue(id, val);
-                changed.add(id);
-                break;
-                // Key Win Low Key
-            case 45:
-                ivals = z.getValues(new Integer[]{IntPool.get(46), IntPool.get(47), IntPool.get(48)});
-                if (ivals[1].intValue() < val.intValue())
-                    val = ivals[1];
-
-                changed.add(id);
-                z.setValue(id, val);
-
-                diff = Math.abs(ivals[1].intValue() - val.intValue());
-                if (ivals[0].intValue() > diff) {
-                    z.setValue(IntPool.get(46), IntPool.get(diff));
-                    changed.add(IntPool.get(46));
-                }
-                if (ivals[2].intValue() > diff) {
-                    z.setValue(IntPool.get(48), IntPool.get(diff));
-                    changed.add(IntPool.get(48));
-                }
-                break;
-                // Key Win Low Fade
-            case 46:
-                ivals = z.getValues(new Integer[]{IntPool.get(45), IntPool.get(47)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                z.setValue(id, val);
-                changed.add(id);
-                break;
-                // Key Win High Key
-            case 47:
-                ivals = z.getValues(new Integer[]{IntPool.get(45), IntPool.get(46), IntPool.get(48)});
-
-                if (ivals[0].intValue() > val.intValue())
-                    val = ivals[0];
-
-                z.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                if (ivals[1].intValue() > diff) {
-                    z.setValue(IntPool.get(46), IntPool.get(diff));
-                    changed.add(IntPool.get(46));
-                }
-                if (ivals[2].intValue() > diff) {
-                    z.setValue(IntPool.get(48), IntPool.get(diff));
-                    changed.add(IntPool.get(48));
-                }
-                break;
-                // Key Win High Fade
-            case 48:
-                ivals = z.getValues(new Integer[]{IntPool.get(45), IntPool.get(47)});
-
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                z.setValue(id, val);
-                changed.add(id);
-                break;
-
-                // Vel Win Low Key
-            case 49:
-                ivals = z.getValues(new Integer[]{IntPool.get(50), IntPool.get(51), IntPool.get(52)});
-
-                if (ivals[1].intValue() < val.intValue())
-                    val = ivals[1];
-
-                z.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(ivals[1].intValue() - val.intValue());
-                if (ivals[0].intValue() > diff) {
-                    z.setValue(IntPool.get(50), IntPool.get(diff));
-                    changed.add(IntPool.get(50));
-                }
-                if (ivals[2].intValue() > diff) {
-                    z.setValue(IntPool.get(52), IntPool.get(diff));
-                    changed.add(IntPool.get(52));
-                }
-                break;
-                // Vel Win Low Fade
-            case 50:
-                ivals = z.getValues(new Integer[]{IntPool.get(49), IntPool.get(51)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                z.setValue(id, val);
-                changed.add(id);
-
-                break;
-                // Vel Win High Key
-            case 51:
-                ivals = z.getValues(new Integer[]{IntPool.get(49), IntPool.get(50), IntPool.get(52)});
-                if (ivals[0].intValue() > val.intValue())
-                    val = ivals[0];
-
-                z.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                if (ivals[1].intValue() > diff) {
-                    z.setValue(IntPool.get(50), IntPool.get(diff));
-                    changed.add(IntPool.get(50));
-                }
-                if (ivals[2].intValue() > diff) {
-                    z.setValue(IntPool.get(52), IntPool.get(diff));
-                    changed.add(IntPool.get(50));
-                }
-                break;
-
-                // Vel Win High Fade
-            case 52:
-                ivals = z.getValues(new Integer[]{IntPool.get(49), IntPool.get(51)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                z.setValue(id, val);
-                changed.add(id);
-
-                break;
+        } finally {
+            db.release();
         }
-        return (Integer[]) changed.toArray(new Integer[changed.size()]);
     }
 
-    protected Integer[] setLinkValue(LinkObject l, Integer id, Integer val) throws PresetEmptyException, IllegalParameterIdException, NoSuchContextException, NoSuchPresetException, ParameterValueOutOfRangeException, NoSuchLinkException {
-        Integer[] ivals;
-        int diff;
-        ArrayList changed = new ArrayList();
-        switch (id.intValue()) {
-            default:
-                l.setValue(id, val);
-                changed.add(id);
-                break;
-                // Key Win Low Key
-            case 28:
-                ivals = l.getValues(new Integer[]{IntPool.get(29), IntPool.get(30), IntPool.get(31)});
-                if (ivals[1].intValue() < val.intValue())
-                    val = ivals[1];
+    public Ticket offsetPresetParam(final Integer preset, final Integer id, final Double offsetAsFOR) throws IllegalParameterIdException {
+        Integer offset = ParameterModelUtilities.calcIntegerOffset(device.deviceParameterContext.getZoneContext().getParameterDescriptor(id), offsetAsFOR);
+        return offsetPresetParam(preset, id, offset);
+    }
 
-                l.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(ivals[1].intValue() - val.intValue());
-                if (ivals[0].intValue() > diff) {
-                    l.setValue(IntPool.get(29), IntPool.get(diff));
-                    changed.add(IntPool.get(29));
+    void refreshPresetParams(final Integer preset, final Integer[] ids) {
+        try {
+            presetContextQ.getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    taskRefreshPresetParams(preset, ids);
                 }
-                if (ivals[2].intValue() > diff) {
-                    l.setValue(IntPool.get(31), IntPool.get(diff));
-                    changed.add(IntPool.get(31));
-                }
-                break;
-                // Key Win Low Fade
-            case 29:
-                ivals = l.getValues(new Integer[]{IntPool.get(28), IntPool.get(30)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-                l.setValue(id, val);
-                changed.add(id);
-
-                break;
-                // Key Win High Key
-            case 30:
-                ivals = l.getValues(new Integer[]{IntPool.get(28), IntPool.get(29), IntPool.get(31)});
-                if (ivals[0].intValue() > val.intValue())
-                    val = ivals[0];
-                l.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                if (ivals[1].intValue() > diff) {
-                    l.setValue(IntPool.get(29), IntPool.get(diff));
-                    changed.add(IntPool.get(29));
-                }
-                if (ivals[2].intValue() > diff) {
-                    l.setValue(IntPool.get(31), IntPool.get(diff));
-                    changed.add(IntPool.get(31));
-                }
-                break;
-                // Key Win High Fade
-            case 31:
-                ivals = l.getValues(new Integer[]{IntPool.get(28), IntPool.get(30)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-                l.setValue(id, val);
-                changed.add(id);
-
-                break;
-
-                // Vel Win Low Key
-            case 32:
-                ivals = l.getValues(new Integer[]{IntPool.get(33), IntPool.get(34), IntPool.get(35)});
-                if (ivals[1].intValue() < val.intValue())
-                    val = ivals[1];
-
-                l.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(ivals[1].intValue() - val.intValue());
-                if (ivals[0].intValue() > diff) {
-                    l.setValue(IntPool.get(33), IntPool.get(diff));
-                    changed.add(IntPool.get(33));
-                }
-                if (ivals[2].intValue() > diff) {
-                    l.setValue(IntPool.get(35), IntPool.get(diff));
-                    changed.add(IntPool.get(35));
-                }
-                break;
-                // Vel Win Low Fade
-            case 33:
-                ivals = l.getValues(new Integer[]{IntPool.get(32), IntPool.get(34)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-
-                l.setValue(id, val);
-                changed.add(id);
-
-                break;
-                // Vel Win High Key
-            case 34:
-                ivals = l.getValues(new Integer[]{IntPool.get(32), IntPool.get(33), IntPool.get(35)});
-                if (ivals[0].intValue() > val.intValue())
-                    val = ivals[0];
-                l.setValue(id, val);
-                changed.add(id);
-
-                diff = Math.abs(val.intValue() - ivals[0].intValue());
-
-                if (ivals[1].intValue() > diff) {
-                    l.setValue(IntPool.get(33), IntPool.get(diff));
-                    changed.add(IntPool.get(33));
-                }
-                if (ivals[2].intValue() > diff) {
-                    l.setValue(IntPool.get(35), IntPool.get(diff));
-                    changed.add(IntPool.get(35));
-                }
-                break;
-                // Vel Win High Fade
-            case 35:
-                ivals = l.getValues(new Integer[]{IntPool.get(32), IntPool.get(34)});
-                if (val.intValue() > Math.abs(ivals[1].intValue() - ivals[0].intValue()))
-                    val = IntPool.get(Math.abs(ivals[1].intValue() - ivals[0].intValue()));
-                l.setValue(id, val);
-                changed.add(id);
-
-                break;
+            }, "refreshPresetParams").post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
         }
-        return (Integer[]) changed.toArray(new Integer[changed.size()]);
     }
 
-    public PresetContext getDelegatingPresetContext() {
-        return this;
+    private void taskRefreshPresetParams(final Integer preset, final Integer[] ids) throws DeviceException, EmptyException, ContentUnavailableException, IllegalParameterIdException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(this, preset);
+            try {
+                db.getEventHandler().sync();
+                p.refreshParameters(ids);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
     }
 
-    public String getDeviceString() {
-        return "No Device - PresetContext is offline.";
+    public Ticket setVoiceParam(final Integer preset, final Integer voice, final Integer id, final Integer value) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_setVoiceParam(preset, voice, id, value);
+            }
+        }, "setVoicesParam");
     }
 
-    public DeviceParameterContext getDeviceParameterContext() {
+    void task_setVoiceParam(final Integer preset, final Integer voice, final Integer id, final Integer value) throws DeviceException, ContentUnavailableException, EmptyException, NoSuchVoiceException, ParameterValueOutOfRangeException, IllegalParameterIdException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+            try {
+                p.getVoice(voice).setValue(id, value);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket offsetVoiceParam(final Integer preset, final Integer voice, final Integer id, final Integer offset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.getVoice(voice).offsetValue(id, offset, true);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "offsetVoiceParam");
+    }
+
+    public Ticket offsetVoiceParam(final Integer preset, final Integer voice, final Integer id, final Double offsetAsFOR) throws IllegalParameterIdException {
+        Integer offset = ParameterModelUtilities.calcIntegerOffset(device.deviceParameterContext.getVoiceContext().getParameterDescriptor(id), offsetAsFOR);
+        return offsetVoiceParam(preset, voice, id, offset);
+    }
+
+    public Ticket setZoneParam(final Integer preset, final Integer voice, final Integer zone, final Integer id, final Integer value) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                task_setZoneParam(preset, voice, zone, id, value);
+            }
+        }, "setZonesParam");
+    }
+
+    void task_setZoneParam(final Integer preset, final Integer voice, final Integer zone, final Integer id, final Integer value) throws DeviceException, ContentUnavailableException, EmptyException, NoSuchVoiceException, NoSuchZoneException, ParameterValueOutOfRangeException, IllegalParameterIdException {
+        db.access();
+        try {
+            DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+            try {
+                p.getVoice(voice).getZone(zone).setValue(id, value);
+            } finally {
+                db.releaseWriteContent(preset);
+            }
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket offsetZoneParam(final Integer preset, final Integer voice, final Integer zone, final Integer id, final Integer offset) {
+        return presetContextQ.getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    DatabasePreset p = db.getWrite(Impl_PresetContext.this, preset);
+                    try {
+                        p.getVoice(voice).getZone(zone).offsetValue(id, offset, true);
+                    } finally {
+                        db.releaseWriteContent(preset);
+                    }
+                } finally {
+                    db.release();
+                }
+            }
+        }, "offsetZoneParam");
+    }
+
+    public Ticket offsetZoneParam(final Integer preset, final Integer voice, final Integer zone, final Integer id, final Double offsetAsFOR) throws IllegalParameterIdException {
+        Integer offset = ParameterModelUtilities.calcIntegerOffset(device.deviceParameterContext.getZoneContext().getParameterDescriptor(id), offsetAsFOR);
+        return offsetZoneParam(preset, voice, zone, id, offset);
+    }
+
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException {
         return device.getDeviceParameterContext();
     }
 
@@ -2324,10 +2064,16 @@ class Impl_PresetContext implements PresetContext, RemoteObjectStates, Serializa
     }
 
     public SampleContext getRootSampleContext() {
-        return presetDatabaseProxy.getRootSampleContext();
+        return device.sampleDB.getRootContext();
     }
 
-    public void setDevice(DeviceContext device) {
+    // EVENTS
+
+    public void setDevice(E4Device device) {
         this.device = device;
+    }
+
+    public TicketedQ getRefreshQ() {
+        return device.queues.refreshQ();
     }
 }

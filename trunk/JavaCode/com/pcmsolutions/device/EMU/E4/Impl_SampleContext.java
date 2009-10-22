@@ -1,20 +1,21 @@
 package com.pcmsolutions.device.EMU.E4;
 
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.events.sample.SampleEvent;
+import com.pcmsolutions.device.EMU.E4.events.sample.requests.SampleRequestEvent;
 import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
 import com.pcmsolutions.device.EMU.E4.preset.IsolatedSample;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
 import com.pcmsolutions.device.EMU.E4.preset.PresetContext;
+import com.pcmsolutions.device.EMU.E4.preset.SampleDescriptor;
 import com.pcmsolutions.device.EMU.E4.sample.*;
-import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.TempFileManager;
-import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.Zoeos;
-import com.pcmsolutions.system.audio.AudioUtilities;
+import com.pcmsolutions.device.EMU.database.AbstractContext;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextIndexException;
+import com.pcmsolutions.gui.ProgressCallback;
+import com.pcmsolutions.system.tasking.*;
 
 import javax.sound.sampled.AudioFileFormat;
-import javax.sound.sampled.UnsupportedAudioFileException;
-import javax.swing.*;
-import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
@@ -25,907 +26,183 @@ import java.util.*;
  * Date: 02-Feb-2004
  * Time: 14:28:02
  */
-class Impl_SampleContext implements SampleContext, RemoteObjectStates, Serializable {
+class Impl_SampleContext extends AbstractContext<ReadableSample, DatabaseSample, IsolatedSample, SampleContext, SampleEvent, SampleRequestEvent, SampleListener> implements SampleContext, Serializable {
 
+    protected E4Device device;
     protected String name;
+    protected SampleDatabase db;
+    protected transient ManageableTicketedQ scq;
 
-    protected transient Vector listeners = new Vector();
-    protected SampleDatabaseProxy sampleDatabaseProxy;
-    protected SampleMediator sampleMediator;
-    protected DeviceContext device;
-
-    public Impl_SampleContext(DeviceContext device, String name, SampleDatabaseProxy sdbp, SampleMediator sm) {
+    public Impl_SampleContext(E4Device device, String name, SampleDatabase db) {
+        super(db);
         this.device = device;
         this.name = name;
-        this.sampleDatabaseProxy = sdbp;
-        this.sampleMediator = sm;
+        this.db = db;
+        buildTransients();
     }
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
         ois.defaultReadObject();
-        listeners = new Vector();
+        buildTransients();
     }
 
-    public boolean equals(Object o) {
-        // identity comparison
-        if (o == this)
-            return true;
-        return false;
+    void buildTransients() {
+        scq = QueueFactory.createTicketedQueue(this, "sampleContext", 6);
+        scq.start();
     }
 
-    public void setDevice(DeviceContext device) {
-        this.device = device;
+    public TicketedQ getContextQ() {
+        return scq;
     }
 
-    public String toString() {
-        return "Samples";
-    }
-
-    public void addSampleContextListener(SampleContextListener pl) {
-        listeners.add(pl);
-    }
-
-    public void removeSampleContextListener(SampleContextListener pl) {
-        listeners.remove(pl);
-
-    }
-
-    public void addSampleListener(SampleListener pl, Integer[] samples) {
-        sampleDatabaseProxy.addSampleListener(pl, samples);
-    }
-
-    public void removeSampleListener(SampleListener pl, Integer[] samples) {
-        sampleDatabaseProxy.removeSampleListener(pl, samples);
-    }
-
-    private void fireSamplesAddedToContext(final Integer[] samples) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                synchronized (listeners) {
-                    for (Enumeration e = listeners.elements(); e.hasMoreElements();) {
-                        try {
-                            ((SampleContextListener) e.nextElement()).samplesAddedToContext(Impl_SampleContext.this, samples);
-                        } catch (Exception e1) {
-                            e1.printStackTrace();
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    private void fireSamplesRemovedFromContext(final Integer[] samples) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                synchronized (listeners) {
-                    for (Enumeration e = listeners.elements(); e.hasMoreElements();) {
-                        try {
-                            ((SampleContextListener) e.nextElement()).samplesRemovedFromContext(Impl_SampleContext.this, samples);
-                        } catch (Exception e1) {
-                            e1.printStackTrace();
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    private void fireContextReleased() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                synchronized (listeners) {
-                    for (Enumeration e = listeners.elements(); e.hasMoreElements();) {
-                        try {
-                            ((SampleContextListener) e.nextElement()).contextReleased(Impl_SampleContext.this);
-                        } catch (Exception e1) {
-                            e1.printStackTrace();
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    public boolean isSampleInitialized(Integer sample) throws NoSuchSampleException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
+    public String getSampleSummary(Integer sample) throws DeviceException {
+        db.access();
         try {
-            return reader.isSampleInitialized(sample);
+            return db.tryGetSampleSummary(this, sample);
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    public int getSampleState(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
+    // returns null for ROM samples or non-SMDI linked devices
+    public SampleDescriptor getSampleDescriptor(Integer sample) throws DeviceException, ContentUnavailableException, EmptyException {
+        db.access();
         try {
-            return reader.getSampleState(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public String getSampleSummary(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.tryGetSampleSummary(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public boolean isSampleWriteLocked(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.isSampleWriteLocked(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void copySample(Integer srcSample, Integer[] destSamples) throws NoSuchSampleException, SampleEmptyException, NoSuchContextException, IsolatedSampleUnavailableException {
-        if (isSampleEmpty(srcSample))
-            throw new SampleEmptyException(srcSample);
-
-        //IsolatedSample is = this.getIsolatedSample(srcSample);
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            for (int i = 0; i < destSamples.length; i++) {
-                reader.lockSampleWrite(this, destSamples[i]);
-                try {
-                    //File f = sampleMediator.retrieveSample(new Impl_SampleRetrievalInfo(srcSample));
-                    sampleMediator.copySample(srcSample, new Integer[]{destSamples[i]}, new String[]{getSampleName(srcSample)});
-                } finally {
-                    refreshSample(destSamples[i]);
-                    reader.unlockSample(destSamples[i]);
-                }
-            }
-        } catch (SampleMediator.SampleMediationException e) {
-            throw new IsolatedSampleUnavailableException(e.getMessage());
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void eraseSample(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.changeSampleObject(this, sample, EmptySample.getInstance());
-        } finally {
-            reader.release();
-        }
-    }
-
-    public String getSampleName(Integer sample) throws NoSuchSampleException, SampleEmptyException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            String name = reader.getSampleName(sample);
-            if (name == DeviceContext.EMPTY_PRESET)
-                throw new SampleEmptyException(sample);
-            else
-                return name;
-        } finally {
-            reader.release();
-        }
-    }
-
-    public boolean isSampleWritable(Integer sample) {
-        return isSampleInContext(sample);
-    }
-
-    public void release() throws NoSuchContextException {
-        SDBWriter writer = sampleDatabaseProxy.getDBWrite();
-        try {
-            writer.releaseContext(this);
-        } finally {
-            writer.release();
-        }
-        fireContextReleased();
-    }
-
-
-    private File makeSampleLocalFile(Integer sample) {
-        return new File(Zoeos.getHomeDir(), device.getDeviceLocalDir().getPath() + File.separator + AudioUtilities.makeLocalSampleName(sample, AudioUtilities.SAMPLE_NAMING_MODE_SI));
-    }
-
-    public boolean hasLocalCopy(Integer sample) throws NoSuchContextException, NoSuchSampleException, SampleEmptyException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sample);
+            DatabaseSample s = db.getRead(this, sample);
             try {
-                return makeSampleLocalFile(sample).exists();
+                return s.getSampleDescriptor();
             } finally {
-                reader.unlockSample(sample);
-            }
-
-        } finally {
-            reader.release();
-        }
-    }
-
-    public File retrieveLocalCopy(Integer sample, boolean overwrite) throws NoSuchContextException, NoSuchSampleException, SampleEmptyException, SampleRetrievalException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sample);
-            try {
-                File sf = makeSampleLocalFile(sample);
-                // return sampleMediator.retrieveSample(sample, sf, AudioUtilities.defaultAudioFormat, overwrite);
-                return sampleMediator.retrieveSample(new Impl_SampleRetrievalInfo(sample, getSampleName(sample), sf, AudioUtilities.defaultAudioFormat, null, true, true));
-            } catch (SampleMediator.SampleMediationException e) {
-                throw new SampleRetrievalException(e.getMessage());
-            } finally {
-                reader.unlockSample(sample);
-            }
-
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void eraseLocalCopy(Integer sample) throws NoSuchContextException, NoSuchSampleException, SampleEmptyException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sample);
-            try {
-                new File(Zoeos.getHomeDir(), device.getDeviceLocalDir().getPath() + File.separator + AudioUtilities.makeLocalSampleName(sample, AudioUtilities.SAMPLE_NAMING_MODE_SI)).delete();
-            } finally {
-                reader.unlockSample(sample);
-            }
-
-        } finally {
-            reader.release();
-        }
-    }
-
-    public com.pcmsolutions.device.EMU.E4.preset.SampleDescriptor getLocalCopyHeader(Integer sample) {
-        return null;
-    }
-
-    public File retrieveCustomLocalCopy(SampleRetrievalInfo sri) throws NoSuchContextException, NoSuchSampleException, SampleEmptyException, SampleRetrievalException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sri.getSample());
-            try {
-                //sf = new File(f, AudioUtilities.makeLocalSampleName(sample, reader.getSampleName(sample), namingMode));
-                // return sampleMediator.retrieveSample(sample, sf, format, overwrite, endOfProcedure);
-                return sampleMediator.retrieveSample(sri);
-            } catch (SampleMediator.SampleMediationException e) {
-                throw new SampleRetrievalException(e.getMessage());
-            } finally {
-                reader.unlockSample(sri.getSample());
-            }
-
-        } finally {
-            reader.release();
-        }
-    }
-
-    // PRESET
-    // value between 0 and 1 representing fraction of dump completed
-    // value < 0 means no dump in progress
-    public double getInitializationStatus(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.getInitializationStatus(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void lockSampleRead(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.lockSampleRead(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void lockSampleWrite(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.lockSampleWrite(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void unlockSample(Integer sample) {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.unlockSample(sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public SampleContext newContext(String name, Integer[] samples) throws NoSuchSampleException, NoSuchContextException {
-        SDBWriter writer = sampleDatabaseProxy.getDBWrite();
-        SampleContext rv;
-        try {
-            rv = writer.newContext(this, name, samples);
-        } finally {
-            writer.release();
-        }
-        fireSamplesRemovedFromContext(samples);
-        return rv;
-    }
-
-    public void assertSampleInitialized(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        if (!isSampleInitialized(sample))
-            refreshSample(sample);
-    }
-
-    public void assertSampleNamed(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.assertSampleNamed(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void expandContext(SampleContext dpc, Integer[] samples) throws NoSuchContextException, NoSuchSampleException {
-        if (dpc == this)
-            throw new NoSuchContextException("Can't expand self");
-        if (!(dpc instanceof Impl_SampleContext))
-            throw new NoSuchContextException("Destination context is not compatible");
-        Impl_SampleContext real_dpc = (Impl_SampleContext) dpc;
-        removeFromContext(samples);
-        real_dpc.addToContext(samples);
-    }
-
-    private void addToContext(Integer[] samples) throws NoSuchContextException, NoSuchSampleException {
-        SDBWriter writer = sampleDatabaseProxy.getDBWrite();
-        try {
-            writer.addSamplesToContext(this, samples);
-        } finally {
-            writer.release();
-        }
-        fireSamplesAddedToContext(samples);
-    }
-
-    private void removeFromContext(Integer[] samples) throws NoSuchContextException, NoSuchSampleException {
-        SDBWriter writer = sampleDatabaseProxy.getDBWrite();
-        try {
-            writer.removeSamplesFromContext(this, samples);
-        } finally {
-            writer.release();
-        }
-        fireSamplesRemovedFromContext(samples);
-    }
-
-    public List expandContextWithEmptySamples(SampleContext dpc, Integer reqd) throws NoSuchContextException {
-        List removed;
-        if (dpc == this)
-            throw new NoSuchContextException();
-        SDBWriter writer = sampleDatabaseProxy.getDBWrite();
-        try {
-            removed = writer.expandContextWithEmptySamples(this, dpc, reqd);
-        } finally {
-            writer.release();
-        }
-        for (int n = 0; n < removed.size(); n++)
-            fireSamplesRemovedFromContext((Integer[]) removed.toArray());
-
-        return removed;
-    }
-
-    public List findEmptySamplesInContext(int reqd) throws NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.findEmptySamples(this, reqd);
-        } finally {
-            reader.release();
-        }
-    }
-
-    // looks for empties on or after beginIndex
-    public List findEmptySamplesInContext(int reqd, Integer beginIndex, Integer maxIndex) throws NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.findEmptySamples(this, reqd, beginIndex, maxIndex);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Integer firstEmptySampleInContext() throws NoSuchContextException, NoSuchSampleException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            Set s = reader.getSampleIndexesInContext(this);
-            for (Iterator i = s.iterator(); i.hasNext();) {
-                Integer index = (Integer) i.next();
-                if (index.intValue() > 0 && index.intValue() <= DeviceContext.MAX_USER_SAMPLE)
-                    try {
-                        if (isSampleEmpty(index))
-                            return index;
-                    } catch (NoSuchSampleException e) {
-                    }
+                db.releaseReadContent(sample);
             }
         } finally {
-            reader.release();
+            db.release();
         }
-        throw new NoSuchSampleException(IntPool.get(Integer.MIN_VALUE));
-    }
-
-    public Integer firstEmptySampleInDatabaseRange(Integer lowSample, Integer highSample) throws NoSuchContextException, NoSuchSampleException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            Set s = reader.getReadableSampleIndexes(this);
-            int hi = highSample.intValue();
-            int li = lowSample.intValue();
-            if (hi < li)
-                throw new IllegalArgumentException("lowSample is higher than highSample");
-            for (int i = li; i < hi; i++) {
-                Integer index = IntPool.get(i);
-                if (s.contains(index))
-                    if (index.intValue() > 0 && index.intValue() <= DeviceContext.MAX_USER_SAMPLE)
-                        try {
-                            if (isSampleEmpty(index))
-                                return index;
-                        } catch (NoSuchSampleException e) {
-                        }
-            }
-        } finally {
-            reader.release();
-        }
-        throw new NoSuchSampleException(IntPool.get(Integer.MIN_VALUE));
-    }
-
-    public int numEmpties(Integer[] samples) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            int num = 0;
-            for (int i = 0; i < samples.length; i++)
-                if (reader.getSampleNameExtended(this, samples[i]).equals(DeviceContext.EMPTY_SAMPLE))
-                    num++;
-            return num;
-        } finally {
-            reader.release();
-        }
-    }
-
-    public int numEmpties(Integer lowSample, int num) throws NoSuchSampleException, NoSuchContextException {
-        Integer[] samples = new Integer[num];
-
-        ZUtilities.fillIncrementally(samples, lowSample.intValue());
-
-        return numEmpties(samples);
-    }
-
-    public Set getSampleIndexesInContext() throws NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.getSampleIndexesInContext(this);
-        } finally {
-            reader.release();
-        }
-    }
-
-    private Object getMostCapableSampleObject(Integer sample) throws NoSuchSampleException {
-        SampleModel impl = getSampleImplementation(sample);
-        try {
-            impl = SampleClassManager.getMostDerivedSampleInstance(impl, getSampleName(sample));
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (SampleEmptyException e) {
-        }
-        return impl;
     }
 
     // returns List of ContextReadableSample/ReadableSample ( e.g FLASH/ROM samples returned as ReadableSample)
-    public List getContextSamples() throws NoSuchContextException {
-        ArrayList outList = new ArrayList();
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
+    public List<ContextReadableSample> getContextSamples() throws DeviceException {
+        ArrayList<ContextReadableSample> outList = new ArrayList<ContextReadableSample>();
+        db.access();
         try {
-            Set indexes = getSampleIndexesInContext();
-            Integer p;
-            for (Iterator i = indexes.iterator(); i.hasNext();)
-                try {
-                    p = (Integer) i.next();
-                    outList.add(getMostCapableSampleObject(p));
-                } catch (NoSuchSampleException e) {
-                }
+            Set<Integer> indexes = this.getIndexesInContext();
+            Integer s;
+            for (Iterator<Integer> i = indexes.iterator(); i.hasNext();) {
+                s = i.next();
+                if (this.containsIndex(s))
+                    if (s.intValue() <= DeviceContext.MAX_USER_SAMPLE)
+                        outList.add(new Impl_ContextEditableSample(this, s));
+                    else
+                        outList.add(new Impl_ContextReadableSample(this, s));
+            }
             return outList;
         } finally {
-            reader.release();
+            db.release();
+        }
+    }
+
+    // returns List of ContextEditableSample
+    public List<ContextEditableSample> getContextEditableSamples() throws DeviceException {
+        ArrayList<ContextEditableSample> outList = new ArrayList<ContextEditableSample>();
+        db.access();
+        try {
+            Set<Integer> indexes = getIndexesInContext();
+            Integer s;
+            for (Iterator<Integer> i = indexes.iterator(); i.hasNext();) {
+                s = i.next();
+                if (this.containsIndex(s) && s.intValue() != 0)
+                    if (s.intValue() <= DeviceContext.MAX_USER_SAMPLE)
+                        outList.add(new Impl_ContextEditableSample(this, s));
+            }
+            return outList;
+        } finally {
+            db.release();
         }
     }
 
     // returns List of ReadableSample or better
     // e.g FLASH/ROM and out of context samples returned as ReadableSample
     // possibly more derived than ReadableSample if sample is in context etc... )
-    public List getDatabaseSamples() throws NoSuchContextException {
-        ArrayList outList = new ArrayList();
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
+    public List<ReadableSample> getDatabaseSamples() throws DeviceException {
+        ArrayList<ReadableSample> outList = new ArrayList<ReadableSample>();
+        db.access();
         try {
-            Set indexes = reader.getReadableSampleIndexes(this);
-            for (Iterator i = indexes.iterator(); i.hasNext();)
-                try {
-                    outList.add(getMostCapableSampleObject((Integer) i.next()));
-                } catch (NoSuchSampleException e) {
-                }
+            Set<Integer> indexes = db.getDBIndexes(this);
+            for (Iterator<Integer> i = indexes.iterator(); i.hasNext();)
+                outList.add(new Impl_ReadableSample(this, i.next()));
             return outList;
         } finally {
-            reader.release();
+            db.release();
         }
     }
 
-    // set of integers
-    public Set getDatabaseIndexes() throws NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.getReadableSampleIndexes(this);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Map getSampleNamesInContext() throws NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.getSampleNamesInContext(this);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public Map getUserSampleNamesInContext() throws NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.getUserSampleNamesInContext(this);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public boolean isSampleInContext(Integer sample) {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            return reader.hasSample(this, sample);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public int size() {
-        try {
-            return getSampleIndexesInContext().size();
-        } catch (NoSuchContextException e) {
-            return 0;
-        }
-    }
-
-    public boolean isSampleEmpty(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        return getSampleState(sample) == RemoteObjectStates.STATE_EMPTY;
-    }
-
-    private Impl_ReadableSample getSampleImplementation(Integer sample) throws NoSuchSampleException {
+    /*private Impl_ContextReadableSample getContextSampleImplementation(Integer sample) throws DeviceException {
         if (isSampleInContext(sample))
+            return new Impl_ContextReadableSample(this, sample);
+
+        throw new DeviceException(sample);
+    }
+
+    private Impl_ReadableSample getReadableSampleImplementation(Integer sample) throws DeviceException {
+        SDBReader getReader = sdbp.getDBRead();
+        try {
+            if (getReader.readsSample(this, sample))
+                return new Impl_ReadableSample(this, sample);
+            else
+                throw new DeviceException(sample);
+        } finally {
+            getReader.release();
+        }
+    } */
+
+    public ReadableSample getContextItemForIndex(Integer index) throws DeviceException {
+        if (containsIndex(index))
+            if (index.intValue() <= DeviceContext.MAX_USER_SAMPLE)
+                return new Impl_ContextEditableSample(this, index);
+            else
+                return new Impl_ContextReadableSample(this, index);
+        else
+            throw new NoSuchContextIndexException(index);
+    }
+
+    public ContextReadableSample getContextSample(Integer sample) throws DeviceException {
+        if (containsIndex(sample))
             if (sample.intValue() <= DeviceContext.MAX_USER_SAMPLE)
                 return new Impl_ContextEditableSample(this, sample);
             else
                 return new Impl_ContextReadableSample(this, sample);
-        else {
-            SDBReader reader = sampleDatabaseProxy.getDBRead();
-            try {
-                if (reader.readsSample(this, sample))
-                    return new Impl_ReadableSample(this, sample);
-                else
-                    throw new NoSuchSampleException(sample);
-            } finally {
-                reader.release();
-            }
-        }
-    }
-
-    /*private Impl_ContextReadableSample getContextSampleImplementation(Integer sample) throws NoSuchSampleException {
-        if (isSampleInContext(sample))
-            return new Impl_ContextReadableSample(this, sample);
-
-        throw new NoSuchSampleException(sample);
-    }
-
-    private Impl_ReadableSample getReadableSampleImplementation(Integer sample) throws NoSuchSampleException {
-        SDBReader reader = sdbp.getDBRead();
-        try {
-            if (reader.readsSample(this, sample))
-                return new Impl_ReadableSample(this, sample);
-            else
-                throw new NoSuchSampleException(sample);
-        } finally {
-            reader.release();
-        }
-    } */
-
-    public ContextReadableSample getContextSample(Integer sample) throws NoSuchSampleException {
-        Object rv = getSampleImplementation(sample);
-        if (rv instanceof ContextReadableSample)
-            return (ContextReadableSample) rv;
         else
-            throw new NoSuchSampleException(sample);
+            throw new NoSuchContextIndexException(sample);
     }
 
-    public ReadableSample getReadableSample(Integer sample) throws NoSuchSampleException {
-        return getSampleImplementation(sample);
+    public ReadableSample getReadableSample(Integer sample) throws DeviceException {
+        if (containsIndex(sample))
+            return getContextSample(sample);
+        else if (db.readsIndex(this, sample))
+            return new Impl_ReadableSample(this, sample);
+        else
+            throw new NoSuchContextIndexException(sample);
     }
 
     // TODO!! fix semantics of this to handle FLASH samples that cannot be returned as ContextEditableSample
-    public ContextEditableSample getEditableSample(Integer sample) throws NoSuchSampleException {
-        if (isSampleInContext(sample))
+    public ContextEditableSample getEditableSample(Integer sample) throws DeviceException {
+        if (containsIndex(sample))
             return new Impl_ContextEditableSample(this, sample);
 
-        throw new NoSuchSampleException(sample);
+        throw new NoSuchContextIndexException(sample);
     }
 
-    public IsolatedSample getIsolatedSample(final Integer sample, final AudioFileFormat.Type format) throws NoSuchSampleException, NoSuchContextException, SampleEmptyException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sample);
-            try {
-                return new IsolatedSample() {
-                    private final String name = getSampleName(sample);
-                    private SampleRetrievalInfo sri = new Impl_SampleRetrievalInfo(sample, format);
-                    private File localFile = sri.getFile();
-                    private AudioFileFormat.Type aFormat = format;
-
-                    public String getName() {
-                        return name;
-                    }
-
-                    public Integer getOriginalIndex() {
-                        return sample;
-                    }
-
-                    public boolean isROMSample() {
-                        return sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE;
-                    }
-
-                    /*    public AudioInputStream getAudioInputStream() throws IOException, UnsupportedAudioFileException {
-                            if (localFile != null)
-                                return AudioSystem.getAudioInputStream(localFile);
-                            throw new IOException("no File");
-                        }
-                      */
-                    public File getLocalFile() {
-                        return localFile;
-                    }
-
-                    public AudioFileFormat.Type getFormatType() throws IOException, UnsupportedAudioFileException {
-                        //  if ( localFile != null)
-                        //    return AudioSystem.getAudioFileFormat(localFile);
-                        //  else
-                        return aFormat;
-                    }
-
-                    public void ZoeAssert() throws IsolatedSampleUnavailableException {
-                        if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
-                            return;
-                        if (localFile == null)
-                            throw new IsolatedSampleUnavailableException("filename not specified");
-                        if (!localFile.exists())
-                            try {
-                                // sampleMediator.retrieveSample(sample, localFile, format, true);
-                                sampleMediator.retrieveSample(sri);
-                            } catch (SampleMediator.SampleMediationException e) {
-                                throw new IsolatedSampleUnavailableException(e.getMessage());
-                            }
-                    }
-
-                    public void setLocalFile(File f, boolean moveExisting) {
-                        if (localFile != null && moveExisting)
-                            localFile.renameTo(f);
-                        localFile = f;
-                        sri = new Impl_SampleRetrievalInfo(sample, f, format, true);
-                    }
-
-                    public void zDispose() {
-                        if (localFile != null)
-                            localFile.delete();
-                    }
-                };
-            } finally {
-                reader.unlockSample(sample);
-            }
-        } finally {
-            reader.release();
+    public Map<Integer, String> getContextUserNamesMap() throws DeviceException {
+        Map<Integer, String> names = this.getContextNamesMap();
+        Iterator<Integer> it = names.keySet().iterator();
+        while (it.hasNext()) {
+            Integer i = it.next();
+            if (i.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
+                it.remove();
         }
+        return names;
     }
 
-    public IsolatedSample getIsolatedSample(final Integer sample, final String fileName, final AudioFileFormat.Type format) throws NoSuchSampleException, NoSuchContextException, SampleEmptyException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sample);
-            try {
-                //return new Impl_IsolatedSample(this, sampleMediator, sample, fileName);
-                return new IsolatedSample() {
-                    private final String name = getSampleName(sample);
-                    private SampleRetrievalInfo sri = new Impl_SampleRetrievalInfo(sample, new File(TempFileManager.getTempDirectory(), fileName), format, true);
-                    private File localFile = sri.getFile();
-                    private AudioFileFormat.Type aFormat = format;
-
-                    {
-                        if (sri.getFile().exists())
-                            sri.getFile().delete();
-                    }
-
-                    public String getName() {
-                        return name;
-                    }
-
-                    public Integer getOriginalIndex() {
-                        return sample;
-                    }
-
-                    public boolean isROMSample() {
-                        return sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE;
-                    }
-
-                    /* public AudioInputStream getAudioInputStream() throws IOException, UnsupportedAudioFileException {
-                         if (localFile != null)
-                             return AudioSystem.getAudioInputStream(localFile);
-                         throw new IOException("no File");
-                     }*/
-
-                    public File getLocalFile() {
-                        return localFile;
-                    }
-
-                    public AudioFileFormat.Type getFormatType() throws IOException, UnsupportedAudioFileException {
-                        // return AudioSystem.getAudioFileFormat(localFile);
-                        return aFormat;
-                    }
-
-                    public void ZoeAssert() throws IsolatedSampleUnavailableException {
-                        if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
-                            return;
-                        if (localFile == null)
-                            throw new IsolatedSampleUnavailableException("filename not specified");
-                        if (!localFile.exists())
-                            try {
-                                //sampleMediator.retrieveSample(sample, localFile, format, true);
-                                sampleMediator.retrieveSample(sri);
-                            } catch (SampleMediator.SampleMediationException e) {
-                                throw new IsolatedSampleUnavailableException(e.getMessage());
-                            }
-                    }
-
-                    public void setLocalFile(File f, boolean moveExisting) {
-                        if (localFile != null && moveExisting)
-                            localFile.renameTo(f);
-                        localFile = f;
-                    }
-
-                    public void zDispose() {
-                        if (localFile != null)
-                            localFile.delete();
-                    }
-                };
-            } finally {
-                reader.unlockSample(sample);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public IsolatedSample getIsolatedSample(final Integer sample, final File file, final AudioFileFormat.Type format) throws NoSuchSampleException, NoSuchContextException, SampleEmptyException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.getSampleRead(this, sample);
-            try {
-                // return new Impl_IsolatedSample(this, sampleMediator, sample, File);
-                return new IsolatedSample() {
-                    private final String name = getSampleName(sample);
-                    //private SampleRetrievalInfo sri = new Impl_SampleRetrievalInfo(sample, File, format, true);
-                    private File localFile = file;
-                    private AudioFileFormat.Type aFormat = format;
-
-                    public String getName() {
-                        return name;
-                    }
-
-                    public Integer getOriginalIndex() {
-                        return sample;
-                    }
-
-                    public boolean isROMSample() {
-                        return sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE;
-                    }
-
-                    /*public AudioInputStream getAudioInputStream() throws IOException, UnsupportedAudioFileException {
-                        if (File != null)
-                            return AudioSystem.getAudioInputStream(File);
-                        throw new IOException("no File");
-                    } */
-
-                    public File getLocalFile() {
-                        return localFile;
-                    }
-
-                    public AudioFileFormat.Type getFormatType() throws IOException, UnsupportedAudioFileException {
-                        //return AudioSystem.getAudioFileFormat(localFile);
-                        return aFormat;
-                    }
-
-                    public void ZoeAssert() throws IsolatedSampleUnavailableException {
-                        if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
-                            return;
-                        if (localFile == null)
-                            throw new IsolatedSampleUnavailableException("filename not specified");
-                        if (!localFile.exists())
-                            try {
-                                // sampleMediator.retrieveSample(sample, localFile, format, true);
-                                sampleMediator.retrieveSample(new Impl_SampleRetrievalInfo(sample, localFile, format, true));
-                            } catch (SampleMediator.SampleMediationException e) {
-                                throw new IsolatedSampleUnavailableException(e.getMessage());
-                            }
-                    }
-
-                    public void setLocalFile(File f, boolean moveExisting) {
-                        if (localFile != null && moveExisting)
-                            localFile.renameTo(f);
-                        localFile = f;
-                    }
-
-                    public void zDispose() {
-                        if (localFile != null)
-                            localFile.delete();
-                    }
-                };
-            } finally {
-                reader.unlockSample(sample);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void newSample(IsolatedSample is, Integer sample, String name) throws NoSuchContextException, NoSuchSampleException, IsolatedSampleUnavailableException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.lockSampleWrite(this, sample);
-            try {
-                sampleMediator.sendSample(sample, is, name);
-                refreshSample(sample);
-            } catch (SampleMediator.SampleMediationException e) {
-                reader.changeSampleObject(this, sample, new UninitSampleObject(sample));
-                device.logCommError(e);
-                throw new IsolatedSampleUnavailableException(e.getMessage());
-            } finally {
-                reader.unlockSample(sample);
-            }
-        } finally {
-            reader.release();
-        }
-    }
-
-    public void refreshSample(Integer sample) throws NoSuchSampleException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.refreshSample(this, sample);
-        } finally {
-            reader.release();
-        }
-
-    }
-
-    public void setSampleName(Integer sample, String name) throws NoSuchSampleException, SampleEmptyException, NoSuchContextException {
-        SDBReader reader = sampleDatabaseProxy.getDBRead();
-        try {
-            reader.setSampleName(this, sample, name);
-        } finally {
-            reader.release();
-        }
-    }
-
-    public String getDeviceString() {
-        return "No Device - SampleContext is offline.";
-    }
-
-    public DeviceParameterContext getDeviceParameterContext() {
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException {
         return device.getDeviceParameterContext();
     }
 
@@ -934,6 +211,86 @@ class Impl_SampleContext implements SampleContext, RemoteObjectStates, Serializa
     }
 
     public PresetContext getRootPresetContext() {
-        return sampleDatabaseProxy.getRootPresetContext();
+        return db.getPresetDatabase().getRootContext();
+    }
+
+    public TicketedQ getRefreshQ() {
+        return device.queues.refreshQ();
+    }
+
+    public IsolatedSample getIsolated(SampleDownloadDescriptor sdd) throws DeviceException, ContentUnavailableException, EmptyException {
+        db.access();
+        try {
+            return db.getIsolatedContent(sdd.getIndex(), sdd);
+        } finally {
+            db.release();
+        }
+    }
+
+    // pass SampleDownloadDescriptor as flags
+    public IsolatedSample getIsolated(Integer index, Object flags) throws DeviceException, ContentUnavailableException, EmptyException {
+        db.access();
+        try {
+            return db.getIsolatedContent(index, flags);
+        } finally {
+            db.release();
+        }
+    }
+
+    public Ticket newContent(final IsolatedSample is, final Integer sample, final String name, final ProgressCallback prog) {
+        return getContextQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                db.access();
+                try {
+                    db.newContent(Impl_SampleContext.this, sample, name, new SampleDBO.NewSampleContentFlags() {
+                        public IsolatedSample getIsolatedSample() {
+                            return is;
+                        }
+
+                        public ProgressCallback getProgressCallback() {
+                            return prog;
+                        }
+                    });
+                } catch (Exception e) {
+                    prog.updateProgress(1);
+                    throw e;
+                } finally {
+                    db.release();
+                }
+            }
+        }, "newContent");
+    }
+
+    public Ticket copy(final Integer srcIndex, final Integer[] destIndexes, final ProgressCallback prog) {
+        return getContextQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                try {
+                    String name = getName(srcIndex);
+                    HashSet<Integer> destSet = new HashSet<Integer>();
+                    destSet.addAll(Arrays.asList(destIndexes));
+                    ProgressCallback[] progs = prog.splitTask(destSet.size() + 1, true);
+                    int progIndex = 0;
+                    IsolatedSample is = null;
+                    try {
+                        is = getIsolated(SampleDownloadDescriptorFactory.getDownloadToTempFile(srcIndex, AudioFileFormat.Type.AIFF));
+                        is.assertSample(progs[progIndex++]);
+                        db.access();
+                        try {
+                            for (Integer di : destSet)
+                                db.dropContent(Impl_SampleContext.this, is, di, name, progs[progIndex++]);
+                        } finally {
+                            db.release();
+                        }
+                    } catch (Exception e) {
+                        prog.updateProgress(1);
+                        if (is != null)
+                            is.zDispose();
+                    }
+                } catch (Exception e) {
+                    prog.updateProgress(1);
+                    throw e;
+                }
+            }
+        }, "copy");
     }
 }

@@ -21,7 +21,7 @@ public interface ParameterContext {
 
     public Map getIdsAndDefaultsAsMap();                           // returns Map of Integer ids -> Integer default values
 
-    public Set getIds();               // returns list of Integer ids
+    public Set<Integer> getIds();               // returns list of Integer ids
 
     public int size();
 

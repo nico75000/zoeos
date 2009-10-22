@@ -9,42 +9,51 @@ package com.pcmsolutions.gui;
 import com.jidesoft.docking.DefaultDockableHolder;
 import com.pcmsolutions.system.Zoeos;
 import com.pcmsolutions.system.ZoeosPreferences;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
-import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 public class ZJFrame extends DefaultDockableHolder implements WindowListener {
-    protected DynamicProgressMultiBox pmb;
+    // protected DynamicProgressMultiBox pmb;
 
-    /** Creates a new instance of ZJFrame */
+    /**
+     * Creates a new instance of ZJFrame
+     */
     public ZJFrame() {
-        pmb = new Impl_DynamicProgressMultiBox(this, "Tasks", false);
+        // pmb = new Impl_DynamicProgressMultiBox(this, "Tasks", false);
         this.addWindowListener(this);
-    }
-
-    public void showTasks() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                pmb.show();
+        // this.getRootPane().setDoubleBuffered(false);
+        DefaultKeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusOwner", new PropertyChangeListener() {
+            public void propertyChange(PropertyChangeEvent evt) {
+                //  System.out.println("FOCUS: " + (evt.getOldValue() == null ? null : evt.getOldValue().getClass()) + " -> " + (evt.getNewValue() == null ? null : evt.getNewValue().getClass()));
             }
         });
     }
 
-    public void hideTasks() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                pmb.hide();
-            }
-        });
-    }
+    /* public void showTasks() {
+         SwingUtilities.invokeLater(new Runnable() {
+             public void run() {
+                 pmb.show();
+             }
+         });
+     }
 
+     public void hideTasks() {
+         SwingUtilities.invokeLater(new Runnable() {
+             public void run() {
+                 pmb.hide();
+             }
+         });
+     }
+      */
+    /*
     public void beginProgressElement(Object e, String title, int maximum) {
         pmb.newElement(e, title, maximum);
     }
@@ -80,7 +89,7 @@ public class ZJFrame extends DefaultDockableHolder implements WindowListener {
     public ProgressMultiBox getCustomProgress(String title) {
         return new Impl_ProgressMultiBox(this, title, false);
     }
-
+    */
     public void windowOpened(WindowEvent e) {
     }
 
@@ -91,39 +100,25 @@ public class ZJFrame extends DefaultDockableHolder implements WindowListener {
     }
 
 
-    private Thread revokeThread = null;
     public void windowIconified(WindowEvent e) {
         boolean revoked = ZoeosPreferences.ZPREF_releaseMidiOnMinimize.getValue();
         if (revoked) {
-            if (revokeThread != null)
-                while (revokeThread.isAlive())
-                    try {
-                        revokeThread.join();
-                    } catch (InterruptedException e1) {
-                        e1.printStackTrace();
-                    }
-
-            revokeThread = new ZDefaultThread("Revoke Thread") {
-                public void run() {
+            if (!ProgressCallbackTree.hasActiveTasks())
+                try {
                     FlashMsg.globalDisable = true;
-                    Zoeos.getInstance().getDeviceManager().revokeDevicesNonThreaded();
+                    Zoeos.getInstance().getDeviceManager().revokeDevices("ZoeOS window iconified").post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
                 }
-            };
-            revokeThread.start();
         }
     }
 
     public void windowDeiconified(WindowEvent e) {
-        if (revokeThread != null) {
-            while (revokeThread.isAlive())
-                try {
-                    revokeThread.join();
-                } catch (InterruptedException e1) {
-                    e1.printStackTrace();
-                }
-            Zoeos.getInstance().getDeviceManager().unrevokeDevices();
+        try {
             FlashMsg.globalDisable = false;
-            revokeThread = null;
+            Zoeos.getInstance().getDeviceManager().unrevokeDevices().post();
+        } catch (ResourceUnavailableException e1) {
+            e1.printStackTrace();
         }
     }
 

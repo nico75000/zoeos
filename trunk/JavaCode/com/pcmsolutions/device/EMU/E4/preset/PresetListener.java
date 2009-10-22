@@ -7,18 +7,18 @@
 package com.pcmsolutions.device.EMU.E4.preset;
 
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
+import com.pcmsolutions.device.EMU.database.events.content.ContentListener;
 
 
 /**
  *
  * @author  pmeehan
  */
-public interface PresetListener {
-    public void presetInitialized(PresetInitializeEvent ev);
-
+public interface PresetListener extends ContentListener{
     public void presetInitializationStatusChanged(PresetInitializationStatusChangedEvent ev);
 
-    public void presetRefreshed(PresetRefreshEvent ev);
+    public void presetRefreshed(PresetInitializeEvent ev);
 
     public void presetChanged(PresetChangeEvent ev);
 

@@ -1,6 +1,7 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer;
 
 import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTableModel;
 import com.pcmsolutions.device.EMU.E4.gui.table.ColumnAndSectionDataProvider;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterContext;
@@ -28,20 +29,13 @@ abstract public class AbstractPresetTableModel extends AbstractRowHeaderedAndSec
     public AbstractPresetTableModel(ReadablePreset p, ParameterContext pc) {
         this.preset = p;
         this.pc = pc;
-        preset.addPresetListener(this);
+        preset.addListener(this);
     }
 
     public AbstractRowHeaderedAndSectionedTableModel init() {
         buildDefaultParameterData(pc);
         return super.init();
     }
-
-    /* public AbstractPresetTableModel(ReadablePreset p) {
-         this.preset = p;
-         buildDefaultParameterData(null);
-         addDefaultFrames();
-         preset.addPresetListener(this);
-     }*/
 
     public boolean isCellEditable(int rowIndex, int columnIndex) {
 
@@ -63,25 +57,16 @@ abstract public class AbstractPresetTableModel extends AbstractRowHeaderedAndSec
     final Runnable ep = new Runnable() {
         public void run() {
             clearRows();
-            /*tableRowObjects.addDesktopElement(new ColumnValueProvider(){
-                public Object getValueAt(int col) {
-                    return "";
-                }
-
-                public void zDispose() {
-                }
-
-            });*/
             fireTableDataChanged();
         }
     };
 
-    public void handlePresetEmptyException() {
+    public void handleEmptyException() {
         //SwingUtilities.invokeLater(ep);
         ep.run();
     }
 
-    public void handleNoSuchPresetException() {
+    public void handlePresetException() {
         //SwingUtilities.invokeLater(nsp);
         ep.run();
     }
@@ -117,25 +102,11 @@ abstract public class AbstractPresetTableModel extends AbstractRowHeaderedAndSec
         public boolean isColumnEditable(int column);
     }
 
-    public void presetInitialized(PresetInitializeEvent ev) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                if (!ignorePresetInitialize)
-                    refresh(false);
-            }
-        });
-    }
-
     public void presetInitializationStatusChanged(final PresetInitializationStatusChangedEvent ev) {
     }
 
-    public void presetRefreshed(PresetRefreshEvent ev) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                if (!ignorePresetInitialize)
-                    refresh(false);
-            }
-        });
+    public void presetRefreshed(PresetInitializeEvent ev) {
+        refresh(false);
     }
 
     public void presetChanged(PresetChangeEvent ev) {
@@ -173,7 +144,7 @@ abstract public class AbstractPresetTableModel extends AbstractRowHeaderedAndSec
 
     public void zDispose() {
         super.zDispose();
-        preset.removePresetListener(this);
+        preset.removeListener(this);
         preset = null;
         pc = null;
         parameterObjects = null;

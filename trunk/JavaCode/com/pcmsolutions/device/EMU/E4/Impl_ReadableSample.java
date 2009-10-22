@@ -1,16 +1,21 @@
 package com.pcmsolutions.device.EMU.E4;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.sample.SampleEditingMediator;
 import com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon;
 import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
 import com.pcmsolutions.device.EMU.E4.sample.*;
-import com.pcmsolutions.device.EMU.E4.zcommands.E4ReadableSampleZCommandMarker;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
 import com.pcmsolutions.gui.IconAndTipCarrier;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
 import com.pcmsolutions.system.ZCommand;
 import com.pcmsolutions.system.ZCommandProvider;
-import com.pcmsolutions.system.ZCommandProviderHelper;
+import com.pcmsolutions.system.ZUtilities;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.Ticket;
 
 import javax.swing.*;
 import java.awt.*;
@@ -20,20 +25,20 @@ import java.text.DecimalFormat;
 class Impl_ReadableSample implements SampleModel, ReadableSample, IconAndTipCarrier, ZCommandProvider, Comparable {
     private static final int iconWidth = 10;
     private static final int iconHeight = 10;
-    private static final Icon flashSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetFlashIcon());
-    private static final Icon emptyFlashSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, UIColors.getPresetFlashIcon(), Color.white, true);
-    private static final Icon pendingSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetPendingIcon());
-    private static final Icon initializingSampleIcon = new SampleIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetInitializingIcon());
-    private static final Icon namedSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetPendingIcon());
-    private static final Icon initializedSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, Color.white, UIColors.getPresetInitializedIcon());
-    private static final Icon emptySampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, UIColors.getPresetInitializedIcon(), Color.white, true);
 
-    private static ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ReadableSampleZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.RefreshSampleZMTC;");
+    static final Color offset =  Color.white;//ZUtilities.invert(UIColors.getDefaultBG());
 
-    private static final String TIP_ERROR = "== NO INFO ==";
+    private static final Icon flashSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, offset, UIColors.getPresetFlashIcon());
+    private static final Icon emptyFlashSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, UIColors.getPresetFlashIcon(), offset, true);
+    private static final Icon pendingSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, offset, UIColors.getPresetPendingIcon());
+    private static final Icon initializingSampleIcon = new SampleIcon(iconWidth, iconHeight, offset, UIColors.getPresetInitializingIcon());
+    private static final Icon namedSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, offset, UIColors.getPresetPendingIcon());
+    private static final Icon initializedSampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, offset, UIColors.getPresetInitializedIcon());
+    private static final Icon emptySampleIcon = new com.pcmsolutions.device.EMU.E4.gui.sample.SampleIcon(iconWidth, iconHeight, UIColors.getPresetInitializedIcon(), offset, true);
+
+    private static final String TIP_NOINFO = "== NO INFO ==";
     private boolean stringFormatExtended = true;
 
-    protected SampleEditingMediator sem;
     protected Integer sample;
     protected SampleContext sc;
 
@@ -62,11 +67,9 @@ class Impl_ReadableSample implements SampleModel, ReadableSample, IconAndTipCarr
     public String toString() {
         String name;
         try {
-            name = getSampleName();
-        } catch (SampleEmptyException e) {
-            name = DeviceContext.EMPTY_PRESET;
-        } catch (NoSuchSampleException e) {
-            name = "Unreachable Sample?";
+            name = sc.getString(sample);
+        } catch (DeviceException e) {
+            name = "unknown";
         }
         if (stringFormatExtended)
             return " " + new DecimalFormat("0000").format(sample) + "  " + name;
@@ -76,116 +79,153 @@ class Impl_ReadableSample implements SampleModel, ReadableSample, IconAndTipCarr
 
     // VIEW
     public Icon getIcon() {
-        int st;
         try {
-            st = this.getSampleState();
-            if (sample.intValue() >= DeviceContext.BASE_ROM_SAMPLE)
-                if (st == RemoteObjectStates.STATE_EMPTY)
+            if (isEmpty()) {
+                if (sample.intValue() >= DeviceContext.BASE_FLASH_PRESET)
                     return emptyFlashSampleIcon;
                 else
-                    return flashSampleIcon;
-
-            switch (st) {
-                case RemoteObjectStates.STATE_PENDING:
-                    return pendingSampleIcon;
-                case RemoteObjectStates.STATE_NAMED:
-                    return namedSampleIcon;
-                case RemoteObjectStates.STATE_INITIALIZED:
-                    return initializedSampleIcon;
-                case RemoteObjectStates.STATE_INITIALIZING:
-                     return initializingSampleIcon;
-                 case RemoteObjectStates.STATE_EMPTY:
                     return emptySampleIcon;
-            }
-        } catch (NoSuchSampleException e) {
+            } else if (isPending()) {
+                return pendingSampleIcon;
+            } else if (isInitialized()) {
+                if (sample.intValue() >= DeviceContext.BASE_FLASH_PRESET)
+                    return flashSampleIcon;
+                else
+                    return initializedSampleIcon;
+            } else if (isInitializing()) {
+                return initializingSampleIcon;
+            }else
+                System.out.println("error");
+        } catch (SampleException e) {
         }
         return null;
     }
 
     // PRESET
-    public void refreshSample() throws NoSuchSampleException {
+    public void refresh() throws SampleException {
         try {
-            sc.refreshSample(sample);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchSampleException(sample);
+            sc.refresh(sample).post();
+        } catch (ResourceUnavailableException e) {
+            throw new SampleException(sample, e.getMessage());
         }
     }
 
-    public void lockSampleRead() throws NoSuchSampleException, NoSuchContextException {
-        sc.lockSampleRead(sample);
+    public boolean isSampleInitialized() throws DeviceException {
+        return sc.isInitialized(sample);
     }
 
-    public void unlockSample() {
-        sc.unlockSample(sample);
-    }
-
-    public boolean isSampleInitialized() throws NoSuchSampleException {
-        return sc.isSampleInitialized(sample);
-    }
-
-    public int getSampleState() throws NoSuchSampleException {
+    /*
+    public int getSampleState() throws DeviceException {
         try {
             return sc.getSampleState(sample);
         } catch (NoSuchContextException e) {
-            throw new NoSuchSampleException(sample);
+            throw new DeviceException(sample);
         }
     }
 
-    public double getInitializationStatus() throws NoSuchSampleException, SampleEmptyException {
+    public double getInitializationStatus() throws DeviceException, EmptyException {
         try {
             return sc.getInitializationStatus(sample);
         } catch (NoSuchContextException e) {
-            throw new NoSuchSampleException(sample);
+            throw new DeviceException(sample);
         }
     }
-
-    public boolean isSampleWriteLocked() throws NoSuchSampleException, SampleEmptyException {
+    */
+    /*
+    public boolean isSampleWriteLocked() throws DeviceException, EmptyException {
         try {
             return sc.isSampleWriteLocked(sample);
         } catch (NoSuchContextException e) {
-            throw new NoSuchSampleException(sample);
+            throw new DeviceException(sample);
         }
     }
+    */
 
     public String getToolTipText() {
         try {
             return sc.getSampleSummary(sample);
-        } catch (NoSuchSampleException e) {
-        } catch (NoSuchContextException e) {
+        } catch (DeviceException e) {
         }
-        return TIP_ERROR;
+        return TIP_NOINFO;
     }
 
-    public String getSampleName() throws NoSuchSampleException, SampleEmptyException {
-        return sc.getSampleName(sample);
-    }
-
-    public String getSampleDisplayName() throws NoSuchSampleException {
+    public String getString() throws SampleException {
         try {
-            return "S" + new AggSampleName(sample, getSampleName()).toString();
-        } catch (SampleEmptyException e) {
-            return "S" + new AggSampleName(sample, DeviceContext.EMPTY_PRESET).toString();
+            return sc.getString(sample);
+        } catch (DeviceException e) {
+            throw new SampleException(sample, e.getMessage());
         }
     }
 
-    public Integer getSampleNumber() {
+    public String getName() throws SampleException, EmptyException {
+        try {
+            return sc.getName(sample);
+        } catch (DeviceException e) {
+            throw new SampleException(sample, e.getMessage());
+        } catch (ContentUnavailableException e) {
+            throw new SampleException(sample, e.getMessage());
+        }
+    }
+
+    public String getDisplayName() {
+        try {
+            return "S" + new ContextLocation(sample, sc.getString(sample)).toString();
+        } catch (DeviceException e) {
+            return "S" + new ContextLocation(sample, "unknown").toString();
+        }
+    }
+
+    public Integer getIndex() {
         return sample;
     }
 
     // EVENTS
-    public void addSampleListener(SampleListener pl) {
-        sc.addSampleListener(pl, new Integer[]{sample});
+    public void addListener(SampleListener pl) throws DeviceException {
+        sc.addContentListener(pl, new Integer[]{sample});
     }
 
-    public void removeSampleListener(SampleListener pl) {
-        sc.removeSampleListener(pl, new Integer[]{sample});
+    public void removeListener(SampleListener pl) {
+        sc.removeContentListener(pl, new Integer[]{sample});
     }
 
     public ReadableSample getMostCapableNonContextEditableSampleDowngrade() {
         return this;
     }
 
-    public DeviceParameterContext getDeviceParameterContext() {
+    public void performDefaultAction() {
+        /*
+        new Impl_ZThread(){
+              public void runBody() {
+                  try {
+                      Impl_ReadableSample.this.getSampleContext().getRootPresetContext().auditionSamples(new Integer[]{sample});
+                  } catch (DeviceException e) {
+                      e.printStackTrace();
+                  } catch (NoSuchContextException e) {
+                      e.printStackTrace();
+                  } catch (EmptyException e) {
+                      e.printStackTrace();
+                  } catch (ParameterValueOutOfRangeException e) {
+                      e.printStackTrace();
+                  } catch (ZDeviceNotRunningException e) {
+                      e.printStackTrace();
+                  } catch (IllegalMultimodeChannelException e) {
+                      e.printStackTrace();
+                  } catch (AuditionManager.MultimodeChannelUnreachableException e) {
+                      e.printStackTrace();
+                  } catch (TooManyZonesException e) {
+                      e.printStackTrace();
+                  }
+              }
+          }.start();
+          */
+    }
+
+    // AUDITION
+    public Ticket audition() {
+        return sc.getRootPresetContext().auditionSamples(new Integer[]{sample}, false);
+    }
+
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException {
         return sc.getDeviceParameterContext();
     }
 
@@ -197,20 +237,29 @@ class Impl_ReadableSample implements SampleModel, ReadableSample, IconAndTipCarr
         this.stringFormatExtended = extended;
     }
 
+    public void assertInitialized() throws SampleException {
+        try {
+            sc.assertInitialized(sample, true).post();
+        } catch (ResourceUnavailableException e) {
+            throw new SampleException(sample, e.getMessage());
+        }
+    }
+
     public int compareTo(Object o) {
         if (o instanceof ReadableSample) {
-            Integer p = ((ReadableSample) o).getSampleNumber();
-
-            if (p.intValue() < sample.intValue())
-                return 1;
-            else if (p.intValue() > sample.intValue())
-                return -1;
+            Integer p = ((ReadableSample) o).getIndex();
+            return sample.compareTo(p);
         }
         return 0;
     }
 
-    public ZCommand[] getZCommands() {
-        return cmdProviderHelper.getCommandObjects(this);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return ReadableSample.cmdProviderHelper.getCommandObjects(markerClass, this);
+    }
+
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return ReadableSample.cmdProviderHelper.getSupportedMarkers();
     }
 
     public void setSampleContext(SampleContext pc) {
@@ -229,12 +278,40 @@ class Impl_ReadableSample implements SampleModel, ReadableSample, IconAndTipCarr
         return sample;
     }
 
-    public void setSampleEditingMediator(com.pcmsolutions.device.EMU.E4.gui.sample.SampleEditingMediator pem) {
-        this.sem = pem;
+    public boolean isUser() {
+        return sample.intValue() <= DeviceContext.MAX_USER_SAMPLE;
     }
 
-    public SampleEditingMediator getSampleEditingMediator() {
-        return sem;
+    public boolean isEmpty() throws SampleException {
+        try {
+            return sc.isEmpty(sample);
+        } catch (DeviceException e) {
+            throw new SampleException(sample, e.getMessage());
+        }
+    }
+
+    public boolean isPending() throws SampleException {
+        try {
+            return sc.isPending(sample);
+        } catch (DeviceException e) {
+            throw new SampleException(sample, e.getMessage());
+        }
+    }
+
+    public boolean isInitializing() throws SampleException {
+        try {
+            return sc.isInitializing(sample);
+        } catch (DeviceException e) {
+            throw new SampleException(sample, e.getMessage());
+        }
+    }
+
+    public boolean isInitialized() throws SampleException {
+        try {
+            return sc.isInitialized(sample);
+        } catch (DeviceException e) {
+            throw new SampleException(sample, e.getMessage());
+        }
     }
 }
 

@@ -1,28 +1,27 @@
 package com.pcmsolutions.device.EMU.E4.gui.sample.samplecontext;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.PresetContextMacros;
-import com.pcmsolutions.device.EMU.E4.Remotable;
-import com.pcmsolutions.device.EMU.E4.RemoteUnreachableException;
+import com.pcmsolutions.device.EMU.E4.ViewMessaging;
 import com.pcmsolutions.device.EMU.E4.gui.AbstractContextTableModel;
 import com.pcmsolutions.device.EMU.E4.gui.device.DefaultDeviceEnclosurePanel;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext.PresetContextEnclosurePanel;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable;
 import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
 import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
-import com.pcmsolutions.gui.MenuBarProvider;
+import com.pcmsolutions.gui.FrameMenuBarProvider;
 import com.pcmsolutions.gui.UserMessaging;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.gui.ZoeosFrame;
+import com.pcmsolutions.gui.desktop.ViewMessageReceiver;
 import com.pcmsolutions.system.IntPool;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
-import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.Linkable;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
+import com.pcmsolutions.system.tasking.TicketRunnable;
 import com.pcmsolutions.util.IntegerUseMap;
 
 import javax.swing.*;
@@ -35,7 +34,7 @@ import java.awt.event.KeyEvent;
 import java.util.HashMap;
 
 
-public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel implements ZDisposable, MenuBarProvider, ListSelectionListener, Linkable {
+public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel implements ZDisposable, FrameMenuBarProvider, ListSelectionListener, Linkable, ViewMessageReceiver {
     protected DeviceContext device;
     private SampleContextEditorPanel scep;
 
@@ -49,27 +48,19 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
     private static final String filterPostfix = " [ filter on ]";
     private static final String statusInfix = " / ";
 
-    private boolean supressSelectionChange = false;
-
     private PresetContextEnclosurePanel presetContextEnclosurePanel;
 
     private Timer freeMemTimer;
-    private static int freeMemInterval = 10000;
+    private static int freeMemInterval = 20000;
 
     private final Action sampleDefrag = new AbstractAction("Defragment Sample Memory") {
         public void actionPerformed(ActionEvent e) {
             if (sampleContext != null)
-                new ZDBModifyThread("Defragment Sample Memory") {
-                    public void run() {
-                        try {
-                            sampleContext.getDeviceContext().sampleMemoryDefrag(true);
-                        } catch (ZDeviceNotRunningException e1) {
-                            e1.printStackTrace();
-                        } catch (RemoteUnreachableException e1) {
-                            e1.printStackTrace();
-                        }
-                    }
-                }.start();
+                try {
+                    sampleContext.getDeviceContext().sampleMemoryDefrag(true).post();
+                } catch (Exception e1) {
+                    e1.printStackTrace();
+                }
         }
     };
 
@@ -87,7 +78,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         super.init(device, scep);
         setupMenu();
         scep.getSampleContextTable().getSelectionModel().addListSelectionListener(this);
-        setStatus(scep.getSampleContextTable().getSelectedRowCount() + statusInfix + scep.getSampleContextTable().getRowCount() + " samples selected");
+        updateStatus();
     }
 
     protected void buildRunningPanel() {
@@ -140,67 +131,54 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         jmi.setMnemonic(KeyEvent.VK_I);
         locateMenu.add(jmi);
 
-        jmi = new JMenuItem(new AbstractAction("First Empty") {
+        final String firstEmpty = "First empty";
+        jmi = new JMenuItem(new AbstractAction(firstEmpty) {
             public void actionPerformed(ActionEvent e) {
                 try {
-                    Integer empty = scep.getSampleContext().firstEmptySampleInContext();
-                    if (scrollToSample(empty, true))
-                        return;
-                    else if (JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "The first empty sample is not visible under the current filter. Remove filter and select?", "Remove Sample Filter", JOptionPane.YES_NO_OPTION) == 0) {
-                        ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(null);
-                        ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                    Integer empty = scep.getSampleContext().firstEmpty();
+                    if (empty != null) {
+                        if (!scep.getSampleContextTable().showingAllIndexes(new Integer[]{empty}))
+                            ((SampleContextTableModel) scep.getSampleContextTable().getModel()).addIndexesToCurrentContextFilter(new Integer[]{empty}, firstEmpty);
                         scrollToSample(empty, true);
-                        return;
-                    }
-
-                } catch (NoSuchContextException e1) {
-                    e1.printStackTrace();
-                } catch (NoSuchSampleException e1) {
+                    } else
+                        UserMessaging.showInfo("No empty sample found");
+                } catch (DeviceException e1) {
                     e1.printStackTrace();
                 }
-                UserMessaging.showInfo("No empty sample found");
             }
         });
         jmi.setMnemonic(KeyEvent.VK_E);
         locateMenu.add(jmi);
 
-        jmi = new JMenuItem(new AbstractAction("Using Regex on name") {
+        jmi = new JMenuItem(new AbstractAction("Using regex on name") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular Expression?", "Select by Regular Expression on Sample Name", JOptionPane.QUESTION_MESSAGE, null, null, null);
-                        if (regex == null)
-                            return;
-                        Integer first = scep.getSampleContextTable().selectSamplesByRegex(regex, false, false, true);
-                        if (first != null)
-                            scrollToSample(first, false);
-                        else {
-                            UserMessaging.showInfo("Nothing to select");
-                            return;
-                        }
-                    }
-                });
+                String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular expression?", "Select by regex", JOptionPane.QUESTION_MESSAGE, null, null, null);
+                if (regex == null)
+                    return;
+                Integer first = scep.getSampleContextTable().selectSamplesByRegex(regex, false, false, true);
+                if (first != null)
+                    scrollToSample(first, false);
+                else {
+                    UserMessaging.showInfo("Nothing to select");
+                    return;
+                }
             }
         });
         jmi.setMnemonic(KeyEvent.VK_R);
         locateMenu.add(jmi);
 
-        jmi = new JMenuItem(new AbstractAction("Using Regex on indexed name") {
+        jmi = new JMenuItem(new AbstractAction("Using regex on indexed name") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular Expression?", "Select by Regular Expression on Indexed Sample Name", JOptionPane.QUESTION_MESSAGE, null, null, null);
-                        if (regex == null)
-                            return;
-                        Integer first = scep.getSampleContextTable().selectSamplesByRegex(regex, false, true, true);
-                        if (first != null)
-                            scrollToSample(first, false);
-                        else {
-                            UserMessaging.showInfo("Nothing to select");
-                            return;
-                        }
-                    }
-                });
+                String regex = (String) JOptionPane.showInputDialog(ZoeosFrame.getInstance(), "Regular expression?", "Select by regex", JOptionPane.QUESTION_MESSAGE, null, null, null);
+                if (regex == null)
+                    return;
+                Integer first = scep.getSampleContextTable().selectSamplesByRegex(regex, false, true, true);
+                if (first != null)
+                    scrollToSample(first, false);
+                else {
+                    UserMessaging.showInfo("Nothing to select");
+                    return;
+                }
             }
         });
         jmi.setMnemonic(KeyEvent.VK_X);
@@ -212,8 +190,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                 try {
                     if (!PresetContextMacros.confirmInitializationOfPresets(rps))
                         return;
-                    new ZDefaultThread("Operation: Referenced by current preset selection") {
-                        public void run() {
+                    device.getQueues().generalQ().getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
                             try {
                                 final IntegerUseMap smpls = PresetContextMacros.getPresetSampleUsage(rps);
                                 if (smpls.size() == 0 || (smpls.size() == 1 && smpls.getIntegers()[0].intValue() == 0)) {
@@ -224,29 +202,22 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                                     public void run() {
                                         if (!UserMessaging.askYesNo("Referenced samples determined. Select now?"))
                                             return;
-                                        if (!scep.getSampleContextTable().showingAllSamples(smpls.getIntegers())) {
-                                            if (UserMessaging.askYesNo("Some of the selected samples will not be visible under the current filter. Remove filter before performing selection?")) {
-                                                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(null);
-                                                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                                            }
+                                        if (!scep.getSampleContextTable().showingAllIndexes(smpls.getIntegers())) {
+                                            ((SampleContextTableModel) scep.getSampleContextTable().getModel()).addIndexesToCurrentContextFilter(smpls.getIntegers(), firstEmpty);
                                         }
-                                        runWithSelectionHandlingSupressed(new Runnable() {
-                                            public void run() {
-                                                Integer[] smpls2 = smpls.getIntegers();
-                                                scep.getSampleContextTable().clearSelection();
-                                                scep.getSampleContextTable().addSamplesToSelection(smpls2);
-                                            }
-                                        });
+                                        Integer[] smpls2 = smpls.getIntegers();
+                                        scep.getSampleContextTable().clearSelection();
+                                        scep.getSampleContextTable().addIndexesToSelection(smpls2);
                                     }
                                 });
 
-                            } catch (NoSuchPresetException e1) {
-                                UserMessaging.showOperationFailed("Preset not found");
+                            } catch (PresetException e1) {
+                                UserMessaging.showOperationFailed("Failed");
                             }
                         }
-                    }.start();
-                } catch (NoSuchPresetException e1) {
-                    UserMessaging.showOperationFailed("Preset not found");
+                    }, "sampleReferencing").post();
+                } catch (Exception e1) {
+                    e1.printStackTrace();
                 }
             }
         });
@@ -255,7 +226,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         /*   jmi = new JMenuItem(new AbstractAction("Not referenced by user presets") {
                public void actionPerformed(ActionEvent e) {
-                   new ZDBModifyThread("Not referenced by user presets") {
+                   new ZDataModifyThread("Not referenced by user presets") {
                        public void run() {
                            try {
                                int ok = JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "This will require all relevant presets to be initialized. Proceed?", "Select Unreferenced Samples", JOptionPane.YES_NO_OPTION);
@@ -269,10 +240,10 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                                                    ok = JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "Unrefereneced samples determined. Select now?", "Select Unreferenced Samples", JOptionPane.YES_NO_OPTION);
                                                    if (ok == 0) {
                                                        if (!scep.getSampleContextTable().showingAllSamples((Integer[]) useMap.getUsedIntegerSet().toArray(new Integer[useMap.size()])))
-                                                       // if (((SampleContextTableModel) scep.getSampleContextTable().getModel()).getContextFilter() != SampleContextTableModel.allPassFilter)
+                                                       // if (((SampleContextTableModel) scep.getSampleContextTable().getName()).getContextFilter() != SampleContextTableModel.allPassFilter)
                                                            if (JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "Some of the selected samples will not be visible under the current filter. Remove filter before performing selection?", "Remove Sample Filter", JOptionPane.YES_NO_OPTION) == 0) {
-                                                               ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(null);
-                                                               ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                                                               ((SampleContextTableModel) scep.getSampleContextTable().getName()).setContextFilter(null);
+                                                               ((SampleContextTableModel) scep.getSampleContextTable().getName()).refresh(false);
                                                            }
                                                        scep.getSampleContextTable().selectAllSamplesExcluded(useMap.getUsedIntegerSet());
                                                    }
@@ -295,7 +266,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
            jmi = new JMenuItem(new AbstractAction("Not referenced by all presets") {
                public void actionPerformed(ActionEvent e) {
-                   new ZDBModifyThread("Not referenced by all presets") {
+                   new ZDataModifyThread("Not referenced by all presets") {
                        public void run() {
                            try {
                                int ok = JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "This will require all relevant presets to be initialized. Proceed?", "Select Unreferenced Samples", JOptionPane.YES_NO_OPTION);
@@ -309,10 +280,10 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                                                    ok = JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "Unrefereneced samples determined. Select now?", "Select Unreferenced Samples", JOptionPane.YES_NO_OPTION);
                                                    if (ok == 0) {
                                                        if (!scep.getSampleContextTable().showingAllSamples((Integer[]) useMap.getUsedIntegerSet().toArray(new Integer[useMap.size()])))
-                                                       //if (((SampleContextTableModel) scep.getSampleContextTable().getModel()).getContextFilter() != SampleContextTableModel.allPassFilter)
+                                                       //if (((SampleContextTableModel) scep.getSampleContextTable().getName()).getContextFilter() != SampleContextTableModel.allPassFilter)
                                                            if (JOptionPane.showConfirmDialog(ZoeosFrame.getInstance(), "Some of the selected samples will not be visible under the current filter. Remove filter before performing selection?", "Remove Sample Filter", JOptionPane.YES_NO_OPTION) == 0) {
-                                                               ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(null);
-                                                               ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                                                               ((SampleContextTableModel) scep.getSampleContextTable().getName()).setContextFilter(null);
+                                                               ((SampleContextTableModel) scep.getSampleContextTable().getName()).refresh(false);
                                                            }
                                                        scep.getSampleContextTable().selectAllSamplesExcluded(useMap.getUsedIntegerSet());
                                                    }
@@ -335,11 +306,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
            */
         jmi = new JMenuItem(new AbstractAction("All") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        scep.getSampleContextTable().selectAll();
-                    }
-                });
+                scep.getSampleContextTable().selectAll();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_A);
@@ -347,11 +314,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         jmi = new JMenuItem(new AbstractAction("Invert") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        scep.getSampleContextTable().invertSelection();
-                    }
-                });
+                scep.getSampleContextTable().invertSelection();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_V);
@@ -359,11 +322,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
         jmi = new JMenuItem(new AbstractAction("Clear") {
             public void actionPerformed(ActionEvent e) {
-                runWithSelectionHandlingSupressed(new Runnable() {
-                    public void run() {
-                        scep.getSampleContextTable().clearSelection();
-                    }
-                });
+                scep.getSampleContextTable().clearSelection();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_C);
@@ -377,8 +336,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
             public void actionPerformed(ActionEvent e) {
                 // set to default filter ( all preset filter)
                 ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(null);
-                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
+                //((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_A);
@@ -400,8 +359,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
+                //((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_N);
@@ -422,8 +381,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
+                // ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_E);
@@ -444,8 +403,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
+                // ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_U);
@@ -467,11 +426,32 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     }
 
                 });
-                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
+                //   ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_R);
+        filterMenu.add(jmi);
+
+        jmi = new JMenuItem(new AbstractAction("Invert") {
+            public void actionPerformed(ActionEvent e) {
+                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(new AbstractContextTableModel.ContextFilter() {
+                    public boolean filter(Integer index, String name, boolean wasFilteredPreviously) {
+                        if (wasFilteredPreviously)
+                            return false;
+                        return true;
+                    }
+
+                    public String getFilterName() {
+                        return "Invert current filter";
+                    }
+
+                });
+                // ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
+            }
+        });
+        jmi.setMnemonic(KeyEvent.VK_I);
         filterMenu.add(jmi);
 
         jmi = new JMenuItem(new AbstractAction("Selected") {
@@ -482,8 +462,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                     return;
                 }
                 final HashMap map_sobjs = new HashMap();
-                for (int i = 0,j = sobjs.length; i < j; i++)
-                    map_sobjs.put(((ReadableSample) sobjs[i]).getSampleNumber(), null);
+                for (int i = 0, j = sobjs.length; i < j; i++)
+                    map_sobjs.put(((ReadableSample) sobjs[i]).getIndex(), null);
 
                 ((SampleContextTableModel) scep.getSampleContextTable().getModel()).setContextFilter(new AbstractContextTableModel.ContextFilter() {
                     public boolean filter(Integer index, String name, boolean wasFilteredPreviously) {
@@ -496,8 +476,8 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
                         return "Selected Samples";
                     }
                 });
-                ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
-                setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
+                // ((SampleContextTableModel) scep.getSampleContextTable().getModel()).refresh(false);
+                updateStatus();
             }
         });
         jmi.setMnemonic(KeyEvent.VK_S);
@@ -507,23 +487,23 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         freeMem.setEnabled(false);
         freeMemTimer = new Timer(freeMemInterval, new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Sample Memory Monitor") {
-                    public void run() {
-                        try {
-                            final Remotable.SampleMemory sm = sampleContext.getDeviceContext().getSampleMemory();
-                            SwingUtilities.invokeLater(new Runnable() {
-                                public void run() {
-                                    freeMem.setText((sm.getSampleFreeMemory().intValue() * 10) + " Kb");
-                                }
-                            });
-
-                        } catch (RemoteUnreachableException e1) {
-                            System.out.println("timer - Remote Unreachable");
-                        } catch (ZDeviceNotRunningException e1) {
-                            System.out.println("timer - device not running");
+                try {
+                    sampleContext.getDeviceContext().getQueues().generalQ().getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
+                            try {
+                                final Remotable.SampleMemory sm = sampleContext.getDeviceContext().getSampleMemory();
+                                SwingUtilities.invokeLater(new Runnable() {
+                                    public void run() {
+                                        freeMem.setText((sm.getSampleFreeMemory().intValue() * 10) + " Kb");
+                                    }
+                                });
+                            } catch (Exception e1) {
+                            }
                         }
-                    }
-                }.start();
+                    }, "Sample memory monitor").post();
+                } catch (ResourceUnavailableException e1) {
+                    e1.printStackTrace();
+                }
             }
         });
         freeMemTimer.setCoalesce(true);
@@ -539,7 +519,7 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
 
     public boolean scrollToSample(Integer sample, boolean select) {
         SampleContextTableModel sctm = ((SampleContextTableModel) scep.getSampleContextTable().getModel());
-        int row = sctm.getRowForSample(sample);
+        int row = sctm.getRowForIndex(sample);
         if (row != -1) {
             Rectangle cellRect = scep.getSampleContextTable().getCellRect(row, 0, true);
             scep.scrollRectToVisible(cellRect);
@@ -553,16 +533,16 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
     }
 
     public void valueChanged(ListSelectionEvent e) {
-        if (!supressSelectionChange)
+        if (!e.getValueIsAdjusting())
             handleSelectionChange();
     }
 
     private void handleSelectionChange() {
-        setStatus(scep.getSampleContextTable().getSelectedRowCount() + statusInfix + scep.getSampleContextTable().getRowCount() + " samples selected");
+        updateStatus();
         processMenu.removeAll();
-        JMenu m = ZCommandInvocationHelper.getMenu(scep.getSampleContextTable().getSelObjects(), null, null, "Process");
+        JMenu m = ZCommandFactory.getMenu(scep.getSampleContextTable().getSelObjects(), "Process");
         Component[] comps = m.getMenuComponents();
-        for (int i = 0,j = comps.length; i < j; i++)
+        for (int i = 0, j = comps.length; i < j; i++)
             processMenu.add(comps[i]);
 
         finalizeProcessMenu();
@@ -573,30 +553,6 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
             processMenu.addSeparator();
 
         processMenu.add(sampleDefrag);
-    }
-
-    private void runWithSelectionHandlingSupressed(Runnable r) {
-        supressSelectionChange = true;
-        try {
-            r.run();
-        } finally {
-            supressSelectionChange = false;
-            handleSelectionChange();
-        }
-    }
-
-    private void runOnEDTWithSelectionHandlingSupressed(final Runnable r) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                supressSelectionChange = true;
-                try {
-                    r.run();
-                } finally {
-                    supressSelectionChange = false;
-                    handleSelectionChange();
-                }
-            }
-        });
     }
 
     public SampleContextTable getSampleContextTable() {
@@ -613,11 +569,11 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
         sampleContext = null;
     }
 
-    public boolean isMenuBarAvailable() {
+    public boolean isFrameMenuBarAvailable() {
         return true;
     }
 
-    public JMenuBar getMenuBar() {
+    public JMenuBar getFrameMenuBar() {
         return menuBar;
     }
 
@@ -626,5 +582,26 @@ public class SampleContextEnclosurePanel extends DefaultDeviceEnclosurePanel imp
             presetContextEnclosurePanel = (PresetContextEnclosurePanel) o;
         else
             throw new Linkable.InvalidLinkException("SampleContextEnclosurePanel cannot link to " + o.getClass());
+    }
+
+    public void receiveMessage(String msg) {
+        if (msg.startsWith(ViewMessaging.MSG_ADD_SAMPLES_TO_SAMPLE_CONTEXT_FILTER)) {
+            String[] intFields = ViewMessaging.extractFieldsFromMessage(msg);
+            Integer[] samples = new Integer[intFields.length];
+            for (int i = 0; i < intFields.length; i++)
+                samples[i] = IntPool.get(Integer.parseInt(intFields[i]));
+            SampleContextTableModel sctm = (SampleContextTableModel) scep.getSampleContextTable().getModel();
+            sctm.addIndexesToCurrentContextFilter(samples, ViewMessaging.MSG_ADD_SAMPLES_TO_SAMPLE_CONTEXT_FILTER);
+            //sctm.refresh(false);
+        }
+    }
+
+    public boolean testCondition(String condition) {
+        return false;
+    }
+
+
+    void updateStatus() {
+        setStatus(scep.getSampleContextTable().getSelectedRowCount() + " of " + scep.getSampleContextTable().getRowCount() + " samples selected");
     }
 }

@@ -2,6 +2,8 @@ package com.pcmsolutions.device.EMU.E4.selections;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 
 import java.util.Arrays;
 
@@ -50,11 +52,9 @@ public class LinkSelection extends AbstractE4Selection {
                 try {
                     links[i] = readableLinks[i].getIsolated();
                     return links[i];
-                } catch (NoSuchPresetException e) {
+                } catch (EmptyException e) {
                     e.printStackTrace();
-                } catch (PresetEmptyException e) {
-                    e.printStackTrace();
-                } catch (NoSuchLinkException e) {
+                } catch (PresetException e) {
                     e.printStackTrace();
                 }
         }

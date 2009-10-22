@@ -1,26 +1,27 @@
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.events.PresetChangeEvent;
-import com.pcmsolutions.device.EMU.E4.events.PresetInitializeEvent;
-import com.pcmsolutions.device.EMU.E4.events.PresetRefreshEvent;
-import com.pcmsolutions.device.EMU.E4.events.VoiceChangeEvent;
-import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
-import com.pcmsolutions.device.EMU.E4.gui.preset.DesktopEditingMediator;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.device.EMU.E4.sample.NoSuchSampleException;
-import com.pcmsolutions.device.EMU.E4.sample.SampleEmptyException;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
 import com.pcmsolutions.gui.IconAndTipCarrier;
+import com.pcmsolutions.gui.ProgressCallback;
 import com.pcmsolutions.system.IntPool;
 import com.pcmsolutions.system.ZCommand;
-import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.threads.ZDefaultThread;
+import com.pcmsolutions.system.ZCommandProvider;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
 
-class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset implements ContextEditablePreset, IconAndTipCarrier, Comparable {
+class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset implements ContextEditablePreset, ZCommandProvider, IconAndTipCarrier, Comparable {
 
     static {
         PresetClassManager.addPresetClass(Impl_ContextEditablePreset.class, null, "Editable Preset");
@@ -30,72 +31,97 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
         super(pc, preset);
     }
 
-    public Impl_ContextEditablePreset(PresetContext pc, Integer preset, DesktopEditingMediator dem) {
-        super(pc, preset, dem);
-    }
-
-    public ReadablePreset getMostCapableNonContextEditablePresetDowngrade() {
+    public ReadablePreset getMostCapableNonContextEditablePreset() {
         return this.getContextBasicEditablePresetDowngrade();
     }
 
-    public void performOpenAction() {
-        new ZDefaultThread() {
-            public void run() {
+    public void performOpenAction(final boolean activate) {
+        try {
+            if (pc.isInitialized(preset))
                 try {
-                    assertPresetInitialized();
-                    getDeviceContext().getViewManager().openPreset(Impl_ContextEditablePreset.this);
-                } catch (NoSuchPresetException e) {
+                    pc.refreshIfEmpty(preset).post(new Callback() {
+                        public void result(Exception e, boolean wasCancelled) {
+                            try {
+                                getDeviceContext().getViewManager().openPreset(Impl_ContextEditablePreset.this, activate).post(new Callback() {
+                                    public void result(Exception e, boolean wasCancelled) {
+                                        if (!wasCancelled)
+                                            PresetContextMacros.optionToNewEmptyPreset(Impl_ContextEditablePreset.this);
+                                    }
+                                });
+                            } catch (ResourceUnavailableException e1) {
+                                e1.printStackTrace();
+                            }
+                        }
+                    });
+
+                } catch (Exception e1) {
+                    e1.printStackTrace();
                 }
-            }
-        }.start();
-    }
-
-    public void newPreset(Integer preset, String name) throws NoSuchPresetException {
-        try {
-            pc.newPreset(preset, name);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            else
+                pc.assertInitialized(preset, true).post(new Callback() {
+                    public void result(Exception e, boolean wasCancelled) {
+                        try {
+                            if (!wasCancelled) {
+                                getDeviceContext().getViewManager().openPreset(Impl_ContextEditablePreset.this, activate).send(0);
+                                PresetContextMacros.optionToNewEmptyPreset(Impl_ContextEditablePreset.this);
+                            }
+                        } catch (Exception e1) {
+                            e1.printStackTrace();
+                        }
+                    }
+                });
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        } catch (DeviceException e) {
+            e.printStackTrace();
         }
     }
 
-    public void newPreset(Integer preset, String name, IsolatedPreset ip) throws NoSuchPresetException {
+    public void newPreset(Integer preset, String name) throws PresetException {
         try {
-            pc.newPreset(ip, preset, name);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.newContent(preset, name).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-
-    public void sortVoices(Integer[] ids) throws PresetEmptyException, NoSuchPresetException {
+    public void newPreset(Integer preset, String name, IsolatedPreset ip) throws PresetException {
         try {
-            pc.sortVoices(preset, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.dropContent(ip, preset, name, ProgressCallback.DUMMY).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void sortLinks(Integer[] ids) throws PresetEmptyException, NoSuchPresetException {
+    public void sortVoices(Integer[] ids) throws PresetException {
         try {
-            pc.sortLinks(preset, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.sortVoices(preset, ids).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void sortZones(Integer[] ids) throws PresetEmptyException, NoSuchPresetException {
+    public void sortLinks(Integer[] ids) throws PresetException {
         try {
-            pc.sortZones(preset, ids);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.sortLinks(preset, ids).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void splitVoice(Integer voice, int splitKey) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException, ParameterValueOutOfRangeException, NoSuchVoiceException {
+    public void sortZones(Integer[] ids) throws PresetException {
         try {
-            pc.splitVoice(preset, voice, splitKey);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.sortZones(preset, ids).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void splitVoice(Integer voice, int splitKey) throws PresetException {
+        try {
+            pc.splitVoice(preset, voice, splitKey).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
@@ -103,7 +129,7 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
         ContextEditablePreset p;
         if (o instanceof ContextEditablePreset) {
             p = (ContextEditablePreset) o;
-            if (p.getPresetNumber().equals(preset) && p.getPresetContext().equals(pc))
+            if (p.getIndex().equals(preset) && p.getPresetContext().equals(pc))
                 return true;
         } else    // try and compare using just preset number
             if (o instanceof Integer) {
@@ -114,301 +140,416 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
         return false;
     }
 
-    public EditableParameterModel getEditableParameterModel(Integer id) throws IllegalParameterIdException {
-        return new Impl_PresetEditableParameterModel(pc.getDeviceParameterContext().getPresetContext().getParameterDescriptor(id));
-    }
-
-    // LINK
-    public Integer newLink(IsolatedPreset.IsolatedLink il) throws NoSuchPresetException, TooManyVoicesException, NoSuchContextException, PresetEmptyException {
+    public EditableParameterModel getEditableParameterModel(Integer id) throws ParameterException {
         try {
-            return pc.newLink(preset, il);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            return new Impl_PresetEditableParameterModel(pc.getDeviceParameterContext().getPresetContext().getParameterDescriptor(id));
+        } catch (DeviceException e) {
+            throw new ParameterException(e.getMessage());
         }
     }
 
-    public EditableParameterModel[] getAllEditableParameterModels() {
-        List pds = pc.getDeviceParameterContext().getPresetContext().getAllParameterDescriptors();
-        EditableParameterModel[] outModels = new EditableParameterModel[pds.size()];
-        for (int i = 0,n = pds.size(); i < n; i++)
-            outModels[i] = new Impl_PresetEditableParameterModel((GeneralParameterDescriptor) pds.get(i));
-        return outModels;
+    // LINK
+    public void newLink(IsolatedPreset.IsolatedLink il) throws PresetException {
+        try {
+            pc.newLink(preset, il).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
     }
 
     class Impl_PresetEditableParameterModel extends AbstractPresetEditableParameterModel {
         protected Integer[] id;
+        private Integer value;
+
+        public Integer getValue() throws ParameterUnavailableException {
+            if (value == null)
+                retrieveValue();
+            return value;
+        }
+
+        private void retrieveValue() throws ParameterUnavailableException {
+            try {
+                value = getPresetParams(new Integer[]{pd.getId()})[0];
+            } catch (Exception e) {
+                throw new ParameterUnavailableException(pd.getId());
+            }
+        }
 
         public Impl_PresetEditableParameterModel(GeneralParameterDescriptor pd) {
             super(pd);
             id = new Integer[]{pd.getId()};
-            addPresetListener(pla);
+            addListener(pla);
         }
 
-        private Integer getPreset() {
-            return preset;
-        }
-
-        public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+        public void setValue(Integer value) throws ParameterUnavailableException {
             try {
-                setPresetParams(new Integer[]{pd.getId()}, new Integer[]{value});
+                this.value = null;
+                setPresetParam(pd.getId(), value);
                 return;
-            } catch (NoSuchPresetException e) {
-            } catch (PresetEmptyException e) {
-            } catch (IllegalParameterIdException e) {
+            } catch (PresetException e) {
             }
-            throw new ParameterUnavailableException();
+            throw new ParameterUnavailableException(pd.getId());
+        }
+
+        public void offsetValue(Integer offset) throws ParameterUnavailableException {
+            try {
+                this.value = null;
+                offsetPresetParam(pd.getId(), offset);
+                return;
+            } catch (PresetException e) {
+                throw new ParameterUnavailableException(pd.getId());
+            }
+        }
+
+        public void offsetValue(Double offsetAsFOR) throws ParameterUnavailableException {
+            try {
+                this.value = null;
+                offsetPresetParam(pd.getId(), offsetAsFOR);
+                return;
+            } catch (PresetException e) {
+                throw new ParameterUnavailableException(pd.getId());
+            }
         }
 
         public void zDispose() {
             super.zDispose();
-            removePresetListener(pla);
-        }
-
-        public Integer getValue() throws ParameterUnavailableException {
-            try {
-                return getPresetParams(new Integer[]{pd.getId()})[0];
-            } catch (Exception e) {
-                throw new ParameterUnavailableException();
-            }
+            removeListener(pla);
         }
 
         public String getToolTipText() {
             try {
                 return getValueString();
-            } catch (ParameterUnavailableException e) {
+            } catch (ParameterException e) {
             }
             return super.getToolTipText();
         }
 
         protected PresetListenerAdapter pla = new PresetListenerAdapter() {
-            public void presetInitialized(PresetInitializeEvent ev) {
-                fireChanged();
-            }
 
-            public void presetRefreshed(PresetRefreshEvent ev) {
+            public void presetRefreshed(PresetInitializeEvent ev) {
+                value = null;
                 fireChanged();
             }
 
             public void presetChanged(PresetChangeEvent ev) {
-                if (ev.getPreset().equals(preset) && ev.containsId(id[0]))
+                if (ev.getIndex().equals(preset) && ev.containsId(id[0])) {
+                    value = null;
                     fireChanged();
+                }
             }
         };
     }
 
-    public void combineVoices(Integer group) throws NoSuchPresetException, PresetEmptyException {
+    public void combineVoices(Integer group) throws EmptyException, PresetException {
         try {
-            pc.combineVoices(preset, group);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.combineVoices(preset, group).post();
+        } catch (Exception e) {
+            throw new PresetException(e.getMessage());
+        } 
+    }
+
+    public void purgeZones() throws PresetException {
+        try {
+            pc.purgeZones(preset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void purgeZones() throws PresetEmptyException, NoSuchPresetException {
+    public void purgeLinks() throws PresetException {
         try {
-            pc.purgeZones(preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.purgeLinks(preset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(preset, e.getMessage());
         }
     }
 
-    public void applySampleToPreset(Integer sample, int mode) throws NoSuchPresetException, PresetEmptyException, ParameterValueOutOfRangeException, TooManyVoicesException {
+    public void purgeEmpties() throws PresetException {
         try {
-            pc.applySampleToPreset(preset, sample, mode);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.purgeEmpties(preset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void combineVoiceGroup(Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+    public void applySampleToPreset(Integer sample, int mode) throws PresetException {
+        try {
+            pc.applySampleToPreset(preset, sample, mode).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void combineVoiceGroup(Integer voice) throws EmptyException, PresetException, ParameterException {
         Integer group = null;
         try {
             group = pc.getVoiceParams(preset, voice, new Integer[]{IntPool.get(37)})[0];
-            pc.combineVoices(preset, group);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.combineVoices(preset, group).post();
+        } catch (Exception e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void newVoice(IsolatedPreset.IsolatedVoice iv) throws PresetException {
+        try {
+            pc.newVoice(preset, iv).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void copyLink(Integer srcLink) throws PresetException {
+        try {
+            pc.copyLink(preset, srcLink, preset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void copyVoice(Integer srcVoice, Integer group) throws PresetException {
+        try {
+            pc.copyVoice(preset, srcVoice, preset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void expandVoice(Integer voice) throws PresetException {
+        try {
+            pc.expandVoice(preset, voice).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void newLinks(Integer[] presetNums) throws PresetException {
+        try {
+            pc.newLinks(preset, presetNums).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void newVoices(Integer num, Integer[] sampleNums) throws PresetException {
+        try {
+            pc.newVoices(preset, sampleNums).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void newZones(Integer voice, Integer num) throws PresetException {
+        try {
+            pc.newZones(preset, voice, num).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void rmvLinks(Integer[] links) throws PresetException {
+        try {
+            pc.rmvLinks(preset, links).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void rmvVoices(Integer[] voices) throws PresetException {
+        try {
+            pc.rmvVoices(preset, voices).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void rmvZones(Integer voice, Integer[] zones) throws PresetException {
+        try {
+            pc.rmvZones(preset, voice, zones).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void setLinkParam(Integer link, Integer id, Integer value) throws PresetException {
+        try {
+            pc.setLinkParam(preset, link, id, value).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetLinkParam(Integer link, Integer id, Integer offset) throws PresetException {
+        try {
+            pc.offsetLinkParam(preset, link, id, offset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetLinkParam(Integer link, Integer id, Double offsetAsFOR) throws PresetException {
+        try {
+            pc.offsetLinkParam(preset, link, id, offsetAsFOR).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         } catch (IllegalParameterIdException e) {
-            throw new NoSuchVoiceException();
-        }
-    }
-
-    public Integer newVoice(IsolatedPreset.IsolatedVoice iv) throws NoSuchPresetException, TooManyZonesException, TooManyVoicesException, PresetEmptyException {
-        try {
-            return pc.newVoice(preset, iv);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void copyLink(Integer srcLink) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, TooManyVoicesException {
-        try {
-            pc.copyLink(preset, srcLink, preset);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void copyVoice(Integer srcVoice, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyVoicesException {
-        try {
-            pc.copyVoice(preset, srcVoice, preset, group);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void expandVoice(Integer voice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyVoicesException {
-        try {
-            pc.expandVoice(preset, voice);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void getVoiceMultiSample(Integer srcVoice, Integer destVoice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
-        pc.getVoiceMultiSample(preset, srcVoice, destVoice, preset);
-    }
-
-    public Integer newLinks(Integer num, Integer[] presetNums) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException {
-        try {
-            return pc.newLinks(preset, num, presetNums);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public Integer newVoices(Integer num, Integer[] sampleNums) throws NoSuchPresetException, PresetEmptyException, TooManyVoicesException {
-        try {
-            return pc.newVoices(preset, num, sampleNums);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public Integer newZones(Integer voice, Integer num) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyZonesException {
-        try {
-            return pc.newZones(preset, voice, num);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void rmvLinks(Integer[] links) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException {
-        try {
-            pc.rmvLinks(preset, links);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void rmvVoices(Integer[] voices) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, CannotRemoveLastVoiceException {
-        try {
-            pc.rmvVoices(preset, voices);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void rmvZones(Integer voice, Integer[] zones) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchZoneException {
-        try {
-            pc.rmvZones(preset, voice, zones);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
-        }
-    }
-
-    public void setLinksParam(Integer[] links, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, ParameterValueOutOfRangeException {
-        try {
-            pc.setLinksParam(preset, links, id, values);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            throw new PresetException(e.getMessage());
         }
     }
 
     // ZONE
-    public Integer newZone(Integer voice, IsolatedPreset.IsolatedVoice.IsolatedZone iz) throws NoSuchPresetException, TooManyZonesException, PresetEmptyException, NoSuchVoiceException {
+    public void newZone(Integer voice, IsolatedPreset.IsolatedVoice.IsolatedZone iz) throws PresetException {
         try {
-            return pc.newZone(preset, voice, iz);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.newZone(preset, voice, iz).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
     public ContextBasicEditablePreset getContextBasicEditablePresetDowngrade() {
         Impl_ContextBasicEditablePreset np = new Impl_ContextBasicEditablePreset(pc, preset);
-        np.dem = dem;
         np.stringFormatExtended = stringFormatExtended;
         return np;
     }
 
-    public Map offsetLinkIndexes(Integer offset, boolean user) throws PresetEmptyException, NoSuchPresetException {
+    public void offsetLinkIndexes(Integer offset, boolean user) throws PresetException {
         try {
-            return pc.offsetLinkIndexes(preset, offset, user);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.offsetLinkIndexes(preset, offset, user).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Map offsetSampleIndexes(Integer offset, boolean user) throws PresetEmptyException, NoSuchPresetException {
+    public void offsetSampleIndexes(Integer offset, boolean user) throws PresetException {
         try {
-            return pc.offsetSampleIndexes(preset, offset, user);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.offsetSampleIndexes(preset, offset, user).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Map remapLinkIndexes(Map translationMap) throws PresetEmptyException, NoSuchPresetException {
+    public void remapLinkIndexes(Map translationMap) throws PresetException {
         try {
-            return pc.remapLinkIndexes(preset, translationMap);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.remapLinkIndexes(preset, translationMap).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public Map remapSampleIndexes(Map translationMap) throws PresetEmptyException, NoSuchPresetException {
+    public void remapSampleIndexes(Map translationMap) throws PresetException {
         try {
-            return pc.remapSampleIndexes(preset, translationMap, null);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.remapSampleIndexes(preset, translationMap, null).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void setPresetParams(Integer[] ids, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, ParameterValueOutOfRangeException {
+    public void setPresetParam(Integer id, Integer value) throws PresetException {
         try {
-            pc.setPresetParams(preset, ids, values);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.setPresetParam(preset, id, value).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void setVoicesParam(Integer[] voices, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, ParameterValueOutOfRangeException {
+    public void offsetPresetParam(Integer id, Integer offset) throws PresetException {
         try {
-            pc.setVoicesParam(preset, voices, id, values);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.offsetPresetParam(preset, id, offset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void setGroupParamFromVoice(Integer voice, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, ParameterValueOutOfRangeException {
+    public void offsetPresetParam(Integer id, Double offsetAsFOR) throws PresetException {
         try {
-            pc.setGroupParamFromVoice(preset, voice, id, value);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.offsetPresetParam(preset, id, offsetAsFOR).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (IllegalParameterIdException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void setGroupParam(Integer group, Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchGroupException, ParameterValueOutOfRangeException {
+    public void setVoiceParam(Integer voice, Integer id, Integer value) throws PresetException {
         try {
-            pc.setGroupParam(preset, group, id, value);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.setVoiceParam(preset, voice, id, value).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
-    public void setZonesParam(Integer voice, Integer[] zones, Integer id, Integer[] values) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, ParameterValueOutOfRangeException {
+    public void offsetVoiceParam(Integer voice, Integer id, Integer offset) throws PresetException {
         try {
-            pc.setZonesParam(preset, voice, zones, id, values);
-        } catch (NoSuchContextException e) {
-            throw new NoSuchPresetException(preset);
+            pc.offsetVoiceParam(preset, voice, id, offset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetVoiceParam(Integer voice, Integer id, Double offsetAsFOR) throws PresetException {
+        try {
+            pc.offsetVoiceParam(preset, voice, id, offsetAsFOR).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (IllegalParameterIdException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void setGroupParamFromVoice(Integer voice, Integer id, Integer value) throws PresetException {
+        try {
+            pc.setGroupParamFromVoice(preset, voice, id, value).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetGroupParamFromVoice(Integer voice, Integer id, Integer offset) throws PresetException {
+        try {
+            pc.offsetGroupParamFromVoice(preset, voice, id, offset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetGroupParamFromVoice(Integer voice, Integer id, Double offsetAsFOR) throws PresetException {
+        try {
+            pc.offsetGroupParamFromVoice(preset, voice, id, offsetAsFOR).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void setGroupParam(Integer group, Integer id, Integer value) throws PresetException {
+        try {
+            pc.setGroupParam(preset, group, id, value).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void setZoneParam(Integer voice, Integer zone, Integer id, Integer value) throws PresetException {
+        try {
+            pc.setZoneParam(preset, voice, zone, id, value).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetZoneParam(Integer voice, Integer zone, Integer id, Integer offset) throws PresetException {
+        try {
+            pc.offsetZoneParam(preset, voice, zone, id, offset).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        }
+    }
+
+    public void offsetZoneParam(Integer voice, Integer zone, Integer id, Double offsetAsFOR) throws PresetException {
+        try {
+            pc.offsetZoneParam(preset, voice, zone, id, offsetAsFOR).post();
+        } catch (ResourceUnavailableException e) {
+            throw new PresetException(e.getMessage());
+        } catch (IllegalParameterIdException e) {
+            throw new PresetException(e.getMessage());
         }
     }
 
@@ -428,18 +569,17 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
         }
 
         public void performOpenAction() {
-            new ZDefaultThread() {
-                public void run() {
-                    try {
-                        assertPresetInitialized();
-                        if (getDeviceContext().getDevicePreferences().ZPREF_useTabbedVoicePanel.getValue())
-                            getDeviceContext().getViewManager().openTabbedVoice(Impl_ContextEditablePreset.Impl_EditableVoice.this, getDeviceContext().getDevicePreferences().ZPREF_groupEnvelopesWhenVoiceTabbed.getValue(), true);
-                        else
-                            getDeviceContext().getViewManager().openVoice(Impl_ContextEditablePreset.Impl_EditableVoice.this, true);
-                    } catch (NoSuchPresetException e) {
-                    }
-                }
-            }.start();
+            try {
+                assertInitialized(true);
+                if (getDeviceContext().getDevicePreferences().ZPREF_usePartitionedVoiceEditing.getValue())
+                    getDeviceContext().getViewManager().openTabbedVoice(Impl_ContextEditablePreset.Impl_EditableVoice.this, getDeviceContext().getDevicePreferences().ZPREF_groupEnvelopesWhenVoiceTabbed.getValue(), true).post();
+                else
+                    getDeviceContext().getViewManager().openVoice(Impl_ContextEditablePreset.Impl_EditableVoice.this, true).post();
+            } catch (ResourceUnavailableException e) {
+                e.printStackTrace();
+            } catch (PresetException e) {
+                e.printStackTrace();
+            }
         }
 
         public void setGroupMode(boolean groupMode) {
@@ -450,60 +590,80 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
             return groupMode;
         }
 
-        public boolean trySetOriginalKeyFromSampleName() throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+        public void trySetOriginalKeyFromSampleName() throws ParameterException, PresetException {
             try {
-                String name = pc.getRootSampleContext().getSampleName(pc.getVoiceParams(preset, voice, new Integer[]{ID.sample})[0]);
-                return pc.trySetOriginalKeyFromName(preset, voice, name);
-            } catch (NoSuchContextException e) {
-                throw new NoSuchPresetException(preset);
-            } catch (IllegalParameterIdException e) {
-            } catch (NoSuchSampleException e) {
-            } catch (SampleEmptyException e) {
+                String name = pc.getRootSampleContext().getName(pc.getVoiceParams(preset, voice, new Integer[]{ID.sample})[0]);
+                pc.trySetOriginalKeyFromName(preset, voice, name).post();
+            } catch (EmptyException e) {
+            } catch (ContentUnavailableException e) {
+                throw new PresetException(e.getMessage());
+            } catch (DeviceException e) {
+                throw new PresetException(e.getMessage());
+            } catch (ResourceUnavailableException e) {
+                throw new PresetException(e.getMessage());
             }
-            return false;
         }
 
-        public void setVoicesParam(Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, ParameterValueOutOfRangeException {
+        public void setVoiceParam(Integer id, Integer value) throws PresetException {
             if (groupMode)
                 Impl_ContextEditablePreset.this.setGroupParamFromVoice(voice, id, value);
             else
-                Impl_ContextEditablePreset.this.setVoicesParam(new Integer[]{voice}, id, new Integer[]{value});
+                Impl_ContextEditablePreset.this.setVoiceParam(voice, id, value);
         }
 
-        public int numZones() throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException {
+        public void offsetVoiceParam(Integer id, Integer offset) throws PresetException {
+            if (groupMode)
+                Impl_ContextEditablePreset.this.offsetGroupParamFromVoice(voice, id, offset);
+            else
+                Impl_ContextEditablePreset.this.offsetVoiceParam(voice, id, offset);
+        }
+
+        public void offsetVoiceParam(Integer id, Double offsetAsFOR) throws PresetException {
+            if (groupMode)
+                Impl_ContextEditablePreset.this.offsetGroupParamFromVoice(voice, id, offsetAsFOR);
+            else
+                Impl_ContextEditablePreset.this.offsetVoiceParam(voice, id, offsetAsFOR);
+        }
+
+        public int numZones() throws EmptyException, PresetException {
             return Impl_ContextEditablePreset.this.numZones(voice);
         }
 
-        public EditableParameterModel getEditableParameterModel(Integer id) throws IllegalParameterIdException {
-            return new Impl_ContextEditablePreset.Impl_EditableVoice.Impl_VoiceEditableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
-        }
-
-        public void removeVoice() throws NoSuchPresetException, NoSuchVoiceException, PresetEmptyException, CannotRemoveLastVoiceException {
-            Impl_ContextEditablePreset.this.rmvVoices(new Integer[]{voice});
-        }
-
-        public void splitVoice(int splitKey) throws NoSuchContextException, NoSuchPresetException, PresetEmptyException, TooManyVoicesException, ParameterValueOutOfRangeException, NoSuchVoiceException {
-            Impl_ContextEditablePreset.this.splitVoice(voice, splitKey);
-        }
-
-        public void expandVoice() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException, TooManyVoicesException {
-            Impl_ContextEditablePreset.this.expandVoice(voice);
-        }
-
-        public void combineVoiceGroup() throws PresetEmptyException, NoSuchVoiceException, NoSuchPresetException, TooManyVoicesException {
-            Impl_ContextEditablePreset.this.combineVoiceGroup(voice);
-        }
-
-        public void copyVoice() throws NoSuchPresetException, NoSuchVoiceException, PresetEmptyException, CannotRemoveLastVoiceException, TooManyVoicesException {
+        public EditableParameterModel getEditableParameterModel(Integer id) throws ParameterException {
             try {
-                Impl_ContextEditablePreset.this.copyVoice(voice, this.getVoiceParams(new Integer[]{IntPool.get(37)})[0]);
-            } catch (IllegalParameterIdException e) {
-                e.printStackTrace();
-                Impl_ContextEditablePreset.this.copyVoice(voice, IntPool.get(0));
+                return new Impl_VoiceEditableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+            } catch (DeviceException e) {
+                throw new ParameterException(e.getMessage());
             }
         }
 
-        public void newZones(Integer num) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyZonesException {
+        public void removeVoice() throws PresetException {
+            Impl_ContextEditablePreset.this.rmvVoices(new Integer[]{voice});
+        }
+
+        public void splitVoice(int splitKey) throws PresetException {
+            Impl_ContextEditablePreset.this.splitVoice(voice, splitKey);
+        }
+
+        public void expandVoice() throws PresetException {
+            Impl_ContextEditablePreset.this.expandVoice(voice);
+        }
+
+        public void combineVoiceGroup() throws EmptyException, ParameterException, PresetException {
+            Impl_ContextEditablePreset.this.combineVoiceGroup(voice);
+        }
+
+        public void copyVoice() throws EmptyException, PresetException, ParameterException {
+            try {
+                Impl_ContextEditablePreset.this.copyVoice(voice, this.getVoiceParams(new Integer[]{IntPool.get(37)})[0]);
+            } catch (IllegalParameterIdException e) {
+                Impl_ContextEditablePreset.this.copyVoice(voice, IntPool.get(0));
+            } catch (NoSuchVoiceException e) {
+                throw new PresetException(e.getMessage());
+            }
+        }
+
+        public void newZones(Integer num) throws PresetException {
             Impl_ContextEditablePreset.this.newZones(voice, num);
         }
 
@@ -511,7 +671,7 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
             return Impl_ContextEditablePreset.this.getPresetContext();
         }
 
-        public Integer[] getVoiceParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException {
+        public Integer[] getVoiceParams(Integer[] ids) throws EmptyException, ParameterException, PresetException {
             return Impl_ContextEditablePreset.this.getVoiceParams(voice, ids);
         }
 
@@ -528,32 +688,45 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
                 super(zone);
             }
 
-            public void setZonesParam(Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException, ParameterValueOutOfRangeException {
-                Impl_ContextEditablePreset.this.setZonesParam(voice, new Integer[]{zone}, id, new Integer[]{value});
+            public void setZoneParam(Integer id, Integer value) throws EmptyException, ParameterException, PresetException {
+                Impl_ContextEditablePreset.this.setZoneParam(voice, zone, id, value);
             }
 
-            public EditableParameterModel getEditableParameterModel(Integer id) throws IllegalParameterIdException {
-                return new Impl_EditableZone.Impl_ZoneEditableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+            public void offsetZoneParam(Integer id, Integer offset) throws PresetException {
+                Impl_ContextEditablePreset.this.offsetZoneParam(voice, zone, id, offset);
             }
 
-            public boolean trySetOriginalKeyFromSampleName() throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, NoSuchZoneException {
+            public void offsetZoneParam(Integer id, Double offsetAsFOR) throws PresetException {
+                Impl_ContextEditablePreset.this.offsetZoneParam(voice, zone, id, offsetAsFOR);
+            }
+
+            public EditableParameterModel getEditableParameterModel(Integer id) throws ParameterException {
                 try {
-                    String name = pc.getRootSampleContext().getSampleName(pc.getZoneParams(preset, voice, zone, new Integer[]{ID.sample})[0]);
-                    return pc.trySetOriginalKeyFromName(preset, voice, zone, name);
-                } catch (NoSuchContextException e) {
-                    throw new NoSuchPresetException(preset);
-                } catch (IllegalParameterIdException e) {
-                } catch (NoSuchSampleException e) {
-                } catch (SampleEmptyException e) {
+                    return new Impl_ZoneEditableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+                } catch (DeviceException e) {
+                    throw new ParameterException(e.getMessage());
                 }
-                return false;
             }
 
-            public void removeZone() throws NoSuchPresetException, NoSuchVoiceException, PresetEmptyException, NoSuchZoneException {
+            public void trySetOriginalKeyFromSampleName() throws EmptyException, PresetException, ParameterException {
+                try {
+                    String name = pc.getRootSampleContext().getName(pc.getZoneParams(preset, voice, zone, new Integer[]{ID.sample})[0]);
+                    pc.trySetOriginalKeyFromName(preset, voice, zone, name).post();
+                } catch (EmptyException e) {
+                } catch (ContentUnavailableException e) {
+                    throw new PresetException(e.getMessage());
+                } catch (DeviceException e) {
+                    throw new PresetException(e.getMessage());
+                } catch (ResourceUnavailableException e) {
+                    throw new PresetException(e.getMessage());
+                }
+            }
+
+            public void removeZone() throws PresetException {
                 Impl_ContextEditablePreset.this.rmvZones(voice, new Integer[]{zone});
             }
 
-            public Integer[] getZoneParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchZoneException {
+            public Integer[] getZoneParams(Integer[] ids) throws EmptyException, ParameterException, PresetException {
                 return Impl_ContextEditablePreset.this.getZoneParams(voice, zone, ids);
             }
 
@@ -569,60 +742,96 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
                 return Impl_ContextEditablePreset.this.getPresetContext();
             }
 
+            public ZCommand[] getZCommands(Class markerClass) {
+                return EditableZone.cmdProviderHelper.getCommandObjects(markerClass, this);
+            }
 
-            public ZCommand[] getZCommands() {
-                return cmdProviderHelper.getCommandObjects(this);
+            public Class[] getZCommandMarkers() {
+                return EditableZone.cmdProviderHelper.getSupportedMarkers();
             }
 
             class Impl_ZoneEditableParameterModel extends AbstractPresetEditableParameterModel {
                 private Integer[] id;
+                private volatile Integer value;
 
                 public Impl_ZoneEditableParameterModel(GeneralParameterDescriptor pd) {
                     super(pd);
                     id = new Integer[]{pd.getId()};
+                    addListener(pla);
                 }
 
-                private Integer getPreset() {
-                    return preset;
+                private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+                    ois.defaultReadObject();
+                    Impl_ContextEditablePreset.this.addListener(pla);
                 }
 
-                private Integer getVoice() {
-                    return voice;
-                }
 
-                private Integer getZone() {
-                    return zone;
-                }
-
-                public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+                public void setValue(Integer value) throws ParameterException {
                     try {
-                        setZonesParam(id[0], value);
-                    } catch (NoSuchPresetException e) {
-                        throw new ParameterUnavailableException();
-                    } catch (PresetEmptyException e) {
-                        throw new ParameterUnavailableException();
-                    } catch (IllegalParameterIdException e) {
-                        throw new ParameterUnavailableException();
-                    } catch (NoSuchVoiceException e) {
-                        throw new ParameterUnavailableException();
-                    } catch (NoSuchZoneException e) {
-                        throw new ParameterUnavailableException();
+                        this.value = null;
+                        setZoneParam(id[0], value);
+                    } catch (Exception e) {
+                        throw new ParameterException(e.getMessage(), id[0]);
+                    }
+                }
+
+                public void offsetValue(Integer offset) throws ParameterException {
+                    try {
+                        this.value = null;
+                        offsetZoneParam(id[0], offset);
+                    } catch (Exception e) {
+                        throw new ParameterException(e.getMessage(), id[0]);
+                    }
+                }
+
+                public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                    try {
+                        this.value = null;
+                        offsetZoneParam(id[0], offsetAsFOR);
+                    } catch (Exception e) {
+                        throw new ParameterException(e.getMessage(), id[0]);
                     }
                 }
 
                 public Integer getValue() throws ParameterUnavailableException {
+                    if (value == null)
+                        retrieveValue();
+                    return value;
+                }
+
+                private void retrieveValue() throws ParameterUnavailableException {
                     try {
-                        return getZoneParams(id)[0];
+                        value = getZoneParams(id)[0];
                     } catch (Exception e) {
-                        throw new ParameterUnavailableException();
+                        throw new ParameterUnavailableException(id[0]);
                     }
+                }
+
+                protected PresetListenerAdapter pla = new PresetListenerAdapter() {
+
+                    public void presetRefreshed(PresetInitializeEvent ev) {
+                        value = null;
+                        // Impl_ZoneEditableParameterModel.this.fireChanged();
+                    }
+
+                    public void zoneChanged(ZoneChangeEvent ev) {
+                        if (ev.containsId(id[0])) {
+                            value = null;
+                            Impl_ZoneEditableParameterModel.this.fireChanged();
+                        }
+                    }
+                };
+
+                public void zDispose() {
+                    super.zDispose();
+                    removeListener(pla);
                 }
 
                 public String getToolTipText() {
                     if (tipShowingOwner)
                         try {
                             return "Voice " + (voice.intValue() + 1) + "  Zone " + (zone.intValue() + 1) + " [" + pd.toString() + " = " + getValueString() + " ]";
-                        } catch (ParameterUnavailableException e) {
+                        } catch (ParameterException e) {
                             return "Voice " + (voice.intValue() + 1) + "  Zone " + (zone.intValue() + 1);
                         }
                     return super.getToolTipText();
@@ -631,13 +840,18 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
 
         };
 
-        public ZCommand[] getZCommands() {
-            return ContextEditablePreset.EditableVoice.cmdProviderHelper.getCommandObjects(this);
+        public ZCommand[] getZCommands(Class markerClass) {
+            return EditableVoice.cmdProviderHelper.getCommandObjects(markerClass, this);
+        }
+
+        public Class[] getZCommandMarkers() {
+            return EditableVoice.cmdProviderHelper.getSupportedMarkers();
         }
 
         class Impl_VoiceEditableParameterModel extends AbstractPresetEditableParameterModel {
             private Integer[] id;
             private boolean isFilterId;
+            private volatile Integer value;
 
             public Impl_VoiceEditableParameterModel(GeneralParameterDescriptor pd) {
                 super(pd);
@@ -645,33 +859,23 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
                 isFilterId = isFilterId();
                 if (isFilterId)
                     setFilterType();
-                addPresetListener(pla);
+                addListener(pla);
             }
 
-            private Integer getPreset() {
-                return preset;
-            }
-
-            private boolean getGroupMode() {
-                return groupMode;
-            }
-
-            private Integer getVoice() {
-                return voice;
+            private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+                ois.defaultReadObject();
+                Impl_ContextEditablePreset.this.addListener(pla);
             }
 
             private void setFilterType() {
                 try {
                     ((FilterParameterDescriptor) pd).setFilterType(Impl_EditableVoice.this.getVoiceParams(new Integer[]{IntPool.get(82)})[0]);
                     Impl_ContextEditablePreset.Impl_EditableVoice.Impl_VoiceEditableParameterModel.this.fireChanged();
-                } catch (NoSuchPresetException e) {
-                    // e.printStackTrace();
-                } catch (PresetEmptyException e) {
-                    // e.printStackTrace();
+                } catch (EmptyException e) {
                 } catch (IllegalParameterIdException e) {
-                    // e.printStackTrace();
                 } catch (NoSuchVoiceException e) {
-                    //  e.printStackTrace();
+                } catch (ParameterException e) {
+                } catch (PresetException e) {
                 }
             }
 
@@ -684,29 +888,47 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
 
             public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
                 try {
-                    setVoicesParam(id[0], value);
-                } catch (NoSuchPresetException e) {
-                    throw new ParameterUnavailableException();
-                } catch (PresetEmptyException e) {
-                    throw new ParameterUnavailableException();
-                } catch (NoSuchVoiceException e) {
-                    throw new ParameterUnavailableException();
-                } catch (IllegalParameterIdException e) {
-                    throw new ParameterUnavailableException();
+                    this.value = null;
+                    setVoiceParam(id[0], value);
+                } catch (Exception e) {
+                    throw new ParameterUnavailableException(id[0]);
+                }
+            }
+
+            public void offsetValue(Integer offset) throws ParameterException {
+                try {
+                    this.value = null;
+                    offsetVoiceParam(id[0], offset);
+                } catch (Exception e) {
+                    throw new ParameterUnavailableException(id[0]);
+                }
+            }
+
+            public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                try {
+                    this.value = null;
+                    offsetVoiceParam(id[0], offsetAsFOR);
+                } catch (Exception e) {
+                    throw new ParameterUnavailableException(id[0]);
                 }
             }
 
             public void zDispose() {
                 super.zDispose();
-                removePresetListener(pla);
+                removeListener(pla);
             }
 
             public Integer getValue() throws ParameterUnavailableException {
+                if (value == null)
+                    retrieveValue();
+                return value;
+            }
+
+            private void retrieveValue() throws ParameterUnavailableException {
                 try {
-                    return getVoiceParams(id)[0];
+                    value = getVoiceParams(id)[0];
                 } catch (Exception e) {
-                    //e.printStackTrace();
-                    throw new ParameterUnavailableException();
+                    throw new ParameterUnavailableException(id[0]);
                 }
             }
 
@@ -714,50 +936,61 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
                 if (tipShowingOwner)
                     try {
                         return "Voice " + (voice.intValue() + 1) + " [" + pd.toString() + " = " + getValueString() + " ]";
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         return "Voice " + (voice.intValue() + 1);
                     }
-                return super.getToolTipText();
+                else {
+                    if (getGroupMode()) {
+                        HashSet s = new HashSet();
+                        try {
+                            Integer[] voices = pc.getVoiceIndexesInGroupFromVoice(preset, voice);
+                            s.addAll(Arrays.asList(pc.getVoicesParam(preset, voices, id[0])));
+                            StringBuffer sb = new StringBuffer();
+                            sb.append(super.getToolTipText()).append("  (").append(+s.size()).append(" distinct group value").append((s.size() == 1 ? "" : "s")).append(")");
+                            return sb.toString();
+                        } catch (EmptyException e) {
+                        } catch (NoSuchContextException e) {
+                        } catch (DeviceException e) {
+                        } catch (IllegalParameterIdException e) {
+                        } catch (ParameterException e) {
+                        } catch (ContentUnavailableException e) {
+                        }
+                    }
+                    return super.getToolTipText();
+                }
             }
 
-            /*public boolean isEditChainableWith(Object o) {
-                if (groupMode)
-                    return false;
-                else
-                    return super.isEditChainableWith(o);
-            } */
-
             protected PresetListenerAdapter pla = new PresetListenerAdapter() {
-                public void presetInitialized(PresetInitializeEvent ev) {
-                    Impl_ContextEditablePreset.Impl_EditableVoice.Impl_VoiceEditableParameterModel.this.fireChanged();
-                }
-
-                public void presetRefreshed(PresetRefreshEvent ev) {
-                    Impl_ContextEditablePreset.Impl_EditableVoice.Impl_VoiceEditableParameterModel.this.fireChanged();
+                public void presetRefreshed(PresetInitializeEvent ev) {
+                    value = null;
+                    //Impl_ContextEditablePreset.Impl_EditableVoice.Impl_VoiceEditableParameterModel.this.fireChanged();
                 }
 
                 public void voiceChanged(VoiceChangeEvent ev) {
                     if (ev.getVoice().equals(voice)) {
                         if (isFilterId && ev.containsId(IntPool.get(82))) {
                             setFilterType();
+                            value = null;
                             return;
-                        } else if (ev.containsId(id[0]))
-                            Impl_ContextEditablePreset.Impl_EditableVoice.Impl_VoiceEditableParameterModel.this.fireChanged();
+                        }
+                        int i = ev.indexOfId(id[0]);
+                        if (i != -1) {
+                            value = null;
+                            Impl_VoiceEditableParameterModel.this.fireChanged();
+                        }
                     }
                 }
             };
 
-            private Integer getGroup() throws PresetEmptyException, NoSuchPresetException, IllegalParameterIdException, NoSuchVoiceException {
+            private Integer getGroup() throws EmptyException, ParameterException, PresetException {
                 return Impl_EditableVoice.this.getVoiceParams(new Integer[]{IntPool.get(37)})[0];
             }
 
             private Integer[] getVoiceIndexesInGroup() {
                 try {
                     return Impl_EditableVoice.this.getVoiceIndexesInGroup();
-                } catch (PresetEmptyException e) {
-                } catch (NoSuchContextException e) {
-                } catch (NoSuchVoiceException e) {
-                } catch (NoSuchPresetException e) {
+                } catch (EmptyException e) {
+                } catch (PresetException e) {
                 }
                 return new Integer[0];
             }
@@ -778,200 +1011,6 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
         public AbstractPresetEditableParameterModel(GeneralParameterDescriptor pd) {
             super(pd);
         }
-
-        public boolean isEditChainableWith(Object o) {
-            if (o instanceof AbstractPresetEditableParameterModel)
-                return true;
-            else if (o instanceof EditableParameterModelGroup && ((EditableParameterModelGroup) o).getWrappedObjects()[0] instanceof AbstractPresetEditableParameterModel)
-                return true;
-            return false;
-        }
-
-        public void setValue(EditChainValueProvider ecvp, EditableParameterModel[] modelChain) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-            try {
-                setDiversePresetParams(modelChain, ecvp);
-            } catch (NoSuchContextException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (NoSuchPresetException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (PresetEmptyException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (IllegalParameterIdException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (NoSuchVoiceException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (NoSuchLinkException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (NoSuchZoneException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            } catch (NoSuchGroupException e) {
-                throw new ParameterUnavailableException(e.getMessage());
-            }
-        }
-
-    }
-
-    private static PresetContext.AbstractPresetParameterProfile[] getParameterProfiles(final EditableParameterModel[] models, final EditableParameterModel.EditChainValueProvider ecvp) {
-        ArrayList profs = new ArrayList();
-        for (int i = 0; i < models.length; i++) {
-            if (models[i] instanceof ParameterModelWrapper)
-                profs.addAll(taskGetParameterProfiles(ParameterModelUtilities.extractEditableParameterModels(((ParameterModelWrapper) models[i]).getWrappedObjects()), ecvp));
-            else
-                profs.addAll(taskGetParameterProfiles(new EditableParameterModel[]{models[i]}, ecvp));
-        }
-        return (PresetContext.AbstractPresetParameterProfile[]) profs.toArray(new PresetContext.AbstractPresetParameterProfile[profs.size()]);
-    }
-
-    private static ArrayList taskGetParameterProfiles(final EditableParameterModel[] models, final EditableParameterModel.EditChainValueProvider ecvp) {
-        ArrayList profs = new ArrayList();
-        for (int i = 0; i < models.length; i++) {
-            final int f_i = i;
-            if (models[i] instanceof Impl_PresetEditableParameterModel) {
-                try {
-                    final Integer preset = ((Impl_PresetEditableParameterModel) models[f_i]).getPreset();
-                    final Integer id = ((Impl_PresetEditableParameterModel) models[f_i]).id[0];
-                    final Integer val = ecvp.getValue(models[f_i], models[0]);
-
-                    profs.add(new PresetContext.PresetParameterProfile() {
-
-                        public Integer getPreset() {
-                            return preset;
-                        }
-
-                        public Integer getId() {
-                            return id;
-                        }
-
-                        public Integer getValue() {
-                            return val;
-                        }
-                    });
-                } catch (Exception e) {
-                    continue;
-                }
-            } else if (models[i] instanceof Impl_EditableVoice.Impl_VoiceEditableParameterModel) {
-                final Impl_EditableVoice.Impl_VoiceEditableParameterModel voc = (Impl_EditableVoice.Impl_VoiceEditableParameterModel) models[f_i];
-                if (voc.getGroupMode() == true) {
-                    try {
-                        final Integer preset = voc.getPreset();
-                        final Integer group = voc.getGroup();
-                        final Integer id = voc.id[0];
-                        final Integer val = ecvp.getValue(models[f_i], models[0]);
-                        profs.add(new PresetContext.GroupParameterProfile() {
-
-                            public Integer getPreset() {
-                                return preset;
-                            }
-
-                            public Integer getId() {
-                                return id;
-                            }
-
-                            public Integer getValue() {
-                                return val;
-                            }
-
-                            public Integer getGroup() {
-                                return group;
-                            }
-                        });
-                    } catch (Exception e) {
-                        continue;
-                    }
-                } else
-                    try {
-                        final Integer preset = voc.getPreset();
-                        final Integer voice = voc.getVoice();
-                        final Integer id = voc.id[0];
-                        final Integer val = ecvp.getValue(models[f_i], models[0]);
-                        profs.add(new PresetContext.VoiceParameterProfile() {
-
-                            public Integer getPreset() {
-                                return preset;
-                            }
-
-                            public Integer getId() {
-                                return id;
-                            }
-
-                            public Integer getValue() {
-                                return val;
-                            }
-
-                            public Integer getVoice() {
-                                return voice;
-                            }
-                        });
-                    } catch (Exception e) {
-                        continue;
-                    }
-            } else if (models[i] instanceof Impl_EditableLink.Impl_LinkEditableParameterModel) {
-                try {
-                    final Integer preset = ((Impl_EditableLink.Impl_LinkEditableParameterModel) models[f_i]).getPreset();
-                    final Integer link = ((Impl_EditableLink.Impl_LinkEditableParameterModel) models[f_i]).getLink();
-                    final Integer[] ids = ((Impl_EditableLink.Impl_LinkEditableParameterModel) models[f_i]).id;
-                    final Integer val = ecvp.getValue(models[f_i], models[0]);
-                    profs.add(new PresetContext.LinkParameterProfile() {
-
-                        public Integer getPreset() {
-                            return preset;
-                        }
-
-                        public Integer getId() {
-                            return ids[0];
-                        }
-
-                        public Integer getValue() {
-                            return val;
-                        }
-
-                        public Integer getLink() {
-                            return link;
-                        }
-                    });
-                } catch (Exception e) {
-                    continue;
-                }
-            } else if (models[i] instanceof Impl_EditableVoice.Impl_EditableZone.Impl_ZoneEditableParameterModel) {
-                try {
-                    final Integer preset = ((Impl_EditableVoice.Impl_EditableZone.Impl_ZoneEditableParameterModel) models[f_i]).getPreset();
-                    final Integer voice = ((Impl_EditableVoice.Impl_EditableZone.Impl_ZoneEditableParameterModel) models[f_i]).getVoice();
-                    final Integer zone = ((Impl_EditableVoice.Impl_EditableZone.Impl_ZoneEditableParameterModel) models[f_i]).getZone();
-                    final Integer[] ids = ((Impl_EditableVoice.Impl_EditableZone.Impl_ZoneEditableParameterModel) models[f_i]).id;
-                    final Integer val = ecvp.getValue(models[f_i], models[0]);
-                    profs.add(new PresetContext.ZoneParameterProfile() {
-
-                        public Integer getPreset() {
-                            return preset;
-                        }
-
-                        public Integer getId() {
-                            return ids[0];
-                        }
-
-                        public Integer getValue() {
-                            return val;
-                        }
-
-                        public Integer getVoice() {
-                            return voice;
-                        }
-
-                        public Integer getZone() {
-                            return zone;
-                        }
-                    });
-                } catch (Exception e) {
-                    continue;
-                }
-            } else
-                throw new IllegalArgumentException("illegal EditableParameterModel type");
-        }
-        return profs;
-    }
-
-    public void setDiversePresetParams(EditableParameterModel[] models, EditableParameterModel.EditChainValueProvider ecvp) throws NoSuchContextException, NoSuchPresetException, ParameterValueOutOfRangeException, PresetEmptyException, IllegalParameterIdException, NoSuchVoiceException, NoSuchLinkException, NoSuchZoneException, ParameterUnavailableException, NoSuchGroupException {
-        pc.setDiversePresetParams(getParameterProfiles(models, ecvp));
     }
 
     class Impl_EditableLink extends Impl_ReadableLink implements EditableLink {
@@ -979,27 +1018,39 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
             super(link);
         }
 
-        public void setLinksParam(Integer id, Integer value) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, ParameterValueOutOfRangeException {
-            Impl_ContextEditablePreset.this.setLinksParam(new Integer[]{link}, id, new Integer[]{value});
+        public void setLinkParam(Integer id, Integer value) throws PresetException {
+            Impl_ContextEditablePreset.this.setLinkParam(link, id, value);
         }
 
-        public EditableParameterModel getEditableParameterModel(Integer id) throws IllegalParameterIdException {
-            return new Impl_ContextEditablePreset.Impl_EditableLink.Impl_LinkEditableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+        public void offsetLinkParam(Integer id, Integer offset) throws PresetException {
+            Impl_ContextEditablePreset.this.offsetLinkParam(link, id, offset);
+        }
+
+        public void offsetLinkParam(Integer id, Double offsetAsFOR) throws PresetException {
+            Impl_ContextEditablePreset.this.offsetLinkParam(link, id, offsetAsFOR);
+        }
+
+        public EditableParameterModel getEditableParameterModel(Integer id) throws ParameterException {
+            try {
+                return new Impl_LinkEditableParameterModel(pc.getDeviceParameterContext().getVoiceContext().getParameterDescriptor(id));
+            } catch (DeviceException e) {
+                throw new ParameterException(e.getMessage());
+            }
         }
 
         public PresetContext getPresetContext() {
             return Impl_ContextEditablePreset.this.getPresetContext();
         }
 
-        public void removeLink() throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException {
+        public void removeLink() throws PresetException {
             Impl_ContextEditablePreset.this.rmvLinks(new Integer[]{link});
         }
 
-        public void copyLink() throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, TooManyVoicesException {
+        public void copyLink() throws EmptyException, PresetException {
             Impl_ContextEditablePreset.this.copyLink(link);
         }
 
-        public Integer[] getLinkParams(Integer[] ids) throws NoSuchPresetException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException {
+        public Integer[] getLinkParams(Integer[] ids) throws EmptyException, PresetException, ParameterException {
             return Impl_ContextEditablePreset.this.getLinkParams(link, ids);
         }
 
@@ -1007,16 +1058,27 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
             return link;
         }
 
-        public ZCommand[] getZCommands() {
-            return cmdProviderHelper.getCommandObjects(this);
+        public ZCommand[] getZCommands(Class markerClass) {
+            return EditableLink.cmdProviderHelper.getCommandObjects(markerClass, this);
+        }
+
+        public Class[] getZCommandMarkers() {
+            return EditableLink.cmdProviderHelper.getSupportedMarkers();
         }
 
         class Impl_LinkEditableParameterModel extends AbstractPresetEditableParameterModel {
             private Integer[] id;
+            private volatile Integer value;
 
             public Impl_LinkEditableParameterModel(GeneralParameterDescriptor pd) {
                 super(pd);
                 id = new Integer[]{pd.getId()};
+                addListener(pla);
+            }
+
+            private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+                ois.defaultReadObject();
+                Impl_ContextEditablePreset.this.addListener(pla);
             }
 
             private Integer getPreset() {
@@ -1027,42 +1089,87 @@ class Impl_ContextEditablePreset extends Impl_ContextBasicEditablePreset impleme
                 return link;
             }
 
-            public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+            public void setValue(Integer value) throws ParameterException {
                 try {
-                    setLinksParam(id[0], value);
-                } catch (NoSuchPresetException e) {
-                    throw new ParameterUnavailableException();
-                } catch (PresetEmptyException e) {
-                    throw new ParameterUnavailableException();
-                } catch (NoSuchLinkException e) {
-                    throw new ParameterUnavailableException();
-                } catch (IllegalParameterIdException e) {
-                    throw new ParameterUnavailableException();
+                    this.value = null;
+                    setLinkParam(id[0], value);
+                } catch (Exception e) {
+                    throw new ParameterUnavailableException(id[0]);
+                }
+            }
+
+            public void offsetValue(Integer offset) throws ParameterException {
+                try {
+                    this.value = null;
+                    offsetLinkParam(id[0], offset);
+                } catch (Exception e) {
+                    throw new ParameterUnavailableException(id[0]);
+                }
+            }
+
+            public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                try {
+                    this.value = null;
+                    offsetLinkParam(id[0], offsetAsFOR);
+                } catch (Exception e) {
+                    throw new ParameterUnavailableException(id[0]);
                 }
             }
 
             public Integer getValue() throws ParameterUnavailableException {
+                if (value == null)
+                    retrieveValue();
+                return value;
+            }
+
+            private void retrieveValue() throws ParameterUnavailableException {
                 try {
-                    return getLinkParams(id)[0];
+                    value = getLinkParams(id)[0];
                 } catch (Exception e) {
-                    throw new ParameterUnavailableException();
+                    throw new ParameterUnavailableException(id[0]);
                 }
             }
+
+            protected PresetListenerAdapter pla = new PresetListenerAdapter() {
+                public void presetRefreshed(PresetInitializeEvent ev) {
+                    value = null;
+                    //  Impl_EditableLink.Impl_LinkEditableParameterModel.this.fireChanged();
+                }
+
+                public void linkChanged(LinkChangeEvent ev) {
+                    if (ev.getLink().equals(link)) {
+                        if (ev.containsId(id[0])) {
+                            value = null;
+                            Impl_EditableLink.Impl_LinkEditableParameterModel.this.fireChanged();
+                        }
+                    }
+                }
+            };
 
             public String getToolTipText() {
                 if (tipShowingOwner)
                     try {
                         return "Link " + (link.intValue() + 1) + " [" + pd.toString() + " = " + getValueString() + " ]";
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         return "Link " + (link.intValue() + 1);
                     }
                 return super.getToolTipText();
             }
+
+            public void zDispose() {
+                super.zDispose();
+                removeListener(pla);
+            }
         }
     };
 
-    public ZCommand[] getZCommands() {
-        return ZUtilities.concatZCommands(super.getZCommands(), cmdProviderHelper.getCommandObjects(this));
+    public ZCommand[] getZCommands(Class markerClass) {
+        return ContextEditablePreset.cmdProviderHelper.getCommandObjects(markerClass, this);
+    }
+
+    // most capable/super first
+    public Class[] getZCommandMarkers() {
+        return ContextEditablePreset.cmdProviderHelper.getSupportedMarkers();
     }
 }
 

@@ -1,6 +1,11 @@
 package com.pcmsolutions.system;
 
+import com.pcmsolutions.gui.UserMessaging;
+
 import javax.swing.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * Created by IntelliJ IDEA.
@@ -9,95 +14,40 @@ import javax.swing.*;
  * Time: 06:46:42
  * To change this template use Options | File Templates.
  */
-public abstract class AbstractZCommand implements ZCommand {
-    protected String presString;
-    protected String descString;
-    protected int numArgs;
-    protected String[] argPresStrings;
-    protected String[] argDescStrings;
-    protected Class tc;
-    protected Object target;
-    protected int numModes = 1;
+public abstract class AbstractZCommand <C> implements ZCommand {
+    private List<C> targets = null;
 
-    public AbstractZCommand(Class tc) {
-        this.tc = tc;
+    public boolean isSortable() {
+        return true;
     }
 
-    public AbstractZCommand(Class tc, String presString, String descString, String[] argPresStrings, String[] argDescStrings) {
-        this.tc = tc;
-        init(presString, descString, argPresStrings, argDescStrings);
+    public final boolean isTargeted() {
+        return targets != null;
     }
 
-    protected void init(String presString, String descString, String[] argPresStrings, String[] argDescStrings) {
-        this.argPresStrings = argPresStrings;
-        if (this.argPresStrings == null)
-            this.argPresStrings = new String[0];
-
-        this.argDescStrings = argDescStrings;
-        if (this.argDescStrings == null)
-            this.argDescStrings = new String[0];
-
-        if (this.argDescStrings.length != this.argPresStrings.length)
-            throw new IllegalArgumentException();
-
-        this.descString = descString;
-        this.numArgs = this.argPresStrings.length;
-        this.presString = presString;
-    }
+    public abstract String getPresentationCategory();
 
     public int getMnemonic() {
         return 0;
     }
 
-    public boolean isSuitableAsLaunchButton() {
+    public boolean isSuitableAsButton() {
         return false;
     }
 
-    /*  protected void verifyMode(int index) {
-          if (index < 0 || index > numModes - 1)
-              throw new IllegalArgumentException("Illegal mode for ZCommand");
-      }*/
-
-    public String getPresentationString() {
-        return presString;
+    public boolean isSuitableInToolbar() {
+        return true;
     }
 
-    public String getDescriptiveString() {
-        return descString;
+    public boolean overrides(ZCommand cmd) {
+        return false;
     }
 
-    public int getNumberOfArguments()              // arguments are all strings
-    {
-        return numArgs;
-    }
+    public abstract String getPresentationString();
 
-    public JComponent getComponentForArgument(int index) throws IllegalArgumentException  // exception for index out of range
-    {
-        return null;
-    }
-
-    public String[] getArgumentPresentationStrings() {
-        String[] out = new String[numArgs];
-        System.arraycopy(argPresStrings, 0, out, 0, numArgs);
-        return out;
-    }
-
-    public String[] getArgumentDescriptiveStrings() {
-        String[] out = new String[numArgs];
-        System.arraycopy(argDescStrings, 0, out, 0, numArgs);
-        return out;
-    }
-
-    public String getSummaryString(Object[] arguments) throws IllegalArgumentException {
-        return " ";
-    }
+    public abstract String getDescriptiveString();
 
     public Icon getIcon() {
-        return null;
-    }
-
-    // if returns null no verification of command required
-    public String getVerificationString() {
         return null;
     }
 
@@ -109,15 +59,84 @@ public abstract class AbstractZCommand implements ZCommand {
         return false;
     }
 
-    public abstract void execute(Object invoker, Object[] arguments) throws IllegalArgumentException, CommandFailedException;  // IllegalArgumentException thrown for insufficient number of arguments
+    public final void execute() throws CommandFailedException, ZCommandTargetsNotSpecifiedException {
+        List<C> targets = getTargets();
+        Iterator<C> i = targets.iterator();
+        int curr = 0;
+        try {
+            while (i.hasNext()) {
+                if (!handleTarget(i.next(), targets.size(), curr++))
+                    break;
+            }
+        } catch (Exception e) {
+            throw new CommandFailedException(e.getMessage());
+        }
+    }
 
-    public void setTarget(Object t) {
-        if (t == null)
-            throw new IllegalArgumentException("null target");
+    protected abstract boolean handleTarget(final C target, final int total, final int curr) throws Exception;
 
-        if (!tc.isInstance(t))
-            throw new IllegalArgumentException("Invalid type for ZCommand target");
-        this.target = t;
+    public int getMinNumTargets() {
+        return 1;
+    }
+
+    public int getMaxNumTargets() {
+        return Integer.MAX_VALUE;
+    }
+
+    public final List<C> getTargets() throws ZCommandTargetsNotSpecifiedException {
+        if (targets == null)
+            throw new ZCommandTargetsNotSpecifiedException();
+        ArrayList<C> clone = new ArrayList<C>();
+        clone.addAll(targets);
+        return clone;
+    }
+
+    public final int numTargets() {
+        return targets.size();
+    }
+
+    public final void setTargets(Object target) throws IllegalArgumentException, ZCommandTargetsNotSuitableException {
+        setTargets(new Object[]{target});
+    }
+
+    public final void setTargets(Object[] targets) throws ZCommandTargetsNotSuitableException {
+        this.targets = null;
+        if (targets == null || targets.length == 0)
+            throw new ZCommandTargetsNotSuitableException("Null targets for ZCommand");
+
+        int st = targets.length;
+
+        if (st < getMinNumTargets())
+            throw new ZCommandTargetsNotSuitableException("Insufficient number of targets");
+
+        if (st > getMaxNumTargets())
+            throw new ZCommandTargetsNotSuitableException("Too many targets");
+
+        ArrayList<C> targetList = new ArrayList<C>();
+        for (int n = 0; n < st; n++) {
+            try {
+                targetList.add((C) targets[n]);
+            } catch (Exception e) {
+                e.printStackTrace();
+                throw new ZCommandTargetsNotSuitableException("Specified target(s) is incompatible type or is null");
+            }
+        }
+        this.targets = targetList;
+        try {
+            acceptTargets();
+        } catch (ZCommandTargetsNotSpecifiedException e) {
+            SystemErrors.internal(e);
+            throw new ZCommandTargetsNotSuitableException();
+        }
+    }
+
+    protected void acceptTargets() throws ZCommandTargetsNotSuitableException, ZCommandTargetsNotSpecifiedException {
+    }
+
+    protected final List<C> getTargetObjects() throws ZCommandTargetsNotSpecifiedException {
+        if (targets == null)
+            throw new ZCommandTargetsNotSpecifiedException();
+        return targets;
     }
 
     public int compareTo(Object o) {
@@ -130,13 +149,13 @@ public abstract class AbstractZCommand implements ZCommand {
     public String toString() {
         String mp = getMenuPathString();
         if (mp == null || mp.equals(""))
-            return (presString == null ? "" : presString);
+            return (getPresentationString() == null ? "" : getPresentationString());
 
         return getMenuPathString();
     }
 
-    /*  public static String getComparativeDescription(){
-          return "";
-      }*/
+    protected static void handleZCommandFailed(Exception e) {
+        UserMessaging.showCommandFailed(e.getMessage());
+    }
 }
 

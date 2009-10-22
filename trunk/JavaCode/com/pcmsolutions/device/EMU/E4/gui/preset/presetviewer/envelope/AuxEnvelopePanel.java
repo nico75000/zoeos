@@ -1,14 +1,16 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope;
 
+import com.pcmsolutions.device.EMU.E4.DevicePreferences;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
-import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.system.IntPool;
 
-import javax.swing.event.ChangeListener;
-import javax.swing.event.ChangeEvent;
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.event.ActionEvent;
 
 
@@ -28,8 +30,8 @@ public class AuxEnvelopePanel extends VoiceEnvelopePanel {
         }
     };
 
-    public AuxEnvelopePanel init(ReadablePreset.ReadableVoice voice) throws IllegalParameterIdException {
-        super.init(voice, ParameterCategories.VOICE_AUX_ENVELOPE, IntPool.get(117), "Aux Envelope", toggleAction);
+    public AuxEnvelopePanel init(ReadablePreset.ReadableVoice voice, TableExclusiveSelectionContext tsc) throws ParameterException {
+        super.init(voice, tsc,ParameterCategories.VOICE_AUX_ENVELOPE, IntPool.get(117), "Aux Envelope", toggleAction);
         DevicePreferences.ZPREF_fillAuxEnvelopes.addChangeListener(cl);
         DevicePreferences.ZPREF_auxEnvelopeMode.addChangeListener(cl);
         getEnvelope().addMouseListener(new RatesEnvelopeMouseListener(getEnvelope(), DevicePreferences.ZPREF_fillAuxEnvelopes, DevicePreferences.ZPREF_auxEnvelopeMode));

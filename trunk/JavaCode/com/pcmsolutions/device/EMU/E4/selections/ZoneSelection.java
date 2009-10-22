@@ -2,6 +2,8 @@ package com.pcmsolutions.device.EMU.E4.selections;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 
 import java.util.Arrays;
 
@@ -47,13 +49,9 @@ public class ZoneSelection extends AbstractE4Selection {
                 try {
                     zones[i] = readableZones[i].getIsolated();
                     return zones[i];
-                } catch (NoSuchPresetException e) {
+                } catch (EmptyException e) {
                     e.printStackTrace();
-                } catch (PresetEmptyException e) {
-                    e.printStackTrace();
-                } catch (NoSuchVoiceException e) {
-                    e.printStackTrace();
-                } catch (NoSuchZoneException e) {
+                } catch (PresetException e) {
                     e.printStackTrace();
                 }
         }

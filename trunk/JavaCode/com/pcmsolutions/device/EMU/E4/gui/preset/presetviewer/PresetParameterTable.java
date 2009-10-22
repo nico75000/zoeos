@@ -4,15 +4,17 @@ import com.pcmsolutions.device.EMU.E4.gui.parameter.SingleColumnParameterModelTa
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTable;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
-import com.pcmsolutions.device.EMU.E4.preset.NoSuchPresetException;
-import com.pcmsolutions.device.EMU.E4.preset.PresetEmptyException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
 import com.pcmsolutions.device.EMU.E4.selections.PresetParameterSelection;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.system.ZDisposable;
 
 import javax.swing.*;
+import java.awt.*;
 import java.util.ArrayList;
 
 public class PresetParameterTable extends AbstractRowHeaderedAndSectionedTable implements ZDisposable {
@@ -20,28 +22,28 @@ public class PresetParameterTable extends AbstractRowHeaderedAndSectionedTable i
     protected String title;
     protected String category;
 
-    public PresetParameterTable(ReadablePreset p, String category, ReadableParameterModel[] parameterModels, String title) throws ZDeviceNotRunningException {
+    public PresetParameterTable(ReadablePreset p, String category, ReadableParameterModel[] parameterModels, String title)  {
         this(p, category, new SingleColumnParameterModelTableModel(parameterModels), title);
     }
 
-    public PresetParameterTable(ReadablePreset p, String category, SingleColumnParameterModelTableModel tm, String title) throws ZDeviceNotRunningException {
+    public PresetParameterTable(ReadablePreset p, String category, SingleColumnParameterModelTableModel tm, String title)  {
         super(tm, null, null, /*new RowHeaderTableCellRenderer(UIColors.getVoiceOverViewTableRowHeaderSectionBG(), UIColors.getVoiceOverViewTableRowHeaderSectionFG()),*/ title + " >");
         this.preset = p;
         this.title = title;
         setDragEnabled(true);
         this.category = category;
         //this.setTransferHandler(mmth);
-        this.setHidingSelectionOnFocusLost(true);
+      //  this.setHidingSelectionOnFocusLost(true);
     }
 
     public String getCategory() {
         return category;
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
+    protected Component[] getCustomMenuItems() {
         try {
-            return new JMenuItem[]{ZCommandInvocationHelper.getMenu(new Object[]{preset}, null, null, preset.getPresetDisplayName())};
-        } catch (NoSuchPresetException e) {
+            return new JMenuItem[]{ZCommandFactory.getMenu(new Object[]{preset}, preset.getDisplayName())};
+        } catch (PresetException e) {
             e.printStackTrace();
         }
         return null;
@@ -65,13 +67,11 @@ public class PresetParameterTable extends AbstractRowHeaderedAndSectionedTable i
         ids.toArray(arrIds);
         try {
             return new PresetParameterSelection(preset, arrIds, PresetParameterSelection.convertPresetCategoryString(category));
-        } catch (ZDeviceNotRunningException e) {
+        } catch (EmptyException e) {
             e.printStackTrace();
-        } catch (IllegalParameterIdException e) {
+        } catch (ParameterException e) {
             e.printStackTrace();
-        } catch (PresetEmptyException e) {
-            e.printStackTrace();
-        } catch (NoSuchPresetException e) {
+        } catch (PresetException e) {
             e.printStackTrace();
         }
         return null;

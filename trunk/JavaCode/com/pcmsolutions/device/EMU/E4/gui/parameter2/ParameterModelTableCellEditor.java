@@ -1,11 +1,9 @@
 package com.pcmsolutions.device.EMU.E4.gui.parameter2;
 
-import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
-import com.pcmsolutions.device.EMU.E4.parameter.GeneralParameterDescriptor;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterUnavailableException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
+import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.gui.MouseWheelSpinner;
 import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.system.threads.Impl_ZThread;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -29,7 +27,21 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
     private EditableParameterModel currPM;
     private JSpinner spinner;
     private JComboBox comboBox;
-    private SpinnerListModel spinnerModel = new SpinnerListModel();
+    private SpinnerListModel spinnerModel = new SpinnerListModel() {
+        public void setValue(Object elt) {
+            try {
+                super.setValue(elt);
+            } catch (IllegalArgumentException e) {
+                Integer nearestIndex;
+                try {
+                    nearestIndex = currPM.getParameterDescriptor().getValueForString(elt.toString());
+                    super.setValue( getList().get(nearestIndex.intValue() - currPM.getParameterDescriptor().getMinValue().intValue()));
+                } catch (ParameterValueOutOfRangeException e1) {
+                    throw e;
+                }
+            }
+        }
+    };
     private boolean spinnerIsReady;
     private boolean comboIsReady;
 
@@ -66,17 +78,17 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
             if (currPM.getParameterDescriptor().shouldUseSpinner()) {
                 spinnerIsReady = false;
                 if (currPM.getShowUnits()) {
-                    spinnerModel.setList(currPM.getParameterDescriptor().getStringForValueList());
+                    spinnerModel.setList(currPM.getParameterDescriptor().getStringList());
                     try {
                         spinnerModel.setValue(currPM.getValueString());
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         e.printStackTrace();
                     }
                 } else {
-                    spinnerModel.setList(currPM.getParameterDescriptor().getUnitlessStringForValueList());
+                    spinnerModel.setList(currPM.getParameterDescriptor().getUnitlessStringList());
                     try {
                         spinnerModel.setValue(currPM.getValueUnitlessString());
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         e.printStackTrace();
                     }
                 }
@@ -86,17 +98,17 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
                 comboIsReady = false;
                 DefaultComboBoxModel cm;
                 if (currPM.getShowUnits()) {
-                    cm = new DefaultComboBoxModel(currPM.getParameterDescriptor().getStringForValueList().toArray());
+                    cm = new DefaultComboBoxModel(currPM.getParameterDescriptor().getStringList().toArray());
                     try {
                         cm.setSelectedItem(currPM.getValueString());
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         e.printStackTrace();
                     }
                 } else {
-                    cm = new DefaultComboBoxModel(currPM.getParameterDescriptor().getUnitlessStringForValueList().toArray());
+                    cm = new DefaultComboBoxModel(currPM.getParameterDescriptor().getUnitlessStringList().toArray());
                     try {
                         cm.setSelectedItem(currPM.getValueUnitlessString());
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                         e.printStackTrace();
                     }
                 }
@@ -116,19 +128,23 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
     public static boolean tryToggleCellAt(JTable table, int row, int column) {
         Object o = table.getValueAt(row, column);
         if (o instanceof EditableParameterModel) {
-            EditableParameterModel pm = ((EditableParameterModel) o);
-            GeneralParameterDescriptor pd;
+            final EditableParameterModel pm = ((EditableParameterModel) o);
+            final GeneralParameterDescriptor pd;
             pd = pm.getParameterDescriptor();
-            if (pd.getMinValue().intValue() == pd.getMaxValue().intValue() - 1)
-                try {
-                    if (pm.getValue().equals(pd.getMinValue()))
-                        pm.setValue(pd.getMaxValue());
-                    else
-                        pm.setValue(pd.getMinValue());
-                    return true;
-                } catch (ParameterUnavailableException e) {
-                } catch (ParameterValueOutOfRangeException e) {
-                }
+            if (pd.getMinValue().intValue() == pd.getMaxValue().intValue() - 1) {
+              //  Impl_ZThread.parameterTQ.postTask(new Impl_ZThread.Task() {
+              //      public void doTask() {
+                        try {
+                            if (pm.getValue().equals(pd.getMinValue()))
+                                pm.setValue(pd.getMaxValue());
+                            else
+                                pm.setValue(pd.getMinValue());
+                        } catch (ParameterException e) {
+                        }
+             //       }
+             //   });
+                return true;
+            }
         }
         return false;
     }
@@ -164,32 +180,40 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
 
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == comboBox && comboIsReady) {
-            try {
-                if (currPM.getShowUnits() == true)
-                    currPM.setValueString(comboBox.getSelectedItem().toString());
-                else
-                    currPM.setValueUnitlessString(comboBox.getSelectedItem().toString());
-            } catch (ParameterUnavailableException e1) {
-                e1.printStackTrace();
-            } catch (ParameterValueOutOfRangeException e1) {
-                e1.printStackTrace();
-            }
+            final boolean showUnits = currPM.getShowUnits();
+            final String val = comboBox.getSelectedItem().toString();
+          //  Impl_ZThread.parameterTQ.postTask(new Impl_ZThread.Task() {
+           //     public void doTask() {
+                    try {
+                        if (showUnits)
+                            currPM.setValueString(val);
+                        else
+                            currPM.setValueUnitlessString(val);
+                    } catch (ParameterException e1) {
+                        e1.printStackTrace();
+                    }
+           //     }
+          //  });
         }
     }
 
     public void stateChanged(ChangeEvent e) {
         Object src = e.getSource();
         if (src == spinner && spinnerIsReady) {
-            try {
-                if (currPM.getShowUnits() == true)
-                    currPM.setValueString(spinner.getValue().toString());
-                else
-                    currPM.setValueUnitlessString(spinner.getValue().toString());
-            } catch (ParameterUnavailableException e1) {
-                e1.printStackTrace();
-            } catch (ParameterValueOutOfRangeException e1) {
-                e1.printStackTrace();
-            }
+            final boolean showUnits = currPM.getShowUnits();
+            final String val = spinner.getValue().toString();
+          //  Impl_ZThread.parameterTQ.postTask(new Impl_ZThread.Task() {
+            //    public void doTask() {
+                    try {
+                        if (showUnits)
+                            currPM.setValueString(val);
+                        else
+                            currPM.setValueUnitlessString(val);
+                    } catch (ParameterException e1) {
+                        e1.printStackTrace();
+                    }
+           //     }
+          //  });
         } else if (src instanceof EditableParameterModel) {
             if (currentEditor == spinner)
                 try {
@@ -198,7 +222,7 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
                         spinner.setValue(((EditableParameterModel) src).getValueString());
                     else
                         spinner.setValue(((EditableParameterModel) src).getValueUnitlessString());
-                } catch (ParameterUnavailableException e1) {
+                } catch (ParameterException e1) {
                     e1.printStackTrace();
                 } finally {
                     spinnerIsReady = true;
@@ -210,7 +234,7 @@ public class ParameterModelTableCellEditor extends AbstractCellEditor implements
                         comboBox.setSelectedItem(((EditableParameterModel) src).getValueUnitlessString());
                     else
                         comboBox.setSelectedItem(((EditableParameterModel) src).getValueString());
-                } catch (ParameterUnavailableException e1) {
+                } catch (ParameterException e1) {
                     e1.printStackTrace();
                 } finally {
                     comboIsReady = true;

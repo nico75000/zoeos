@@ -46,6 +46,8 @@ public class VoiceSwitchIcon implements Icon {
         Graphics2D g2d = ((Graphics2D) graphics);
         //Color halfRed = new Color(Color.red.getRed(), Color.red.getGreen(), Color.red.getBlue(), 127);
         //g2d.setColor(halfRed);
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
         GeneralPath p = new GeneralPath(GeneralPath.WIND_EVEN_ODD);
         int x1, x2, x3;
         int y1, y2, y3;
@@ -59,7 +61,6 @@ public class VoiceSwitchIcon implements Icon {
                 y3 = y + h;
                 break;
             case CONTRACTED:
-            case DISABLED:
                 x1 = x;
                 y1 = y;
                 x2 = x;
@@ -67,6 +68,7 @@ public class VoiceSwitchIcon implements Icon {
                 x3 = x = w;
                 y3 = y + h / 2;
                 break;
+            case DISABLED:
             default:
                 return;
         }
@@ -78,5 +80,6 @@ public class VoiceSwitchIcon implements Icon {
         GradientPaint gp = new GradientPaint(0, 0, c1, w, h, c2, false);
         g2d.setPaint(gp);
         g2d.fill(p);
+        g2d.setRenderingHints(hints);
     }
 }

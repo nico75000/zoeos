@@ -32,123 +32,136 @@ public class WinTableCellRenderer extends AbstractTableCellRenderer {
     private int winPos;
     private WinValueProfile wvp;
     private boolean isRectangle;
+
     public WinTableCellRenderer(int winPos) {
         this.winPos = winPos;
     }
 
     private static int graphUnderTextAlpha = 200;
 
+  // static int count=0;
     protected void paintComponent(Graphics g) {
+       // if ( true)
+         //   return;
+        //System.out.println("Painting win " + count++);
         Graphics2D g2d = ((Graphics2D) g);
-        int w = getWidth();
-        int h = getHeight();
-        Color e_bg = getBackground();
-        Color bg = UIColors.applyAlpha(e_bg, UIColors.tableAlpha);
-        Color sbg = e_bg;
-        Color e_fg = getForeground();
-        Color e_color = g2d.getColor();
-        Paint e_paint = g2d.getPaint();
-        Insets ins = this.getInsets();
+        //RenderingHints hints = g2d.getRenderingHints();
+        //g2d.setRenderingHints(UIColors.tableRH);
         try {
-            if (wvp != null) {
-                int mode;
-                int type = wvp.getType();
-                switch (type) {
-                    case WinValueProfile.KEY_WIN:
-                        mode = WinValueProfile.ZPREF_keyWinDisplayMode.getValue();
-                        break;
-                    case WinValueProfile.VEL_WIN:
-                        mode = WinValueProfile.ZPREF_velWinDisplayMode.getValue();
-                        break;
-                    case WinValueProfile.RT_WIN:
-                        mode = WinValueProfile.ZPREF_rtWinDisplayMode.getValue();
-                        break;
-                    default:
-                        return;
+            int w = getWidth();
+            int h = getHeight();
+            Color e_bg = getBackground();
+            Color bg = UIColors.applyAlpha(e_bg, UIColors.tableAlpha);
+            Color sbg = e_bg;
+            Color e_fg = getForeground();
+            Color e_color = g2d.getColor();
+            Paint e_paint = g2d.getPaint();
+            Insets ins = this.getInsets();
+            //e_bg= UIColors.applyAlpha(Color.lightGray, 200);
+            try {
+                if (wvp != null) {
+                    int mode;
+                    int type = wvp.getType();
+                    switch (type) {
+                        case WinValueProfile.KEY_WIN:
+                            mode = WinValueProfile.ZPREF_keyWinDisplayMode.getValue();
+                            break;
+                        case WinValueProfile.VEL_WIN:
+                            mode = WinValueProfile.ZPREF_velWinDisplayMode.getValue();
+                            break;
+                        case WinValueProfile.RT_WIN:
+                            mode = WinValueProfile.ZPREF_rtWinDisplayMode.getValue();
+                            break;
+                        default:
+                            return;
+                    }
+                    switch (mode) {
+                        case WinValueProfile.MODE_DISPLAY_TEXT_AND_GRAPH:
+                            drawGraph(g2d, UIColors.applyAlpha(e_bg, graphUnderTextAlpha), UIColors.applyAlpha(e_bg, graphUnderTextAlpha), e_bg);
+                            if (isDropCell) {
+                                GradientPaint gp;
+                                gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
+                                g2d.setPaint(gp);
+                                g2d.fillRoundRect(0, 0, w, h, 10, 10);
+                                setBorder(bdrNormal);
+                                setOpaque(true);
+                            } else if (selected) {
+                                setBorder(bdrSel);
+                                setOpaque(true);
+                            } else {
+                                setBorder(bdrNormal);
+                                setOpaque(true);
+                            }
+                            setBackground(bg);
+                            super.paintComponent(g);
+                            return;
+                        case WinValueProfile.MODE_DISPLAY_GRAPH:
+                            if (isDropCell) {
+                                drawGraph(g2d, e_bg, e_bg, e_bg);
+                                GradientPaint gp;
+                                gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
+                                g2d.setPaint(gp);
+                                g2d.fillRoundRect(0, 0, w, h, 10, 10);
+                                setBorder(bdrNormal);
+                                //setOpaque(true);
+                                setForeground(bg);
+                                setBackground(bg);
+                                paintBackground(g2d, bg);
+                                //super.paintComponent(g);
+                            } else if (selected) {
+                                setBorder(bdrSel);
+                                ///setOpaque(true);
+                                setForeground(bg);
+                                setBackground(bg);
+                                //super.paintComponent(g);
+                                paintBackground(g2d, bg);
+                                drawGraph(g2d, e_bg, e_bg, e_bg);
+                            } else {
+                                setBorder(bdrNormal);
+                                //setOpaque(true);
+                                setForeground(bg);
+                                setBackground(bg);
+                                drawGraph(g2d, e_bg, e_bg, e_bg);
+                                drawGraph(g2d, e_bg, e_bg, e_bg);
+                                paintBackground(g2d, bg);
+                            }
+                            return;
+                        case WinValueProfile.MODE_DISPLAY_TEXT:
+                        default:
+                            // drop out to default code below
+                    }
                 }
-                switch (mode) {
-                    case WinValueProfile.MODE_DISPLAY_TEXT_AND_GRAPH:
-                        drawGraph(g2d, UIColors.applyAlpha(e_bg, graphUnderTextAlpha), UIColors.applyAlpha(e_bg, graphUnderTextAlpha), e_bg);
-                        if (isDropCell) {
-                            GradientPaint gp;
-                            gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
-                            g2d.setPaint(gp);
-                            g2d.fillRoundRect(0, 0, w, h, 10, 10);
-                            setBorder(bdrNormal);
-                            setOpaque(true);
-                        } else if (selected) {
-                            setBorder(bdrSel);
-                            setOpaque(true);
-                        } else {
-                            setBorder(bdrNormal);
-                            setOpaque(true);
-                        }
-                        setBackground(bg);
-                        super.paintComponent(g);
-                        return;
-                    case WinValueProfile.MODE_DISPLAY_GRAPH:
-                        if (isDropCell) {
-                            drawGraph(g2d, e_bg, e_bg, e_bg);
-                            GradientPaint gp;
-                            gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
-                            g2d.setPaint(gp);
-                            g2d.fillRoundRect(0, 0, w, h, 10, 10);
-                            setBorder(bdrNormal);
-                            //setOpaque(true);
-                            setForeground(bg);
-                            setBackground(bg);
-                            paintBackground(g2d, bg);
-                            //super.paintComponent(g);
-                        } else if (selected) {
-                            setBorder(bdrSel);
-                            ///setOpaque(true);
-                            setForeground(bg);
-                            setBackground(bg);
-                            //super.paintComponent(g);
-                            paintBackground(g2d, bg);
-                            drawGraph(g2d, e_bg, e_bg, e_bg);
-                        } else {
-                            setBorder(bdrNormal);
-                            //setOpaque(true);
-                            setForeground(bg);
-                            setBackground(bg);
-                            drawGraph(g2d, e_bg, e_bg, e_bg);
-                            paintBackground(g2d, bg);
-                        }
-                        return;
-                    case WinValueProfile.MODE_DISPLAY_TEXT:
-                    default:
-                        // drop out to default code below
+                if (isDropCell) {
+                    GradientPaint gp;
+                    gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
+                    g2d.setPaint(gp);
+                    g2d.fillRoundRect(0, 0, w, h, 10, 10);
+                    setBorder(bdrNormal);
+                    setBackground(bg);
+                    setOpaque(true);
+                    super.paintComponent(g);
+                } else if (selected) {
+                    GradientPaint gp;
+                    gp = new GradientPaint(0, h * UIColors.tableSelectionGradientFactor, bg, 0, 0, sbg, false);
+                    g2d.setPaint(gp);
+                    g2d.fillRect(0, 0, w, h);
+                    setBorder(bdrSel);
+                    setOpaque(false);
+                    super.paintComponent(g);
+                } else {
+                    setBorder(bdrNormal);
+                    setBackground(bg);
+                    setOpaque(true);
+                    super.paintComponent(g);
                 }
-            }
-            if (isDropCell) {
-                GradientPaint gp;
-                gp = new GradientPaint(0, h * UIColors.tableDropTargetGradientFactor, UIColors.getDropColor(), 0, 0, Color.white, false);
-                g2d.setPaint(gp);
-                g2d.fillRoundRect(0, 0, w, h, 10, 10);
-                setBorder(bdrNormal);
-                setBackground(bg);
-                setOpaque(true);
-                super.paintComponent(g);
-            } else if (selected) {
-                GradientPaint gp;
-                gp = new GradientPaint(0, h * UIColors.tableSelectionGradientFactor, bg, 0, 0, sbg, false);
-                g2d.setPaint(gp);
-                g2d.fillRect(0, 0, w, h);
-                setBorder(bdrSel);
-                setOpaque(false);
-                super.paintComponent(g);
-            } else {
-                setBorder(bdrNormal);
-                setBackground(bg);
-                setOpaque(true);
-                super.paintComponent(g);
+            } finally {
+                g2d.setPaint(e_paint);
+                g2d.setColor(e_color);
+                setBackground(e_bg);
+                setForeground(e_fg);
             }
         } finally {
-            g2d.setPaint(e_paint);
-            g2d.setColor(e_color);
-            setBackground(e_bg);
-            setForeground(e_fg);
+           // g2d.setRenderingHints(hints);
         }
     }
 
@@ -328,10 +341,16 @@ public class WinTableCellRenderer extends AbstractTableCellRenderer {
 
     protected void setupLook(JTable table, Object value, boolean isSelected, int row, int column) {
         super.setupLook(table, value, isSelected, row, column);
+        /*
+        if (isSelected)
+        bdrSel = new BevelBorder(BevelBorder.RAISED, getBackground(), getForeground());
+        else
+            bdrSel = null;
+            */
         RowHeaderedAndSectionedTable t = (RowHeaderedAndSectionedTable) table;
         ColumnData[] cd = t.getColumnData();
         SectionData[] sd = t.getSectionData();
-        setBackground(sd[cd[column].sectionIndex].sectionBG);
+        setBackground(sd[cd[column].sectionIndex].sectionHeaderBG);
         setForeground(sd[cd[column].sectionIndex].sectionFG);
 
         if (table instanceof WinValueProfileProvider)

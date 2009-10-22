@@ -26,7 +26,7 @@ public class LicenseManagerTableModel extends AbstractRowHeaderedAndSectionedTab
         columnData[2] = new ColumnData("Load", 50, JLabel.LEFT, 0, String.class, null, null);
         columnData[3] = new ColumnData("Licensee", 180, JLabel.LEFT, 0, String.class, null, null);
         columnData[4] = new ColumnData("Key String", 200, JLabel.LEFT, 0, String.class, null, null);
-        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionFG(), 650, "")};
+        sectionData = new SectionData[]{new SectionData(UIColors.getTableFirstSectionBG(), UIColors.getTableFirstSectionHeaderBG(), UIColors.getTableFirstSectionFG(), 650, "")};
     }
 
     protected void doRefresh() {

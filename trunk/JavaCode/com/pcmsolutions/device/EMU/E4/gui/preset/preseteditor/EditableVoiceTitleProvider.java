@@ -1,15 +1,18 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor;
 
-import com.pcmsolutions.device.EMU.E4.events.PresetInitializeEvent;
-import com.pcmsolutions.device.EMU.E4.events.PresetNameChangeEvent;
-import com.pcmsolutions.device.EMU.E4.events.PresetRefreshEvent;
-import com.pcmsolutions.device.EMU.E4.events.VoiceChangeEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetNameChangeEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.PresetInitializeEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.VoiceChangeEvent;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.gui.preset.VoiceEditingIcon;
 import com.pcmsolutions.device.EMU.E4.gui.preset.icons.PresetIcon;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.VoiceTitleProvider;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
 import com.pcmsolutions.system.IntPool;
 import com.pcmsolutions.system.ZDisposable;
 
@@ -106,7 +109,7 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
                 if (prof == null) {
                     prof = new RunLengthEncoder.PresetVoiceUsageProfile(voices[i].getPreset(), (i == 0 ? false : true));
                     voiceData.put(preset, prof);
-                    voices[i].getPreset().addPresetListener(pla);
+                    voices[i].getPreset().addListener(pla);
                 }
                 prof.addVoice(voices[i].getVoiceNumber());
             }
@@ -122,7 +125,7 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
                     // should we not always pass true here to track name??
                     prof = new RunLengthEncoder.PresetVoiceUsageProfile(voices[i].getPreset(), (i == 0 ? false : true));
                     voiceData.put(preset, prof);
-                    voices[i].getPreset().addPresetListener(pla);
+                    voices[i].getPreset().addListener(pla);
                 }
                 prof.addVoice(voices[i].getVoiceNumber());
             }
@@ -157,17 +160,16 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
                             updateTitle();
                     }
                 };
-                voice.getPreset().addPresetListener(pla);
+                voice.getPreset().addListener(pla);
             }
 
             public String getGroupPrefixString() {
                 String vs = " (v" + (voice.getVoiceNumber().intValue() + 1);
                 try {
                     return voice.getVoiceParams(new Integer[]{IntPool.get(37)})[0].toString() + vs;
-                } catch (NoSuchPresetException e) {
-                } catch (PresetEmptyException e) {
-                } catch (IllegalParameterIdException e) {
-                } catch (NoSuchVoiceException e) {
+                } catch (EmptyException e) {
+                } catch (ParameterException e) {
+                } catch (PresetException e) {
                 }
                 return vs;
             }
@@ -201,15 +203,11 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
 
                     return "[" + voiceStr + "]";
 
-                } catch (NoSuchPresetException e) {
-                } catch (PresetEmptyException e) {
+                } catch (EmptyException e) {
                     return "";
-                } catch (NoSuchContextException e) {
-                    //e.printStackTrace();
-                } catch (NoSuchVoiceException e) {
-                    return "[invalid]";
+                } catch (PresetException e) {
+                    return "[...]";
                 }
-                return "Invalid";
             }
 
             // returns -1 for no more elements,  0 for single item run, or n for n item run
@@ -229,7 +227,7 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
             }
 
             public void zDispose() {
-                voice.getPreset().removePresetListener(pla);
+                voice.getPreset().removeListener(pla);
                 voice = null;
             }
         }
@@ -245,11 +243,7 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
                 this.trackName = trackName;
                 if (trackName) {
                     pla = new PresetListenerAdapter() {
-                        public void presetInitialized(PresetInitializeEvent ev) {
-                            updateTitle();
-                        }
-
-                        public void presetRefreshed(PresetRefreshEvent ev) {
+                        public void presetRefreshed(PresetInitializeEvent ev) {
                             updateTitle();
                         }
 
@@ -257,7 +251,7 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
                             updateTitle();
                         }
                     };
-                    preset.addPresetListener(pla);
+                    preset.addListener(pla);
                 }
             }
 
@@ -324,7 +318,7 @@ public class EditableVoiceTitleProvider extends VoiceTitleProvider implements Ti
 
             public void zDispose() {
                 if (trackName)
-                    preset.removePresetListener(pla);
+                    preset.removeListener(pla);
                 preset = null;
             }
         }

@@ -6,16 +6,14 @@ import com.pcmsolutions.device.EMU.E4.gui.preset.WinValueProfile;
 import com.pcmsolutions.device.EMU.E4.gui.preset.WinValueProfileProvider;
 import com.pcmsolutions.device.EMU.E4.gui.table.AbstractRowHeaderedAndSectionedTable;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
-import com.pcmsolutions.device.EMU.E4.parameter.ID;
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterUnavailableException;
-import com.pcmsolutions.device.EMU.E4.parameter.ReadableParameterModel;
+import com.pcmsolutions.device.EMU.E4.parameter.*;
 import com.pcmsolutions.device.EMU.E4.preset.*;
 import com.pcmsolutions.device.EMU.E4.selections.LinkParameterSelection;
 import com.pcmsolutions.device.EMU.E4.selections.LinkParameterSelectionCollection;
 import com.pcmsolutions.device.EMU.E4.selections.LinkSelection;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.gui.ZCommandFactory;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.util.ClassUtility;
 
@@ -32,8 +30,8 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
     protected static LinkTableTransferHandler ltth = new LinkTableTransferHandler();
     protected Action customAction;
 
-    public LinkTable(ReadablePreset p) throws ZDeviceNotRunningException {
-        this(new LinkTableModel(p, p.getDeviceContext().getDeviceParameterContext()));
+    public LinkTable(ReadablePreset p, int mode) throws DeviceException {
+        this(new LinkTableModel(p, p.getDeviceContext().getDeviceParameterContext(), mode));
     }
 
     public static interface LinkSelectionProvider {
@@ -59,10 +57,26 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
         public void zDispose() {
         }
 
+        public Object[] getSelObjects() {
+            int[] selRows = this.getSelectedRows();
+            int[] selCols = new int[]{0};  // only one column
+
+            if (selRows != null && selCols != null) {
+                int selRowCount = selRows.length;
+                int selColCount = selCols.length;
+                ArrayList selObjects = new ArrayList();
+                for (int n = 0; n < selRowCount; n++)
+                    for (int i = 0; i < selColCount; i++)
+                        selObjects.add(this.getValueAt(selRows[n], selCols[i]));
+                return selObjects.toArray();
+            }
+            return new Object[0];
+        }
+
         public LinkSelection getSelection() {
             int[] selRows = this.getSelectedRows();
             ReadablePreset.ReadableLink[] readLinks = new ReadablePreset.ReadableLink[selRows.length];
-            for (int i = 0,j = selRows.length; i < j; i++)
+            for (int i = 0, j = selRows.length; i < j; i++)
                 readLinks[i] = (ReadablePreset.ReadableLink) getValueAt(selRows[i], 0);
             return new LinkSelection(preset.getDeviceContext(), readLinks);
         }
@@ -73,7 +87,7 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
             public void zDispose() {
             }
 
-            protected JMenuItem[] getCustomMenuItems() {
+            protected Component[] getCustomMenuItems() {
                 return customRowHeaderMenuItems;
             }
 
@@ -87,19 +101,19 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
         return t;
     }
 
-    public LinkTable(LinkTableModel ltm) throws ZDeviceNotRunningException {
+    public LinkTable(LinkTableModel ltm) {
         super(ltm, null, null /*new RowHeaderTableCellRenderer(UIColors.getVoiceOverViewTableRowHeaderSectionBG(), UIColors.getVoiceOverViewTableRowHeaderSectionFG())*/, "Link >");
-        this.preset = ltm.getPreset().getMostCapableNonContextEditablePresetDowngrade();
+        this.preset = ltm.getPreset().getMostCapableNonContextEditablePreset();
         setDragEnabled(true);
         this.setTransferHandler(ltth);
         getRowHeader().setFocusable(true);
     }
 
     protected ReadablePreset convertPassThroughPreset(ReadablePreset preset) {
-        return preset.getMostCapableNonContextEditablePresetDowngrade();
+        return preset.getMostCapableNonContextEditablePreset();
     }
 
-    protected JMenuItem[] getCustomMenuItems() {
+    protected Component[] getCustomMenuItems() {
         JMenuItem smi = null;
         Object[] selObjs = this.getSelObjects();
         try {
@@ -114,26 +128,26 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
                         presets[si++] = convertPassThroughPreset(pc.getReadablePreset((Integer) i.next()));
                     String mstr;
                     if (presets.length == 1)
-                        mstr = presets[0].getPresetDisplayName();
+                        mstr = presets[0].getDisplayName();
                     else
                         mstr = "Selected presets";
-                    smi = ZCommandInvocationHelper.getMenu(presets, null, null, mstr);
+                    smi = ZCommandFactory.getMenu(presets, mstr);
                 }
             }
-        } catch (NoSuchPresetException e) {
+        } catch (DeviceException e) {
             e.printStackTrace();
-        } catch (ParameterUnavailableException e) {
+        } catch (ParameterException e) {
             e.printStackTrace();
-        }
+        } 
         try {
             ArrayList menuItems = new ArrayList();
-            menuItems.add(ZCommandInvocationHelper.getMenu(new Object[]{convertPassThroughPreset(preset)}, null/*UIColors.getCustomPopupFG()*/, null/*UIColors.getCustomPopupBG()*/, preset.getPresetDisplayName()));
+            menuItems.add(ZCommandFactory.getMenu(new Object[]{convertPassThroughPreset(preset)}, /*UIColors.getCustomPopupFG()*/ /*UIColors.getCustomPopupBG()*/ preset.getDisplayName()));
             if (smi != null)
                 menuItems.add(smi);
             if (customAction != null)
                 menuItems.add(new JMenuItem(customAction));
             return (JMenuItem[]) menuItems.toArray(new JMenuItem[menuItems.size()]);
-        } catch (NoSuchPresetException e) {
+        } catch (PresetException e) {
             e.printStackTrace();
         }
         return null;
@@ -143,13 +157,13 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
         return "LINKS";
     }
 
-    protected LinkParameterSelection getRowSelection(int row) throws ZDeviceNotRunningException, PresetEmptyException, IllegalParameterIdException, NoSuchLinkException, NoSuchPresetException {
+    protected LinkParameterSelection getRowSelection(int row) throws  ParameterException, PresetException, EmptyException{
 
         if (row >= 0 && row < getRowCount()) {
             int[] selCols = getSelectedColumns();
             Object val;
             ArrayList idList = new ArrayList();
-            for (int i = 0,j = selCols.length; i < j; i++) {
+            for (int i = 0, j = selCols.length; i < j; i++) {
                 val = getValueAt(row, selCols[i]);
                 idList.add(((ReadableParameterModel) val).getParameterDescriptor().getId());
             }
@@ -163,18 +177,16 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
         selRows = getSelectedRows();
 
         ArrayList sels = new ArrayList();
-        for (int r = 0,rl = selRows.length; r < rl; r++)
+        for (int r = 0, rl = selRows.length; r < rl; r++)
             try {
                 sels.add(getRowSelection(selRows[r]));
-            } catch (ZDeviceNotRunningException e) {
-                e.printStackTrace();
-            } catch (PresetEmptyException e) {
+            } catch (EmptyException e) {
                 e.printStackTrace();
             } catch (IllegalParameterIdException e) {
                 e.printStackTrace();
-            } catch (NoSuchLinkException e) {
+            } catch (ParameterException e) {
                 e.printStackTrace();
-            } catch (NoSuchPresetException e) {
+            } catch (PresetException e) {
                 e.printStackTrace();
             }
 
@@ -232,10 +244,9 @@ public class LinkTable extends AbstractRowHeaderedAndSectionedTable implements W
                     return f_type;
                 }
             };
-        } catch (NoSuchPresetException e) {
-        } catch (PresetEmptyException e) {
-        } catch (IllegalParameterIdException e) {
-        } catch (NoSuchLinkException e) {
+        } catch (EmptyException e) {
+        } catch (ParameterException e) {
+        } catch (PresetException e) {
         }
         return null;
     }

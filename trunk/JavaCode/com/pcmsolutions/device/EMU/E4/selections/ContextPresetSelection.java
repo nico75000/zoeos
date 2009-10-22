@@ -1,7 +1,10 @@
 package com.pcmsolutions.device.EMU.E4.selections;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
 import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
 
 import java.util.Arrays;
 
@@ -46,9 +49,9 @@ public class ContextPresetSelection extends AbstractE4Selection {
                 try {
                     presets[i] = readablePresets[i].getIsolated();
                     return presets[i];
-                } catch (NoSuchPresetException e) {
+                } catch (EmptyException e) {
                     e.printStackTrace();
-                } catch (PresetEmptyException e) {
+                } catch (PresetException e) {
                     e.printStackTrace();
                 }
         }
@@ -58,7 +61,9 @@ public class ContextPresetSelection extends AbstractE4Selection {
     public ReadablePreset[] getReadablePresets() {
         return (ReadablePreset[]) Arrays.asList(readablePresets).toArray(new ReadablePreset[readablePresets.length]);
     }
-
+   public Integer[] getPresetIndexes(){
+       return PresetContextMacros.extractPresetIndexes(readablePresets);
+   }
     protected void createIsolatedPresets() {
         if (presets == null) {
             presets = new IsolatedPreset[readablePresets.length];
@@ -68,9 +73,7 @@ public class ContextPresetSelection extends AbstractE4Selection {
             try {
                 if (presets[i] == null)
                     presets[i] = readablePresets[i].getIsolated();
-            } catch (NoSuchPresetException e) {
-                e.printStackTrace();
-            } catch (PresetEmptyException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }

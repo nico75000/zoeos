@@ -24,11 +24,11 @@ public class VoiceOverviewRowHeaderTableCellRenderer extends GeneralTableCellRen
         if (value instanceof VoiceOverviewTableModel.Voice.Zone) {
             setForeground(UIColors.getVoiceOverViewTableRowHeaderSectionZoneFG());
             setBackground(UIColors.getVoiceOverViewTableRowHeaderSectionZoneBG());
-            bdrSel = new BevelBorder(BevelBorder.LOWERED, UIColors.getVoiceOverViewTableRowHeaderSectionZoneBG(), UIColors.getVoiceOverViewTableRowHeaderSectionZoneFG());
+            bdrSel = new BevelBorder(BevelBorder.RAISED, UIColors.getVoiceOverViewTableRowHeaderSectionZoneBG(), UIColors.getVoiceOverViewTableRowHeaderSectionZoneFG());
         } else {
             setForeground(UIColors.getVoiceOverViewTableRowHeaderSectionVoiceFG());
             setBackground(UIColors.getVoiceOverViewTableRowHeaderSectionVoiceBG());
-            bdrSel = new BevelBorder(BevelBorder.LOWERED, UIColors.getVoiceOverViewTableRowHeaderSectionVoiceBG(), UIColors.getVoiceOverViewTableRowHeaderSectionVoiceFG());
+            bdrSel = new BevelBorder(BevelBorder.RAISED, UIColors.getVoiceOverViewTableRowHeaderSectionVoiceBG(), UIColors.getVoiceOverViewTableRowHeaderSectionVoiceFG());
         }
     }
 }

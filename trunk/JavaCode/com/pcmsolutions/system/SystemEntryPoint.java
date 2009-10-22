@@ -7,7 +7,8 @@ import java.io.Serializable;
  * Date: 19-Jan-2004
  * Time: 06:26:33
  */
-public interface SystemEntryPoint extends Serializable, Comparable{
+public interface SystemEntryPoint extends Serializable, Comparable {
     public Class getClassOfEntry();
+
     public String getInstanceOfEntry();
 }

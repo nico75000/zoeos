@@ -13,7 +13,7 @@ import java.awt.*;
  * To change this template use Options | File Templates.
  */
 public class FuzzyLineBorder extends LineBorder {
-    private boolean fadingIn = false;
+    private boolean fadingIn = true;
 
     public FuzzyLineBorder(Color color) {
         super(color);
@@ -42,10 +42,8 @@ public class FuzzyLineBorder extends LineBorder {
 
     public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
         Color oldColor = g.getColor();
-        int i;
-
         /// PENDING(klobad) How/should do we support Roundtangles?
-        for (i = 0; i < thickness; i++) {
+        for (int i = 0; i < thickness; i++) {
             g.setColor(UIColors.applyAlpha(lineColor, UIColors.getFuzzyAlpha(i, thickness, fadingIn)));
             if (!roundedCorners)
                 g.drawRect(x + i, y + i, width - i - i - 1, height - i - i - 1);

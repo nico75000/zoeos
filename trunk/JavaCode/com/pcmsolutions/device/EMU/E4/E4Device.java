@@ -8,74 +8,83 @@ package com.pcmsolutions.device.EMU.E4;
 
 import com.pcmsolutions.comms.RemoteDeviceDidNotRespondException;
 import com.pcmsolutions.comms.RemoteMessagingException;
-import com.pcmsolutions.device.EMU.E4.Remotable.DeviceConfig;
-import com.pcmsolutions.device.EMU.E4.Remotable.DeviceExConfig;
-import com.pcmsolutions.device.EMU.E4.Remotable.PresetMemory;
-import com.pcmsolutions.device.EMU.E4.Remotable.SampleMemory;
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.DeviceLock;
 import com.pcmsolutions.device.EMU.E4.desktop.ViewManager;
-import com.pcmsolutions.device.EMU.E4.events.*;
+import com.pcmsolutions.device.EMU.E4.events.master.MasterChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.master.MasterEvent;
+import com.pcmsolutions.device.EMU.E4.events.master.MasterRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeChannelChangedEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeEvent;
+import com.pcmsolutions.device.EMU.E4.events.multimode.MultiModeRefreshedEvent;
+import com.pcmsolutions.device.EMU.E4.events.preset.*;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListener;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListenerHelper;
+import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.device.DeviceIcon;
 import com.pcmsolutions.device.EMU.E4.master.MasterContext;
 import com.pcmsolutions.device.EMU.E4.master.MasterListener;
 import com.pcmsolutions.device.EMU.E4.multimode.*;
 import com.pcmsolutions.device.EMU.E4.parameter.*;
-import com.pcmsolutions.device.EMU.E4.preset.*;
-import com.pcmsolutions.device.EMU.E4.sample.Impl_SampleRetrievalInfo;
-import com.pcmsolutions.device.EMU.E4.sample.IsolatedSampleUnavailableException;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContext;
+import com.pcmsolutions.device.EMU.E4.preset.PresetContextMacros;
+import com.pcmsolutions.device.EMU.E4.preset.PresetListener;
+import com.pcmsolutions.device.EMU.E4.remote.ParameterEditLoader;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.DeviceConfig;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.DeviceExConfig;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.PresetMemory;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.SampleMemory;
 import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
-import com.pcmsolutions.device.EMU.E4.sample.SampleRetrievalInfo;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4DeviceZCommandMarker;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4MasterContextZCommandMarker;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4MultiModeChannelZCommandMarker;
 import com.pcmsolutions.device.EMU.E4.zcommands.E4MultiModeContextZCommandMarker;
-import com.pcmsolutions.gui.FlashMsg;
-import com.pcmsolutions.gui.IconAndTipCarrier;
-import com.pcmsolutions.gui.ZoeosFrame;
-import com.pcmsolutions.gui.desktop.DesktopElement;
+import com.pcmsolutions.device.EMU.database.ContentUnavailableException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.gui.*;
 import com.pcmsolutions.license.LicenseKeyManager;
-import com.pcmsolutions.smdi.*;
 import com.pcmsolutions.system.*;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
-import com.pcmsolutions.system.threads.ZDefaultThread;
-import com.pcmsolutions.util.CALock;
+import com.pcmsolutions.system.callback.Callback;
+import com.pcmsolutions.system.delays.DelayFactory;
+import com.pcmsolutions.system.tasking.*;
+import com.pcmsolutions.system.threads.ZThread;
 
-import javax.sound.sampled.AudioFileFormat;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.UnsupportedAudioFileException;
+import javax.sound.midi.MidiMessage;
 import javax.swing.*;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.TableModel;
 import java.awt.*;
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.Serializable;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.List;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
-class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignable, ZDisposable, SMDIAgent.SmdiListener, Serializable, TitleProvider {
+class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignable, ZDisposable, Serializable, TitleProvider {
     private static final int iconWidth = 18;
     private static final int iconHeight = 12;
     private static final Icon ultraIcon = new DeviceIcon(iconWidth, iconHeight, Color.white, UIColors.getUltraDeviceIcon());
     private static final Icon classicIcon = new DeviceIcon(iconWidth, iconHeight, Color.white, UIColors.getClassicDeviceIcon());
 
     // PARAMETERS
-    protected DeviceParameterContext dpc;
+    protected DeviceParameterContext deviceParameterContext;
 
     // ZCOMMANDS
     private static final ZCommandProviderHelper cmdProviderHelper;
     private static final ZCommandProviderHelper masterCmdProviderHelper;
     private static final ZCommandProviderHelper multiModeCmdProviderHelper;
-    private static final ZCommandProviderHelper mutliModeChannelCmdProviderHelper;
+    private static final ZCommandProviderHelper multiModeChannelCmdProviderHelper;
 
     // EVENTS
-    transient private Vector listeners;
     private TitleProviderListenerHelper tplh = new TitleProviderListenerHelper(this);
 
     // DATABASES
@@ -86,19 +95,31 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
     protected Impl_MultiModeContext mmContext;
     protected Impl_MasterContext masterContext;
 
+    private final String PENDING_CONDITIONAL = "Device pending";
+    private final String STOPPED_CONDITIONAL = "Device stopped";
+    private final String REMOVED_CONDITIONAL = "Device removed";
+
     // DEVICE SYNCHRONIZATION
-    protected final CALock device = new CALock();
+    final DeviceLock<DeviceException> deviceLock = new DeviceLock<DeviceException>(PENDING_CONDITIONAL) {
+        public DeviceException generateConditionException() {
+            return new DeviceException(getConditionString());
+        }
+
+    };
+    private transient ManageableTicketedQ internalQ;
+    transient Impl_DeviceQueues queues;
 
     // REMOTING
-    transient protected com.pcmsolutions.device.EMU.E4.Remotable remote;
+    protected transient com.pcmsolutions.device.EMU.E4.remote.Remotable remote;
     transient protected Vector deviceExceptions;
+    RemotePresetSynchronizer presetSync;
+    RemoteSampleSynchronizer sampleSync;
 
     // PREFERENCES
     transient private DevicePreferences devicePreferences;
 
-    // SMDI
-    protected SmdiTarget smdiTarget;
-    private SampleMediator deviceSampleMediator;
+    // AUDITIONING
+    transient private Impl_AuditionManager auditionManager;
 
     // VIEWS
     private Impl_ViewManager viewManager = new Impl_ViewManager(this);
@@ -129,7 +150,7 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         }
 
         public Class getColumnClass(int columnIndex) {
-            return String.class;
+            return String.class.getClass();
         }
 
         public boolean isCellEditable(int rowIndex, int columnIndex) {
@@ -159,26 +180,34 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
 
     private void makeTransients() {
         deviceExceptions = new Vector();
-        listeners = new Vector();
+        internalQ = QueueFactory.createTicketedQueue(this, "Internal queue", 6);
+        internalQ.start();
+        queues = new Impl_DeviceQueues(this);
+    }
+
+    protected StdStateMachineHelper getStateMachineHelper() {
+        return sts;
+    }
+
+    public DeviceQueues getQueues() {
+        return queues;
     }
 
     public void zDispose() {
-        SMDIAgent.removeSmdiListener(this);
+        //SMDIAgent.removeSmdiListener(this);
         deviceExceptions.clear();
-        listeners.clear();
-        presetDB.zDispose();
-        sampleDB.zDispose();
-        masterContext.zDispose();
-        mmContext.zDispose();
-        if (remote instanceof ZDisposable)
-            ((ZDisposable) remote).zDispose();
-        if (dpc instanceof ZDisposable)
-            ((ZDisposable) dpc).zDispose();
-        devicePreferences.zDispose();
-        viewManager.zDispose();
+        ZUtilities.zdispose(presetDB);
+        ZUtilities.zdispose(sampleDB);
+        ZUtilities.zdispose(masterContext);
+        ZUtilities.zdispose(mmContext);
+        ZUtilities.zdispose(remote);
+        ZUtilities.zdispose(deviceParameterContext);
+        ZUtilities.zdispose(devicePreferences);
+        ZUtilities.zdispose(viewManager);
+
         tplh.clearListeners();
-        smdiTarget = null;
-        deviceSampleMediator = null;
+        //   smdiTarget = null;
+        //deviceSampleMediator = null;
 
         // Don't null remote, tplh, listeners, or devicePreferences - they may be required during the device's exit from the system
         deviceConfig = null;
@@ -187,209 +216,141 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         presetMemory = null;
         presetDB = null;
         sampleDB = null;
-        dpc = null;
+        deviceParameterContext = null;
         deviceExceptions = null;
         configTableModel = null;
-       // viewManager = null;
+        // viewManager = null;
         mmContext = null;
         masterContext = null;
+        ZUtilities.zdispose(queues);
+        ZUtilities.zdispose(internalQ);
     }
 
     static {
-        cmdProviderHelper = new ZCommandProviderHelper(E4DeviceZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.DeviceShowConfigurationZC;com.pcmsolutions.device.EMU.E4.zcommands.RenameE4DeviceZC;com.pcmsolutions.device.EMU.E4.zcommands.EraseBankZC;com.pcmsolutions.device.EMU.E4.zcommands.RefreshBankZC;com.pcmsolutions.device.EMU.E4.zcommands.TakeDeviceWorkspaceSnapshotZC");
-        masterCmdProviderHelper = new ZCommandProviderHelper(E4MasterContextZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.RefreshMasterContextZC;");
-        multiModeCmdProviderHelper = new ZCommandProviderHelper(E4MultiModeContextZCommandMarker.class, "com.pcmsolutions.device.EMU.E4.zcommands.RefreshMultiModeContextZC;");
-        mutliModeChannelCmdProviderHelper = new ZCommandProviderHelper(E4MultiModeChannelZCommandMarker.class, "");
+        cmdProviderHelper = new ZCommandProviderHelper(E4DeviceZCommandMarker.class);
+        masterCmdProviderHelper = new ZCommandProviderHelper(E4MasterContextZCommandMarker.class);
+        multiModeCmdProviderHelper = new ZCommandProviderHelper(E4MultiModeContextZCommandMarker.class);
+        multiModeChannelCmdProviderHelper = new ZCommandProviderHelper(E4MultiModeChannelZCommandMarker.class);
     }
 
-
     // CONSTRUCTORS
-    public E4Device(com.pcmsolutions.device.EMU.E4.Remotable remote, DevicePreferences prefs) {
+    public E4Device(com.pcmsolutions.device.EMU.E4.remote.Remotable remote, DevicePreferences prefs) {
         super(remote.getIdentityMessage());
         this.remote = remote;
         makeTransients();
         makeDeviceConfigReportHeader();
-        SMDIAgent.addSmdiListener(this);
-        deviceSampleMediator = new Impl_SampleMediator();
         this.devicePreferences = prefs;
+        devicePreferences.device = this;
     }
 
     public void setRemote(Remotable r) {
         this.remote = r;
-        presetDB.setRemote(r);
-        sampleDB.setRemote(r);
+        presetSync.setRemote(r);
+        sampleSync.setRemote(r);
     }
 
     protected void setPreferences(DevicePreferences dprefs) {
         devicePreferences = dprefs;
-        sampleDB.setDevicePreferences(dprefs);
+        dprefs.device = this;
+        //sampleDB.setDevicePreferences(dprefs);
     }
 
-    private class Impl_SampleMediator implements SampleMediator {
-        public File retrieveSample(SampleRetrievalInfo sri) throws SampleMediator.SampleMediationException {
-            device.access();
-            try {
-                String excStr = "Device not SMDI coupled";
-                File f_fn = sri.getFile();
-                //f_fn = ZUtilities.replaceExtension(fn, format.getExtension());
-                if (f_fn.exists() && !sri.isOverwriting())
-                    return null;
-                if (smdiTarget != null)
-                    try {
-                        if (sri.getFormat().equals(AudioFileFormat.Type.WAVE)) {
-                            System.out.println(f_fn.getAbsolutePath() + " <-- " + sri.getSample().intValue());
-                            synchronized (remote) {
-                                smdiTarget.recvSync(f_fn.getAbsolutePath(), sri.getSample().intValue());
-                                /* if (sri.isEndOfAProcedure())
-                                     try {
-                                         f_remote.getMasterContext().cmd_sampleDefrag();   // this unhangs the UI on the Emulator - Don't ask me why!!!!!!!!!
-                                     } catch (RemoteUnreachableException e) {
-                                     } catch (RemoteMessagingException e) {
-                                     }
-                                     */
-                            }
-                        } else {
-                            File temp = TempFileManager.getNewTempFile();
-                            synchronized (remote) {
-                                smdiTarget.recvSync(temp.getAbsolutePath(), sri.getSample().intValue());
-                                /* if (sri.isEndOfAProcedure())
-                                     try {
-                                         f_remote.getMasterContext().cmd_sampleDefrag();   // this unhangs the UI on the Emulator - Don't ask me why!!!!!!!!!
-                                     } catch (RemoteUnreachableException e) {
-                                     } catch (RemoteMessagingException e) {
-                                     }
-                                     */
-                            }
-                            try {
-                                AudioSystem.write(AudioSystem.getAudioInputStream(temp), sri.getFormat(), f_fn);
-                            } catch (IOException e) {
-                                throw new SampleMediator.SampleMediationException("error writing sample File");
-                            } catch (UnsupportedAudioFileException e) {
-                                throw new SampleMediator.SampleMediationException("error writing sample File");
-                            }
-                            temp.delete();
-                            System.out.println(f_fn.getAbsolutePath() + " <-- " + sri.getSample().intValue());
-                        }
-                        return f_fn;
-                    } catch (SmdiFileOpenException e) {
-                        excStr = e.getMessage();
-                    } catch (SmdiNoSampleException e) {
-                        excStr = e.getMessage();
-                    } catch (SmdiOutOfRangeException e) {
-                        excStr = e.getMessage();
-                    } catch (SmdiGeneralException e) {
-                        excStr = e.getMessage();
-                    } catch (TargetNotSMDIException e) {
-                        excStr = e.getMessage();
-                    }
-                throw new SampleMediator.SampleMediationException(excStr);
-            } finally {
-                device.unlock();
+    private final int VERIFY_LEAD = 4;
+    private final int VERIFY_COUNT = 8;
+    private final int VERIFY_INTERVAL = 16;
+    private Integer[] defVerifyPresets;
+
+    {
+        defVerifyPresets = new Integer[VERIFY_COUNT + VERIFY_LEAD];
+        for (int i = 0; i < VERIFY_LEAD; i++)
+            defVerifyPresets[i] = IntPool.get(i);
+        for (int i = VERIFY_LEAD; i < VERIFY_COUNT + VERIFY_LEAD; i++)
+            defVerifyPresets[i] = IntPool.get(i * VERIFY_INTERVAL);
+    }
+
+    protected boolean verifyRemotePresetNames() {
+        return verifyRemotePresetNames(defVerifyPresets);
+    }
+
+    protected boolean verifyRemotePresetNames(Integer[] presets) {
+        deviceLock.immuneConfigure();
+        try {
+            String name;
+            for (int i = 0; i < presets.length; i++) {
+                try {
+                    if (presetDB.isPending(presets[i]))
+                        continue;
+                    name = presetDB.getRootContext().getName(presets[i]);
+                } catch (EmptyException e) {
+                    name = DeviceContext.EMPTY_PRESET;
+                } catch (ContentUnavailableException e) {
+                    return false;
+                } catch (DeviceException e) {
+                    return false;
+                }
+                if (!remote.getPresetContext().req_name(presets[i]).trim().equals(name.trim()))
+                    return false;
             }
+            return true;
+        } catch (RemoteDeviceDidNotRespondException e) {
+            e.printStackTrace();
+        } catch (RemoteMessagingException e) {
+            e.printStackTrace();
+        } catch (RemoteUnreachableException e) {
+            e.printStackTrace();
+        } finally {
+            deviceLock.unlock();
         }
+        return false;
+    }
 
-        public void sendSampleMulti(File fn, Integer[] destSamples, String[] destNames) throws SampleMediator.SampleMediationException {
-            for (int i = 0; i < destSamples.length; i++)
-                sendSample(destSamples[i], fn, destNames[i]);
-        }
+    private Integer[] defVerifySamples;
 
-        public void copySample(IsolatedSample is, Integer[] destSamples, String[] destNames) throws SampleMediator.SampleMediationException, IsolatedSampleUnavailableException {
-            is.ZoeAssert();
-            for (int i = 0; i < destSamples.length; i++)
-                sendSample(destSamples[i], is.getLocalFile(), destNames[i]);
-        }
+    {
+        defVerifySamples = new Integer[VERIFY_COUNT + VERIFY_LEAD];
+        for (int i = 0; i < VERIFY_LEAD; i++)
+            defVerifySamples[i] = IntPool.get(i + 1);
+        for (int i = VERIFY_LEAD; i < VERIFY_COUNT + VERIFY_LEAD; i++)
+            defVerifySamples[i] = IntPool.get(i * VERIFY_INTERVAL + 1);
+    }
 
-        public void copySample(Integer srcSample, Integer[] destSamples, String[] destNames) throws SampleMediator.SampleMediationException {
-            SampleRetrievalInfo sri = new Impl_SampleRetrievalInfo(srcSample);
-            retrieveSample(sri);
-            for (int i = 0; i < destSamples.length; i++)
-                if (srcSample.intValue() != destSamples[i].intValue())
-                    sendSample(destSamples[i], sri.getFile(), destNames[i]);
-        }
+    protected boolean verifyRemoteSampleNames() {
+        return verifyRemoteSampleNames(defVerifySamples);
+    }
 
-        public void sendSample(Integer sample, IsolatedSample is, String sampleName) throws SampleMediator.SampleMediationException, IsolatedSampleUnavailableException {
-            sendSample(sample, is.getLocalFile(), sampleName);
-        }
-
-        public void sendSample(Integer sample, File fn, String sampleName) throws SampleMediator.SampleMediationException {
-            device.access();
-            try {
-                if (fn != null) {
-                    if (smdiTarget != null) {
-                        boolean usingTemp = false;
-                        AudioFileFormat format = null;
-                        try {
-                            format = AudioSystem.getAudioFileFormat(fn);
-                            File sendFile;
-                            if (format.getType().equals(AudioFileFormat.Type.WAVE))
-                                sendFile = fn;
-                            else {
-                                sendFile = TempFileManager.getNewTempFile();
-                                usingTemp = true;
-                                AudioSystem.write(AudioSystem.getAudioInputStream(fn), AudioFileFormat.Type.WAVE, sendFile);
-                            }
-                            try {
-                                synchronized (remote) {
-                                    smdiTarget.sendSync(sendFile.getAbsolutePath(), sample.intValue(), sampleName);
-                                }
-                                System.out.println(fn.getAbsolutePath() + " --> " + sample.intValue());
-                                return;
-                            } catch (SmdiFileOpenException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } catch (SmdiOutOfRangeException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } catch (SmdiGeneralException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } catch (TargetNotSMDIException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } catch (SmdiUnknownFileFormatException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } catch (SmdiUnsupportedSampleBitsException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } catch (SmdiNoMemoryException e) {
-                                throw new SampleMediator.SampleMediationException(e.getMessage());
-                            } finally {
-                                if (usingTemp)
-                                    sendFile.delete();
-                            }
-                        } catch (UnsupportedAudioFileException e) {
-                            throw new SampleMediator.SampleMediationException(e.getMessage());
-                        } catch (IOException e) {
-                            throw new SampleMediator.SampleMediationException(e.getMessage());
-                        }
-                    } else
-                        throw new SampleMediator.SampleMediationException("device not SMDI coupled");
-                } else
-                    throw new SampleMediator.SampleMediationException("no valid filename specified");
-            } finally {
-                device.unlock();
+    protected boolean verifyRemoteSampleNames(Integer[] samples) {
+        deviceLock.immuneConfigure();
+        try {
+            String name;
+            for (int i = 0; i < samples.length; i++) {
+                try {
+                    if (sampleDB.getRootContext().isPending(samples[i]))
+                        continue;
+                    name = sampleDB.getRootContext().getName(samples[i]);
+                } catch (NoSuchContextException e) {
+                    return false;
+                } catch (DeviceException e) {
+                    return false;
+                } catch (ContentUnavailableException e) {
+                    return false;
+                } catch (EmptyException e) {
+                    name = DeviceContext.EMPTY_SAMPLE;
+                }
+                if (!remote.getSampleContext().req_name(samples[i]).trim().equals(name.trim()))
+                    return false;
             }
+            return true;
+        } catch (RemoteDeviceDidNotRespondException e) {
+            e.printStackTrace();
+        } catch (RemoteMessagingException e) {
+            e.printStackTrace();
+        } catch (RemoteUnreachableException e) {
+            e.printStackTrace();
+        } finally {
+            deviceLock.unlock();
         }
-
-        public SampleDescriptor getSampleDescriptor(Integer sample) throws SampleMediator.SampleMediationException {
-            device.access();
-            String excStr = "Device not SMDI coupled";
-            try {
-                if (smdiTarget != null)
-                    try {
-                        synchronized (remote) {
-                            return new Impl_SampleDescriptor(smdiTarget.getSampleHeader(sample.intValue()));
-                        }
-                    } catch (SmdiOutOfRangeException e) {
-                        excStr = e.getMessage();
-                    } catch (SmdiGeneralException e) {
-                        excStr = e.getMessage();
-                    } catch (TargetNotSMDIException e) {
-                        excStr = e.getMessage();
-                    } catch (SmdiNoSampleException e) {
-                        excStr = e.getMessage();
-                    }
-                throw new SampleMediator.SampleMediationException(excStr);
-            } finally {
-                device.unlock();
-            }
-        }
-    };
+        return false;
+    }
 
     private void makeDeviceConfigReportHeader() {
         String ls = Zoeos.lineSeperator;
@@ -417,305 +378,391 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         tabularDeviceConfigReport[5][1] = "";
     }
 
-    private void stopDeviceThreaded(final String reason) {
-        Thread t = new ZDefaultThread("Stop Device") {
-            public void run() {
-                try {
-                    stopDevice(false, reason);
-                } catch (IllegalStateTransitionException e) {
-                    e.printStackTrace();
-                }
+    private void assertPresetDBStopped() {
+        if (presetDB != null && presetDB.getState() == StdStates.STATE_STARTED)
+            try {
+                presetDB.stateStop();
+            } catch (IllegalStateTransitionException e) {
+                e.printStackTrace();
             }
-        };
-        t.start();
     }
 
-    public void startDevice() throws ZDeviceStartupException, IllegalStateTransitionException {
-        device.configure();
+    private void assertSampleDBStopped() {
+        if (sampleDB != null && sampleDB.getState() == StdStates.STATE_STARTED)
+            try {
+                sampleDB.stateStop();
+            } catch (IllegalStateTransitionException e) {
+                e.printStackTrace();
+            }
+    }
+
+    private void assertRemoteStopped() {
+        if (remote != null && remote.getState() == StdStates.STATE_STARTED)
+            try {
+                remote.stateStop();
+            } catch (IllegalStateTransitionException e) {
+                e.printStackTrace();
+            }
+    }
+
+    public SyncTicket startDevice() throws ZDeviceStartupException, IllegalStateTransitionException {
+        deviceLock.immuneConfigure(null);
+        //  System.out.println("start_LOCKED");
         try {
             if (sts.testTransition(STATE_RUNNING) == STATE_RUNNING)
-                return;
-
-            if (sts.getState() == ZExternalDevice.STATE_STOPPED) {
-                try {
-                    remote.stateStart();
-                } catch (IllegalStateTransitionException e) {
-                    Zoeos.postZDeviceEvent(new ZDeviceStoppedEvent(E4Device.this, E4Device.this, "Could not restart device"));
-                    throw new ZDeviceStartupException(this, "Could not restart remote device");
-                }
-                presetDB.stateStart();
-                sampleDB.stateStart();
-                presetDB.initializeAllPresetNames(false);
-                sampleDB.initializeAllSampleData();
-                updateSmdiCoupling();
-                this.deviceExceptions.clear();
-                viewManager.openDeviceViews().start();
-                mmContext.refresh();
-                masterContext.refresh();
-                retrieveDeviceConfiguration(true);
-                sts.transition(STATE_RUNNING);
-                Zoeos.postZDeviceEvent(new ZDeviceStartedEvent(this, this));
-                return;
-            }
-
-            try {
-                remote.stateStart();
-            } catch (IllegalStateTransitionException e) {
-                throw new ZDeviceStartupException(this, "Could not start remote device");
-            }
-
-            try {
-                dpc = new Impl_DeviceParameterContext(this, remote);
-            } catch (RemoteDeviceDidNotRespondException e) {
-
-                throw new ZDeviceStartupException(this, "Device startup failed - remoting error - device did not respond");
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed - remoting error - remote unreachable");
-            } catch (RemoteMessagingException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed - remoting error - remote messaging exception");
-            }
-
-            // get device configuration here
-            if (retrieveDeviceConfiguration(true) == false)
-                throw new ZDeviceStartupException(this, "Failed to retrieve device config from remote device.");
-
-            try {
-                mmContext = new Impl_MultiModeContext();
-            } catch (RemoteDeviceDidNotRespondException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
-            } catch (RemoteMessagingException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
-            } catch (IllegalParameterIdException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Parameter setup error.");
-            }
-
-            try {
-                masterContext = new Impl_MasterContext();
-            } catch (RemoteDeviceDidNotRespondException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
-            } catch (RemoteMessagingException e) {
-                throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
-            }
-
-            sampleDB = new SampleDatabase("Default Sample Database", maxSample);
-            sampleDB.init(new Impl_OnlineSampleContextFactory(), device, devicePreferences);
-            updateSmdiCoupling();
-            presetDB = new PresetDatabase("Default Preset Database", maxPreset);
-            presetDB.init(dpc, new Impl_OnlinePresetContextFactory(), device, sampleDB);
-            sampleDB.setPresetDatabaseProxy(presetDB);
-
-            if (presetDB.getState() == presetDB.STATE_PENDING)
-                presetDB.stateInitial();
-            if (sampleDB.getState() == sampleDB.STATE_PENDING)
-                sampleDB.stateInitial();
-
-            loadDatabases();
-
-            presetDB.stateStart();
-            sampleDB.stateStart();
-
-            viewManager.openDeviceViews().start();
-
-            ((Impl_MultiModeContext) mmContext).addChannelPresetListeners();
-
-            sts.transition(STATE_RUNNING);
-            presetDB.initializeAllPresetNames(false);
-            sampleDB.initializeAllSampleData();
+                return SyncTicket.uselessTicket;
+            if (sts.getState() == ZExternalDevice.STATE_STOPPED)
+                return startFromStopped();
+            else
+                return startFromPending();
         } finally {
+            String condition = null;
             try {
                 if (sts.getState() == STATE_PENDING) {
+                    condition = PENDING_CONDITIONAL;
                     Zoeos.postZDeviceEvent(new ZDevicePendingEvent(this, this));
-                    if (remote.getState() == STATE_RUNNING)
-                        remote.stateStop();
+                    queues.stop(false);
+                    assertSampleDBStopped();
+                    assertPresetDBStopped();
+                    assertRemoteStopped();
+                }
+                if (sts.getState() == STATE_STOPPED) {
+                    condition = PENDING_CONDITIONAL;
+                    Zoeos.postZDeviceEvent(new ZDeviceStoppedEvent(this, this, "Could not restart device"));
+                    queues.stop(false);
+                    assertSampleDBStopped();
+                    assertPresetDBStopped();
+                    assertRemoteStopped();
                 }
             } finally {
-                device.unlock();
+                //    System.out.println("start_UNLOCKING");
+                deviceLock.unlock(condition);
+                //    System.out.println("start_UNLOCKED: conditional = " + condition);
             }
         }
+    }
+
+    private SyncTicket startFromPending() throws ZDeviceStartupException, IllegalStateTransitionException {
+        try {
+            remote.stateStart();
+        } catch (IllegalStateTransitionException e) {
+            throw new ZDeviceStartupException(this, "Could not start remote device");
+        }
+
+        try {
+            deviceParameterContext = new Impl_DeviceParameterContext(this, remote);
+        } catch (RemoteDeviceDidNotRespondException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed - remoting error - device did not respond");
+        } catch (RemoteUnreachableException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed - remoting error - remote unreachable");
+        } catch (RemoteMessagingException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed - remoting error - remote messaging exception");
+        }
+
+        // get device configuration here
+        if (retrieveDeviceConfiguration(true) == false)
+            throw new ZDeviceStartupException(this, "Failed to retrieve device config from remote device.");
+
+        try {
+            mmContext = new Impl_MultiModeContext();
+        } catch (RemoteDeviceDidNotRespondException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
+        } catch (RemoteMessagingException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
+        } catch (RemoteUnreachableException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
+        } catch (IllegalParameterIdException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Parameter setup error.");
+        }
+
+        try {
+            masterContext = new Impl_MasterContext();
+        } catch (RemoteDeviceDidNotRespondException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
+        } catch (RemoteUnreachableException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
+        } catch (RemoteMessagingException e) {
+            throw new ZDeviceStartupException(this, "Device startup failed. Remoting error.");
+        }
+
+        sampleDB = new SampleDatabase();
+        presetDB = new PresetDatabase();
+        presetDB.init(deviceParameterContext, this, sampleDB, "Default preset database", maxPreset);
+        presetSync = new RemotePresetSynchronizer(this, presetDB, remote);
+        presetDB.getEventHandler().addExternalHandler(presetSync);
+        presetDB.getEventHandler().addRequestHandler(presetSync);
+        sampleDB.init(this, presetDB, "Default sample database", maxSample);
+        sampleSync = new RemoteSampleSynchronizer(this, remote);
+        sampleDB.getEventHandler().addExternalHandler(sampleSync);
+        sampleDB.getEventHandler().addRequestHandler(sampleSync);
+        loadDatabases();
+        presetDB.stateStart();
+        sampleDB.stateStart();
+        queues.start();
+
+        ((Impl_MultiModeContext) mmContext).addChannelPresetListeners();
+
+        sts.transition(STATE_RUNNING);
+        presetDB.initializeAllPresetNames(false);
+        sampleDB.initializeAllSampleData();
+        viewManager.registerPresetInitializationMonitors();
+        try {
+            getAuditionManager();
+        } catch (DeviceException e) {
+            SystemErrors.internal(e);
+        }
+        try {
+            internalQ.getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    viewManager.openDeviceViews().send(0);
+                }
+            }, "Open device views").post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
         Zoeos.postZDeviceEvent(new ZDeviceStartedEvent(this, this));
+        return internalQ.getSynchronizationTicket("Device start from pending synchronizer");
+    }
+
+    private SyncTicket startFromStopped() throws ZDeviceStartupException, IllegalStateTransitionException {
+        try {
+            remote.stateStart();
+        } catch (IllegalStateTransitionException e) {
+            Zoeos.postZDeviceEvent(new ZDeviceStoppedEvent(E4Device.this, E4Device.this, "Could not restart device"));
+            throw new ZDeviceStartupException(this, "Could not restart remote device");
+        }
+        presetDB.stateStart();
+        sampleDB.stateStart();
+        presetDB.initializeAllPresetNames(false);
+        sampleDB.initializeAllSampleData();
+        queues.start();
+        deviceExceptions.clear();
+        try {
+            internalQ.getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    viewManager.openDeviceViews().send(0);
+                }
+            }, "Open device views").post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
+        mmContext.task_refresh();
+        masterContext.task_refresh();
+        retrieveDeviceConfiguration(true);
+        sts.transition(STATE_RUNNING);
+        viewManager.registerPresetInitializationMonitors();
+        try {
+            internalQ.getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    boolean canRestore = viewManager.hasDesktopElementsForNextStart();
+                    if (!verifyRemotePresetNames() || !verifyRemoteSampleNames())
+                        if (UserMessaging.askYesNo("ZoeOS performed a quick check and the bank state for '" + E4Device.this.getName() + "' doesn't seem to match the bank state on the remote device. Refresh now?")) {
+                            if (canRestore && !UserMessaging.askYesNo("Restore device workspace for '" + E4Device.this.getName() + "' after refresh?")) {
+                                canRestore = false;
+                                viewManager.invalidateDesktopElements();
+                            }
+                            try {
+                                boolean clear = true;
+                                try {
+                                    clear = getViewManager().hasWorkspaceElements() && UserMessaging.askYesNo("Clear device workspace first (recommended)?");
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                                if (clear) {
+                                    try {
+                                        getViewManager().clearDeviceWorkspace().send(0);
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                refreshBank(false).post();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    if (canRestore) {
+                        try {
+                            viewManager.restoreDesktopElements().send(0);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }, "Restore desktop").post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
+
+        try {
+            getAuditionManager();
+        } catch (DeviceException e) {
+            SystemErrors.internal(e);
+        }
+
+        Zoeos.postZDeviceEvent(new ZDeviceStartedEvent(this, this));
+        return internalQ.getSynchronizationTicket("Device start from stopped synchronizer");
+    }
+
+    public void stopDevice(boolean waitForConfigurers, String reason) throws IllegalStateTransitionException {
+        if (waitForConfigurers) {
+            deviceLock.immuneConfigure(STOPPED_CONDITIONAL);
+        } else {
+            if (deviceLock.tryImmuneConfigure(STOPPED_CONDITIONAL) == false) {
+                SwingUtilities.invokeLater(new Runnable() {
+                    public void run() {
+                        new FlashMsg(ZoeosFrame.getInstance(), ZoeosFrame.getInstance(), 1000, 200, FlashMsg.colorWarning, "DEVICE BUSY");
+                    }
+                });
+                return;
+            }
+        }
+        // System.out.println("stop_LOCKED");
+        try {
+            if (sts.testTransition(STATE_STOPPED) == STATE_STOPPED)
+                return;
+            queues.stop(false);
+            // System.out.println("Device " + this.getName() + " stopped queues");
+            assertPresetDBStopped();
+            // System.out.println("Device " + this.getName() + " stopped Preset DB");
+            assertSampleDBStopped();
+            // System.out.println("Device " + this.getName() + " stopped Sample DB");
+            assertRemoteStopped();
+            //  System.out.println("Device " + this.getName() + " stopped Remote");
+            //  System.out.println("Device " + this.getName() + " stopped done");
+            sts.transition(STATE_STOPPED, reason);
+            Zoeos.postZDeviceEvent(new ZDeviceStoppedEvent(E4Device.this, E4Device.this, reason));
+        } finally {
+            //  System.out.println("stop_UNLOCKING");
+            deviceLock.unlock((sts.getState() == STATE_STOPPED ? STOPPED_CONDITIONAL : null));
+            //   System.out.println("stop_UNLOCKED: conditional = " + (sts.getState() == STATE_STOPPED ? STOPPED_CONDITIONAL : null));
+        }
+    }
+
+    public void removeDevice(boolean saveState) throws ZDeviceCannotBeRemovedException, IllegalStateTransitionException {
+        if (saveState)
+            viewManager.retrieveDeviceDesktopElementsForNextStart();
+
+        deviceLock.immuneConfigure();
+        try {
+            if (sts.testTransition(STATE_REMOVED) == STATE_REMOVED)
+                return;
+            assertPresetDBStopped();
+            assertSampleDBStopped();
+            assertRemoteStopped();
+            if (saveState)
+                taskSaveDeviceState();
+
+            sts.transition(STATE_REMOVED);
+            try {
+                viewManager.closeDeviceViews().post(new Callback() {
+                    public void result(Exception e, boolean wasCancelled) {
+                        if (e != null)
+                            e.printStackTrace();
+                        zDispose();
+                    }
+                });
+            } catch (ResourceUnavailableException e) {
+                e.printStackTrace();
+                zDispose();
+            }
+        } finally {
+            deviceLock.unlock();
+        }
+        Zoeos.postZDeviceEvent(new ZDeviceRemovedEvent(this, this));
     }
 
     public String makeDeviceProgressTitle(String str) {
         return remote.makeDeviceProgressTitle(str);
     }
 
-    public DeviceParameterContext getDpc() {
-        return dpc;
-    }
-
     private void loadDatabases() {
-        boolean reloadFlash = getDevicePreferences().ZPREF_alwaysReloadFlashPresets.getValue();
-        boolean reloadRom = getDevicePreferences().ZPREF_alwaysReloadROMSamples.getValue();
-
-        Zoeos z = Zoeos.getInstance();
-
-        File lastSession = SessionExternalization.getLastSessionFileForDevice(this);
-        if (reloadFlash || reloadRom) {
-            int ps =
-                    (reloadFlash ? maxPreset - DeviceContext.BASE_FLASH_PRESET : 0) +
-                    (reloadRom ? maxSample - DeviceContext.BASE_ROM_SAMPLE : 0);
-            z.beginProgressElement(this, makeDeviceProgressTitle("Loading Rom/Flash data from previous session"), ps);
-            z.setProgressElementIndeterminate(this, true);
-            try {
-                SessionExternalization.DeviceSession.RomAndFlash raf = SessionExternalization.loadDeviceRomAndFlash(lastSession);
-
-                Map map = raf.getFlashMap();
-                if (map.size() == this.maxPreset - DeviceContext.MAX_USER_PRESET && reloadFlash) {
-                    z.updateProgressElementTitle(this, makeDeviceProgressTitle("Reloading flash presets from previous session"));
-                    Object po;
-                    for (int i = DeviceContext.BASE_FLASH_PRESET; i <= maxPreset; i++) {
-                        po = map.get(IntPool.get(i));
-                        if (po == null) {
-                            reloadFlash = false;
-                            break;
-                        }
-                        presetDB.addObjectToDB(po, IntPool.get(i));
-                        z.updateProgressElement(this);
-                    }
-                }
-                map = raf.getRomMap();
-                if (map.size() == this.maxSample - DeviceContext.MAX_USER_SAMPLE && reloadRom) {
-                    z.updateProgressElementTitle(this, makeDeviceProgressTitle("Reloading ROM samples from previous session"));
-                    Object so;
-                    for (int i = DeviceContext.BASE_ROM_SAMPLE; i <= maxSample; i++) {
-                        so = map.get(IntPool.get(i));
-                        if (so == null) {
-                            reloadRom = false;
-                            break;
-                        }
-                        sampleDB.addObjectToDB(so, IntPool.get(i));
-                        z.updateProgressElement(this);
-                    }
-                }
-            } catch (SessionExternalization.ExternalizationException e) {
-                reloadFlash = false;
-                reloadRom = false;
-            } finally {
-                z.endProgressElement(this);
-            }
-        }
-
-
-        z.beginProgressElement(this, makeDeviceProgressTitle("Loading User Sample Database"), DeviceContext.MAX_USER_SAMPLE);
         try {
-            for (int n = 0; n <= DeviceContext.MAX_USER_SAMPLE; n++) {
-                sampleDB.addObjectToDB(new UninitSampleObject(IntPool.get(n)), IntPool.get(n));
-                z.updateProgressElement(this, n);
-            }
-        } finally {
-            z.endProgressElement(this);
-        }
-
-        if (!reloadRom) {
-            z.beginProgressElement(this, makeDeviceProgressTitle("Loading ROM Sample Database"), maxSample - DeviceContext.MAX_USER_SAMPLE);
-            try {
-                for (int n = DeviceContext.MAX_USER_SAMPLE + 1; n <= maxSample; n++) {
-                    sampleDB.addObjectToDB(new UninitSampleObject(IntPool.get(n)), IntPool.get(n));
-                    z.updateProgressElement(this, n);
-                }
-            } finally {
-                z.endProgressElement(this);
-            }
-        }
-
-        z.beginProgressElement(this, makeDeviceProgressTitle("Loading User Preset Database"), DeviceContext.MAX_USER_PRESET);
-        try {
-            for (int n = 0; n <= DeviceContext.MAX_USER_PRESET; n++) {
-                presetDB.addObjectToDB(new UninitPresetObject(IntPool.get(n)), IntPool.get(n));
-                z.updateProgressElement(this, n);
-            }
-        } finally {
-            z.endProgressElement(this);
-        }
-
-        if (!reloadFlash) {
-            z.beginProgressElement(this, makeDeviceProgressTitle("Loading Flash Preset Database"), maxPreset - DeviceContext.MAX_USER_PRESET);
-            try {
-                for (int n = DeviceContext.MAX_USER_PRESET + 1; n <= maxPreset; n++) {
-                    presetDB.addObjectToDB(new UninitPresetObject(IntPool.get(n)), IntPool.get(n));
-                    z.updateProgressElement(this, n);
-                }
-            } finally {
-                z.endProgressElement(this);
-            }
-        }
-    }
-
-    private void updateSmdiCoupling() {
-        try {
-            smdiTarget = SMDIAgent.getSmdiTargetForIdentityMessage(remote.getIdentityMessage());
-        } catch (DeviceNotCoupledToSmdiException e) {
-            smdiTarget = null;
-        } catch (SmdiUnavailableException e) {
-            smdiTarget = null;
-        }
-    }
-
-    public void stopDevice(boolean waitForConfigurers, String reason) throws IllegalStateTransitionException {
-        if (waitForConfigurers) {
-            device.configure();
-        } else if (device.tryConfigure() == false) {
-            SwingUtilities.invokeLater(new Runnable() {
-                public void run() {
-                    new FlashMsg(ZoeosFrame.getInstance(), ZoeosFrame.getInstance(), 1000, 200, FlashMsg.colorWarning, "DEVICE BUSY");
-                }
-            });
-            return;
-        }
-
-        try {
-            if (sts.testTransition(STATE_STOPPED) == STATE_STOPPED)
-                return;
-            presetDB.stateStop();
-            sampleDB.stateStop();
-            remote.stateStop();
-            sts.transition(STATE_STOPPED);
-        } finally {
-            device.unlock();
-        }
-        Zoeos.postZDeviceEvent(new ZDeviceStoppedEvent(E4Device.this, E4Device.this, reason));
-    }
-
-    public void removeDevice(boolean saveState) throws ZDeviceCannotBeRemovedException, IllegalStateTransitionException {
-        if (saveState)
-            viewManager.retrieveDeviceDesktopElementsForNextStart();
-        device.configure();
-        try {
-            // TODO!! alternative logic required for remove on pending state
-
-            int st = sts.testTransition(STATE_REMOVED);
-            if (st == STATE_REMOVED)
-                return;
-
-            if (presetDB != null && presetDB.getState() == presetDB.STATE_STARTED)
-                presetDB.stateStop();
-            if (sampleDB != null && sampleDB.getState() == presetDB.STATE_STARTED)
-                sampleDB.stateStop();
-            if (remote != null && remote.getState() == remote.STATE_STARTED)
-                remote.stateStop();
-
-            if (saveState) {
+            if (getDevicePreferences().ZPREF_alwaysReloadROMSamples.getValue()) {
+                ProgressSession ps = Zoeos.getInstance().getProgressSession(makeDeviceProgressTitle("Loading backup ROM data from previous session"), DeviceContext.MAX_USER_SAMPLE);
+                ps.setIndeterminate(true);
                 try {
-                    SessionExternalization.saveAsLastSession(SessionExternalization.makeDeviceSession(this));
-                } catch (Exception e) {
+                    sampleDB.loadRomSnapshot(SessionExternalization.loadRom(this));
+                } catch (SessionExternalization.ExternalizationException e) {
                     e.printStackTrace();
+                } finally {
+                    ps.end();
                 }
             }
-            sts.transition(STATE_REMOVED);
-
-            viewManager.closeDeviceViews().start();
-            zDispose();
-        } finally {
-            device.unlock();
+            if (getDevicePreferences().ZPREF_alwaysReloadFlashPresets.getValue()) {
+                ProgressSession ps = Zoeos.getInstance().getProgressSession(makeDeviceProgressTitle("Loading backup FLASH data from previous session"), DeviceContext.MAX_USER_SAMPLE);
+                ps.setIndeterminate(true);
+                try {
+                    presetDB.loadFlashSnapshot(SessionExternalization.loadFlash(this));
+                } catch (SessionExternalization.ExternalizationException e) {
+                    e.printStackTrace();
+                } finally {
+                    ps.end();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        Zoeos.postZDeviceEvent(new ZDeviceRemovedEvent(this, this));
     }
 
-    public void refreshDevice() throws ZDeviceRefreshException {
+    public PostableTicket saveDeviceState() {
+        return internalQ.getPostableTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                ProgressSession sess = Zoeos.getInstance().getProgressSession(E4Device.this.makeDeviceProgressTitle("saving state"), 100);
+                sess.setIndeterminate(true);
+                try {
+                    viewManager.retrieveDeviceDesktopElementsForNextStart();
+                    deviceLock.configure();
+                    try {
+                        taskSaveDeviceState();
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                } finally {
+                    sess.end();
+                }
+            }
+        }, "saveDeviceState");
+    }
+
+    private void taskSaveDeviceState() {
+        try {
+            int st = this.getState();
+            switch (st) {
+                case STATE_RUNNING:
+                    sts.transition(STATE_STOPPED, "Saving device state (session)");
+                    queues.stop(false);
+                    presetDB.stateStop();
+                    sampleDB.stateStop();
+                    try {
+                        SessionExternalization.saveAsLastSession(SessionExternalization.makeDeviceSession(this));
+                        SessionExternalization.saveFlash(this);
+                        SessionExternalization.saveRom(this);
+                    } finally {
+                        presetDB.stateStart();
+                        sampleDB.stateStart();
+                        queues.start();
+                        sts.transition(STATE_RUNNING, "");
+                    }
+                    break;
+                case STATE_STOPPED:
+                    try {
+                        SessionExternalization.saveAsLastSession(SessionExternalization.makeDeviceSession(this));
+                        SessionExternalization.saveFlash(this);
+                        SessionExternalization.saveRom(this);
+                    } finally {
+                    }
+                    break;
+                case STATE_REMOVED:
+                case STATE_PENDING:
+                default:
+                    return;
+            }
+            return;
+        } catch (IllegalStateTransitionException e) {
+            SystemErrors.internal(e);
+        } catch (IOException e1) {
+            e1.printStackTrace();
+        }
     }
 
     public String getLicenseProduct() {
@@ -726,12 +773,12 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         return LicenseKeyManager.fullType;
     }
 
-    // PRIVATE HELPERS
-    private boolean retrieveDeviceConfiguration(boolean showProgress) {
+// PRIVATE HELPERS
+    private boolean retrieveDeviceConfiguration(final boolean showProgress) {
         Zoeos z = Zoeos.getInstance();
-
+        ProgressSession ps = null;
         if (showProgress)
-            z.beginProgressElement(this, this.makeDeviceProgressTitle("Retrieving Device Configuration"), 7);
+            ps = z.getProgressSession(this.makeDeviceProgressTitle("Retrieving device configuration"), 7);
         try {
             MinMaxDefault mmd;
 
@@ -739,28 +786,34 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 mmd = remote.getParameterContext().req_prmMMD(IntPool.get(23)); // E4_LINK_PRESET
                 maxPreset = mmd.getMax().intValue();
                 if (showProgress)
-                    z.updateProgressElement(this);
+                    ps.updateStatus();
 
                 mmd = remote.getParameterContext().req_prmMMD(ID.sample); // E4_GEN_SAMPLE
                 maxSample = mmd.getMax().intValue();
                 if (showProgress)
-                    z.updateProgressElement(this);
+                    ps.updateStatus();
 
                 deviceConfig = remote.getMasterContext().req_deviceConfig();
                 if (showProgress)
-                    z.updateProgressElement(this);
+                    ps.updateStatus();
 
                 exDeviceConfig = remote.getMasterContext().req_deviceExConfig();
                 if (showProgress)
-                    z.updateProgressElement(this);
+                    ps.updateStatus();
+
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
 
                 presetMemory = remote.getMasterContext().req_presetMemory();
                 if (showProgress)
-                    z.updateProgressElement(this);
+                    ps.updateStatus();
 
                 sampleMemory = remote.getMasterContext().req_sampleMemory();
                 if (showProgress)
-                    z.updateProgressElement(this);
+                    ps.updateStatus();
 
             } catch (RemoteDeviceDidNotRespondException e) {
                 return false;
@@ -854,12 +907,12 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             tabularDeviceConfigReport[22][1] = remote.getIdentityMessage().toString();
 
             if (showProgress)
-                z.updateProgressElement(this);
+                ps.updateStatus();
 
             return true;
         } finally {
             if (showProgress)
-                z.endProgressElement(this);
+                ps.end();
         }
     }
 
@@ -871,18 +924,30 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             deviceExceptions.add(error);
             SwingUtilities.invokeLater(new Runnable() {
                 public void run() {
-                    new FlashMsg(ZoeosFrame.getInstance(), ZoeosFrame.getInstance(), 1000, 250, FlashMsg.colorError, "Communications Error: " + remote.getName());
+                    new FlashMsg(ZoeosFrame.getInstance(), ZoeosFrame.getInstance(), 2000, 250, FlashMsg.colorError, "Communications Error: " + remote.getName());
                 }
             });
             if (deviceExceptions.size() >= remote.getRemotePreferences().ZPREF_commErrorThreshold.getValue()) {
-                StringBuffer buf = new StringBuffer();
+                final StringBuffer buf = new StringBuffer();
                 for (int i = 0; i < deviceExceptions.size(); i++) {
                     if (deviceExceptions.get(i) instanceof Exception)
                         buf.append(((Exception) deviceExceptions.get(i)).getMessage() + Zoeos.lineSeperator);
                     else
                         buf.append(deviceExceptions.get(i).toString() + Zoeos.lineSeperator);
                 }
-                stopDeviceThreaded(buf.toString());
+                try {
+                    internalQ.getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
+                            try {
+                                stopDevice(true, buf.toString());
+                            } catch (IllegalStateTransitionException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }, "stopDevice (comm/internal error threshold reached)").post();
+                } catch (ResourceUnavailableException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -899,86 +964,83 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 }
             });
             if (deviceExceptions.size() >= remote.getRemotePreferences().ZPREF_commErrorThreshold.getValue()) {
-                StringBuffer buf = new StringBuffer();
+                final StringBuffer buf = new StringBuffer();
                 for (int i = 0; i < deviceExceptions.size(); i++) {
                     if (deviceExceptions.get(i) instanceof Exception)
                         buf.append(((Exception) deviceExceptions.get(i)).getMessage() + Zoeos.lineSeperator);
                     else
                         buf.append(deviceExceptions.get(i).toString() + Zoeos.lineSeperator);
                 }
-                stopDeviceThreaded(buf.toString());
+                try {
+                    internalQ.getPostableTicket(new TicketRunnable() {
+                        public void run() throws Exception {
+                            try {
+                                stopDevice(true, buf.toString());
+                            } catch (IllegalStateTransitionException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }, "stopDevice (comm/internal error threshold reached)").post();
+                } catch (ResourceUnavailableException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
 
-    // ZExternalDevice
+// UTILITY
+    public PostableTicket reinitializePresetFlash() {
+        return queues.generalQ().getPostableTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                deviceLock.configure();
+                try {
+                    presetDB.uninitializeFlash();
+                    presetDB.initializeFlashPresetNames(false);
+                } finally {
+                    deviceLock.unlock();
+                }
+            }
+        }, "reinitializePresetFlash");
+    }
+
+// ZExternalDevice
     public String getDeviceCategory() {
         return "E-MU";
     }
 
     public String getDeviceConfigReport() {
-        device.access();
-        try {
-            int s = sts.getState();
-            if (s == STATE_RUNNING)
+        if (deviceLock.tryAccess())
+            try {
                 retrieveDeviceConfiguration(false);
-        } finally {
-            device.unlock();
-        }
+            } finally {
+                deviceLock.unlock();
+            }
+
         return remote.getName() + Zoeos.getLineSeperator() + deviceConfigReport;
     }
 
-    /* public String[][] getTabularDeviceConfigReport() {
-         device.access();
-         try {
-             int s = sts.getState();
-             if (s == STATE_RUNNING)
-                 retrieveDeviceConfiguration(false);
-         } finally {
-             device.unlock();
-         }
-         return tabularDeviceConfigReport;
-     }
-      */
     public TableModel getDeviceConfigTableModel() {
-        device.access();
-        try {
-            int s = sts.getState();
-            if (s == STATE_RUNNING)
+        if (deviceLock.tryAccess()) {
+            try {
                 retrieveDeviceConfiguration(false);
-        } finally {
-            device.unlock();
+            } finally {
+                deviceLock.unlock();
+            }
         }
         return configTableModel;
     }
 
-    public void refreshDeviceConfiguration(boolean showProgress) {
-        device.access();
-        try {
-            int s = sts.getState();
-            if (s == STATE_RUNNING)
-                retrieveDeviceConfiguration(showProgress);
-        } finally {
-            device.unlock();
-        }
-    }
-
-    public int getStateSynchronized() {
-        device.access();
-        try {
-            return sts.getState();
-        } finally {
-            device.unlock();
-        }
-    }
-
-    public void markDuplicate() throws IllegalStateTransitionException {
-        device.configure();
-        try {
-            sts.transition(STATE_MARKED_DUPLICATE);
-        } finally {
-            device.unlock();
-        }
+    public Ticket refreshDeviceConfiguration(final boolean showProgress) {
+        return queues.generalQ().getTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                deviceLock.configure();
+                try {
+                    retrieveDeviceConfiguration(showProgress);
+                } finally {
+                    deviceLock.unlock();
+                }
+            }
+        }, "refreshDeviceConfiguration");
     }
 
     public String getStaticName() {
@@ -989,30 +1051,13 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         return remote.getName();
     }
 
-    public void setName(final String name) {
-        device.access();
+    public void setName(final String name) throws DeviceException {
+        deviceLock.configure();
         try {
             remote.setName(name);
             tplh.fireTitleProviderDataChanged();
         } finally {
-            device.unlock();
-        }
-    }
-
-    public void saveState() {
-        taskSaveState();
-    }
-
-    private void taskSaveState() {
-        device.configure();
-        try {
-            //Thread t = Thread.currentThread();
-            viewManager.retrieveDeviceDesktopElementsForNextStart();
-            SessionExternalization.saveAsLastSession(SessionExternalization.makeDeviceSession(this));
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
@@ -1024,67 +1069,55 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         return remote.getDeviceLocalDir();
     }
 
-    // CONTEXTS
-    public DeviceParameterContext getDeviceParameterContext() {
-        device.access();
+// CONTEXTS
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException {
+        deviceLock.access();
         try {
-            // if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-            //     throw new ZDeviceNotRunningException(this, null);
-            return dpc;
+            return deviceParameterContext;
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public MultiModeContext getMultiModeContext() throws ZDeviceNotRunningException {
-        device.access();
+    public MultiModeContext getMultiModeContext() throws DeviceException {
+        deviceLock.access();
         try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             return mmContext;
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public PresetContext getDefaultPresetContext() throws ZDeviceNotRunningException {
-        device.access();
+    public PresetContext getDefaultPresetContext() throws DeviceException {
+        deviceLock.access();
         try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             return presetDB.getRootContext();
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public SampleContext getDefaultSampleContext() throws ZDeviceNotRunningException {
-        device.access();
+    public SampleContext getDefaultSampleContext() throws DeviceException {
+        deviceLock.access();
         try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             return sampleDB.getRootContext();
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public MasterContext getMasterContext() throws ZDeviceNotRunningException {
-        device.access();
+    public MasterContext getMasterContext() throws DeviceException {
+        deviceLock.access();
         try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             return masterContext;
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public SampleMemory getSampleMemory() throws RemoteUnreachableException, ZDeviceNotRunningException {
-        device.access();
+    public SampleMemory getSampleMemory() throws DeviceException {
+        deviceLock.access();
         try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             try {
                 return remote.getMasterContext().req_sampleMemory();
             } catch (RemoteDeviceDidNotRespondException e) {
@@ -1093,15 +1126,13 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 throw new RemoteUnreachableException(e.getMessage());
             }
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public Remotable.PresetMemory getPresetMemory() throws RemoteUnreachableException, ZDeviceNotRunningException {
-        device.access();
+    public Remotable.PresetMemory getPresetMemory() throws DeviceException {
+        deviceLock.access();
         try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             try {
                 return remote.getMasterContext().req_presetMemory();
             } catch (RemoteDeviceDidNotRespondException e) {
@@ -1110,197 +1141,153 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 throw new RemoteUnreachableException(e.getMessage());
             }
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
     private static final int defragPause = 1500;
 
-    public void sampleMemoryDefrag(boolean pause) throws ZDeviceNotRunningException, RemoteUnreachableException {
-        device.configure();
-        try {
-            if (sts.getState() != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
-            try {
-                remote.getMasterContext().cmd_sampleDefrag();
-                if (pause) {
-//  new FlashMsg(null, null, defragPause, defragPause / 8, FlashMsg.colorInfo, "WAIT: Sample defragmentation");
+    public PostableTicket sampleMemoryDefrag(final boolean pause) throws DeviceException {
+        return queues.generalQ().getPostableTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                deviceLock.access();
+                try {
                     try {
-                        Thread.sleep(defragPause);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
+                        remote.getMasterContext().cmd_sampleDefrag();
+                        if (pause) {
+                            try {
+                                Thread.sleep(defragPause);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    } catch (RemoteMessagingException e) {
+                        throw new RemoteUnreachableException(e.getMessage());
                     }
+                } finally {
+                    deviceLock.unlock();
                 }
-            } catch (RemoteMessagingException e) {
-                throw new RemoteUnreachableException(e.getMessage());
             }
-        } finally {
-            device.unlock();
-        }
+        }, "sampleMemoryDefrag");
     }
 
-    // SMDI
+// SMDI
     public Object getSmdiCouplingObject() {
         return remote.getIdentityMessage();
     }
 
-    public boolean isSmdiCoupled() {
-        device.access();
+    public boolean isSmdiCoupled() throws DeviceException {
+        deviceLock.access();
         try {
-            if (smdiTarget != null)
-                return true;
-            return false;
+            return remote.isSmdiCoupled();
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public SmdiTarget getSmdiTarget() throws NotSMDICoupledException {
-        device.access();
+// AUDITION
+    public AuditionManager getAuditionManager() throws DeviceException {
+        // if (!getDevicePreferences().ZPREF_enableAuditioning.getValue())
+        //    throw new AuditioningDisabledException();
+        deviceLock.access();
         try {
-            if (smdiTarget != null)
-                return smdiTarget;
-            throw new NotSMDICoupledException();
+            synchronized (this) {
+                if (auditionManager == null)
+                    auditionManager = new Impl_AuditionManager(this);
+                return auditionManager;
+            }
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public void setSmdiTarget(SmdiTarget target) {
-        device.configure();
-        try {
-            smdiTarget = target;
-        } finally {
-            device.unlock();
-        }
-    }
-
-    // EVENTS
-    public void addDeviceListener(DeviceListener dl) {
-        listeners.add(dl);
-    }
-
-    public void removeDeviceListener(DeviceListener dl) {
-        listeners.remove(dl);
-    }
-
-    // DESKTOP
+// DESKTOP
     public ViewManager getViewManager() {
         return viewManager;
     }
 
-    // SYNCHRONIZATION
-    public void lockAccess() {
-        device.access();
-    }
+// BANK
 
-    public void lockConfigure() {
-        device.configure();
-    }
+    public PostableTicket eraseBank() {
+        return internalQ.getPostableTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                deviceLock.configure();
+                try {
+                    presetDB.stopWorkerQueues();
+                    sampleDB.stopWorkerQueues();
 
-    public void unlock() {
-        device.unlock();
-    }
+                    presetDB.eraseUserForBankErase();
+                    sampleDB.eraseUserForBankErase();
 
-    // BANK
+                    remote.getMasterContext().cmd_bankErase();
 
-    public void eraseBank() throws ZDeviceNotRunningException {
-        device.configure();
-        try {
-            if (sts.getState() != STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
-            new ZDBModifyThread("Erase Bank") {
-                public void run() {
-                    device.configure();
-                    try {
-                        remote.getMasterContext().cmd_bankErase();
+                    E4Device.this.mmContext.refresh().post();
+                    E4Device.this.masterContext.refresh().post();
 
-                        presetDB.stopWorkerThreads();
-                        sampleDB.stopWorkerThreads();
-
-                        presetDB.eraseUser();
-                        sampleDB.eraseUser();
-
-                        E4Device.this.mmContext.refresh();
-                        E4Device.this.masterContext.refresh();
-
-                        presetDB.initializeUserPresetData();
-                        sampleDB.initializeAllSampleData();
-                    } catch (Exception e) {
-                        logCommError(e);
-                    } finally {
-                        device.unlock();
-                    }
+                    presetDB.initializeUserPresetData();
+                    sampleDB.initializeAllSampleData();
+                } catch (Exception e) {
+                    logCommError(e);
+                } finally {
+                    deviceLock.unlock();
                 }
-            }.start();
-        } catch (Exception e) {
-        } finally {
-            device.unlock();
-        }
+            }
+        }, "eraseBank");
     }
 
-    public void refreshBank(final boolean refreshData) throws ZDeviceNotRunningException {
-        device.configure();
-        try {
-            if (sts.getState() != STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
-            new ZDBModifyThread("Refresh Bank") {
-                public void run() {
-                    device.configure();
-                    try {
-                        presetDB.stopWorkerThreads();
-                        sampleDB.stopWorkerThreads();
+    public PostableTicket refreshBank(final boolean refreshData) {
+        return internalQ.getPostableTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                deviceLock.configure();
+                try {
+                    presetDB.stopWorkerQueues();
+                    sampleDB.stopWorkerQueues();
 
-                        presetDB.uninitializeUser();
-                        sampleDB.uninitializeUser();
+                    presetDB.uninitializeUser();
+                    sampleDB.uninitializeUser();
 
-                        E4Device.this.mmContext.refresh();
-                        E4Device.this.masterContext.refresh();
+                    E4Device.this.mmContext.refresh().post();
+                    E4Device.this.masterContext.refresh().post();
 
-                        presetDB.initializeAllPresetNames(refreshData);
-                        sampleDB.initializeAllSampleData();
-                    } catch (Exception e) {
-                        logCommError(e);
-                    } finally {
-                        device.unlock();
-                    }
+                    presetDB.initializeAllPresetNames(refreshData);
+                    sampleDB.initializeAllSampleData();
+                } catch (Exception e) {
+                    logCommError(e);
+                } finally {
+                    deviceLock.unlock();
                 }
-            }.start();
-        } catch (Exception e) {
-        } finally {
-            device.unlock();
-        }
+            }
+        }, "refreshBank");
     }
 
-    // CONFIGURATION
-    public DeviceConfig getDeviceConfig() throws ZDeviceNotRunningException {
-        device.access();
+    public PostableTicket cancelAuditions() {
+        return internalQ.getPostableTicket(new TicketRunnable() {
+            public void run() throws Exception {
+                queues.auditionQ().cancel();
+//getAuditionManager().allNotesOff();
+            }
+        }, "cancelAuditions");
+    }
+
+// CONFIGURATION
+    public DeviceConfig getDeviceConfig() throws DeviceException {
+        deviceLock.access();
         try {
-            int st = sts.getState();
-            if (st != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             retrieveDeviceConfiguration(true);
             return deviceConfig;
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
     }
 
-    public DeviceExConfig getDeviceExConfig() throws ZDeviceNotRunningException {
-        device.access();
+    public DeviceExConfig getDeviceExConfig() throws DeviceException {
+        deviceLock.access();
         try {
-            int st = sts.getState();
-            if (st != ZExternalDevice.STATE_RUNNING)
-                throw new ZDeviceNotRunningException(this, null);
             retrieveDeviceConfiguration(true);
             return exDeviceConfig;
         } finally {
-            device.unlock();
+            deviceLock.unlock();
         }
-    }
-
-    public boolean isUltra() {
-        return this.getDeviceVersion() >= BASE_ULTRA_VERSION;
     }
 
     public double getDeviceVersion() {
@@ -1319,24 +1306,19 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         return sampleDB.getNumberOfInstalledSampleRoms();
     }
 
-    public ZCommand[] getZCommands() {
-        return cmdProviderHelper.getCommandObjects(this);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return cmdProviderHelper.getCommandObjects(markerClass, this);
     }
 
-    public void SmdiChanged() {
-        new ZDefaultThread("Update SMDI") {
-            public void run() {
-                device.configure();
-                try {
-                    updateSmdiCoupling();
-                } finally {
-                    device.unlock();
-                }
-            }
-        }.start();
+    public Class[] getZCommandMarkers() {
+        return cmdProviderHelper.getSupportedMarkers();
     }
 
-    public int getScsiId() throws ZDeviceNotRunningException {
+    public Remotable getRemote() {
+        return remote;
+    }
+
+    public int getScsiId() throws DeviceException, ParameterException {
         try {
             return getMasterContext().getMasterParams(new Integer[]{IntPool.get(190)})[0].intValue();
         } catch (IllegalParameterIdException e) {
@@ -1377,368 +1359,306 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
 
     private class Master extends Parameterized {
         public Master() {
-            super(dpc.getMasterContext(), true);
-        }
-    }
-
-    public class Impl_PresetContextFactory implements PresetContextFactory, Serializable {
-
-        public Impl_PresetContextFactory() {
+            super.initNew(deviceParameterContext.getMasterContext(), true);
         }
 
-        public PresetContext newPresetContext(String name, PresetDatabaseProxy pdbp) {
-            return new Impl_PresetContext(E4Device.this, name, pdbp);
-        }
-
-        public Object initializePresetAtIndex(Integer index, PresetEventHandler peh) {
-            device.access();
-            try {
-                return null;
-            } finally {
-                device.unlock();
-            }
-        }
-
-        public boolean remoteInitializePresetAtIndex(Integer index, PresetEventHandler peh, ByteArrayInputStream is) {
-            device.access();
-            try {
-                return false;
-            } finally {
-                device.unlock();
-            }
-        }
-
-        public double getPresetInitializationStatus(Integer index) {
-            device.access();
-            try {
-                return -1;
-            } finally {
-                device.unlock();
-            }
-        }
-
-        /*   public Object initializePresetAtIndex(Integer index, PresetEventHandler peh, PresetInitializationMonitor mon) {
-               device.access();
-               try {
-                   return null;
-               } finally {
-                   device.unlock();
-               }
-           }
-          */
-        // may return null
-        public String initializePresetNameAtIndex(Integer index, PresetEventHandler peh) {
-            device.access();
-            try {
-                return null;
-            } finally {
-                device.unlock();
-            }
-        }
-    }
-
-    public class Impl_OnlinePresetContextFactory implements PresetContextFactory, Serializable {
-        private Hashtable presetInitializationMonitors = new Hashtable();
-
-        public Impl_OnlinePresetContextFactory() {
-        }
-
-        public PresetContext newPresetContext(String name, PresetDatabaseProxy pdbp) {
-            return new Impl_OnlinePresetContext(E4Device.this, name, pdbp, remote);
-        }
-
-        public double getPresetInitializationStatus(Integer index) {
-            //  device.access();
-            // try {
-            PresetInitializationMonitor pim = (PresetInitializationMonitor) presetInitializationMonitors.get(index);
-            if (pim != null)
-                return pim.getStatus();
-            return RemoteObjectStates.STATUS_INITIALIZED;
-            //   } finally {
-            //     device.unlock();
-            // }
-        }
-
-        public Object initializePresetAtIndex(Integer index, PresetEventHandler peh) {
-            //device.access();
-            // try {
-            ByteArrayInputStream dumpStream;
-            PresetInitializationMonitor mon = new PresetInitializationMonitor(index, peh);
-            presetInitializationMonitors.put(index, mon);
-            try {
-                dumpStream = remote.getPresetContext().req_dump(index, mon);
-                if (dumpStream != null) {
-                    PresetObject p = new PresetObject(dumpStream, peh, dpc);
-                    return p;
-                }
-            } catch (InvalidPresetDumpException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (RemoteDeviceDidNotRespondException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (RemoteMessagingException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (PresetEmptyException e) {
-                //e.printStackTrace();
-                return EmptyPreset.getInstance();
-            } catch (TooManyVoicesException e) {
-                e.printStackTrace();
-            } catch (TooManyZonesException e) {
-                e.printStackTrace();
-            } finally {
-                presetInitializationMonitors.remove(index);
-            }
-            return null;
-            // } finally {
-            //   device.unlock();
-            // }
-        }
-
-        public boolean remoteInitializePresetAtIndex(Integer index, PresetEventHandler peh, ByteArrayInputStream is) {
-            //  device.access();
-            //   try {
-            PresetInitializationMonitor mon = new PresetInitializationMonitor(index, peh);
-            presetInitializationMonitors.put(index, mon);
-            try {
-                remote.getPresetContext().edit_dump(is, mon);
-                return true;
-            } catch (RemoteDeviceDidNotRespondException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (RemoteMessagingException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } catch (IOException e) {
-                e.printStackTrace();
-                logCommError(e);
-            } finally {
-                presetInitializationMonitors.remove(index);
-            }
-            return false;
-            // } finally {
-            //   device.unlock();
-            // }
-        }
-
-        public String initializePresetNameAtIndex(Integer index, PresetEventHandler peh) {
-            //  device.access();
-            // try {
-            String name = null;
-            try {
-                name = remote.getPresetContext().req_name(index);
-            } catch (RemoteDeviceDidNotRespondException e) {
-                logCommError(e);
-            } catch (RemoteMessagingException e) {
-                logCommError(e);
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                logCommError(e);
-            }
-            return name;
-            //  } finally {
-            //     device.unlock();
-            //}
-        }
-
-        public boolean isPresetRefreshing(Integer preset) {
-            return presetInitializationMonitors.containsKey(preset);
-        }
-    }
-
-    public class Impl_SampleContextFactory implements SampleContextFactory, Serializable {
-
-        public Impl_SampleContextFactory() {
-        }
-
-        public SampleContext newSampleContext(String name, SampleDatabaseProxy sdbp) {
-            //return new Impl_SampleContext(name, sdbp);
-            return null;
-        }
-
-        public Object initializeSampleAtIndex(Integer index, SampleEventHandler seh) {
-            return null;
-        }
-
-        public Object initializeSampleAtIndex(Integer index, String name, SampleEventHandler peh) {
-            return null;
-        }
-
-        public double getSampleInitializationStatus(Integer index) {
-            return -1;
-        }
-
-        public Object initializeSampleAtIndex(Integer index, SampleEventHandler seh, SampleInitializationMonitor mon) {
-            return null;
-        }
-
-        // may return null
-        public String initializeSampleNameAtIndex(Integer index, SampleEventHandler seh) {
-            return null;
-        }
-    }
-
-    public class Impl_OnlineSampleContextFactory implements SampleContextFactory, Serializable {
-        private Hashtable sampleInitializationMonitors = new Hashtable();
-
-        public Impl_OnlineSampleContextFactory() {
-        }
-
-        public SampleContext newSampleContext(String name, SampleDatabaseProxy sdbp) {
-            return new Impl_OnlineSampleContext(E4Device.this, name, sdbp, deviceSampleMediator, remote);
-        }
-
-        public double getSampleInitializationStatus(Integer index) {
-            //   device.access();
-            //   try {
-            SampleInitializationMonitor sim = (SampleInitializationMonitor) sampleInitializationMonitors.get(index);
-            if (sim != null)
-                return sim.getStatus();
-            return -1;
-            //  } finally {
-            //      device.unlock();
-            //  }
-        }
-
-        public Object initializeSampleAtIndex(Integer index, SampleEventHandler seh) {
-            //device.access();
-            // try {
-            if (smdiTarget != null && index.intValue() >= DeviceContext.FIRST_USER_SAMPLE && index.intValue() <= DeviceContext.MAX_USER_SAMPLE)
-                try {
-                    SmdiSampleHeader sh = smdiTarget.getSampleHeader(index.intValue());
-                    return new SampleObject(index, sh.getName(), seh, new Impl_SampleDescriptor(sh));
-                } catch (SmdiOutOfRangeException e) {
-                    e.printStackTrace();
-                } catch (SmdiNoSampleException e) {
-                    return EmptySample.getInstance();
-                } catch (SmdiGeneralException e) {
-                    e.printStackTrace();
-                } catch (TargetNotSMDIException e) {
-                    updateSmdiCoupling();
-                }
-            String name = initializeSampleNameAtIndex(index, seh);
-            return initializeSampleAtIndex(index, name, seh);
-            // } finally {
-            //      device.unlock();
-            //  }
-        }
-
-        public Object initializeSampleAtIndex(Integer index, String name, SampleEventHandler seh) {
-            //  device.access();
-            //  try {
-            if (name != null)
-                if (name.trim().equals(DeviceContext.EMPTY_SAMPLE))
-                    return EmptySample.getInstance();
-                else {
-                    if (smdiTarget != null && index.intValue() >= DeviceContext.FIRST_USER_SAMPLE && index.intValue() <= DeviceContext.MAX_USER_SAMPLE)
-                        try {
-                            SmdiSampleHeader sh = smdiTarget.getSampleHeader(index.intValue());
-                            return new SampleObject(index, name, seh, new Impl_SampleDescriptor(sh));
-                        } catch (SmdiOutOfRangeException e) {
-                            e.printStackTrace();
-                        } catch (SmdiNoSampleException e) {
-                            return EmptySample.getInstance();
-                        } catch (SmdiGeneralException e) {
-                            e.printStackTrace();
-                        } catch (TargetNotSMDIException e) {
-                            updateSmdiCoupling();
-                        }
-                    return new SampleObject(index, name, seh, null);
-                }
-            return null;
-            //  } finally {
-            //      device.unlock();
-            //  }
-        }
-
-        public String initializeSampleNameAtIndex(Integer index, SampleEventHandler seh) {
-            //  device.access();
-            //  try {
-            String name = null;
-            try {
-                name = remote.getSampleContext().req_name(index);
-            } catch (RemoteDeviceDidNotRespondException e) {
-                logCommError(e);
-            } catch (RemoteMessagingException e) {
-                logCommError(e);
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                logCommError(e);
-            }
-            return name;
-            //   } finally {
-            //       device.unlock();
-            //  }
+        public void setValue(Integer id, Integer value) throws ParameterValueOutOfRangeException, IllegalParameterIdException {
+            putValue(id, value);
         }
     }
 
     private class Impl_MultiModeContext implements MultiModeContext, ZCommandProvider, PresetListener, Serializable, ZDisposable {
-        transient private Vector listeners = new Vector();
+        transient private Vector<MultiModeListener> listeners;
         private MultiModeMap mmMap = null;
-        private boolean has32;
-        private MultiModeDescriptor mmDescriptor = new Impl_MultiModeDescripor();
-        private GeneralParameterDescriptor presetPD;
-        private GeneralParameterDescriptor volPD;
-        private GeneralParameterDescriptor panPD;
-        private GeneralParameterDescriptor submixPD;
+        private final boolean has32;
+        private final MultiModeDescriptor mmDescriptor = new Impl_MultiModeDescripor();
+        private final GeneralParameterDescriptor presetPD;
+        private final GeneralParameterDescriptor volPD;
+        private final GeneralParameterDescriptor panPD;
+        private final GeneralParameterDescriptor submixPD;
+
+        private transient ZThread currThread;
+        private transient ParameterEditLoader pel;
+        transient protected ManageableTicketedQ multimodeQ;
+        transient protected ManageableTaskQ<AbstractChannelTask> setEventQ;
+
+        private void checkThread() {
+            ZThread t = (ZThread) Thread.currentThread();
+            if (t != currThread) {
+                if (currThread != null)
+                    flush();
+                currThread = t;
+                t.addOnCompletedAction(new ZThread.OnCompletedAction() {
+                    public void completed(ZThread t) {
+                        flush();
+                    }
+                });
+            }
+        }
+
+        private ParameterEditLoader getPEL() {
+            if (pel == null)
+                pel = remote.getEditLoader();
+            return pel;
+        }
+
+        private synchronized void flush() {
+            currThread = null;
+            try {
+                getPEL().dispatch();
+                return;
+            } catch (RemoteUnreachableException e) {
+                logCommError(e);
+            } catch (RemoteMessagingException e) {
+                logCommError(e);
+            }
+            try {
+                refresh().post();
+            } catch (ResourceUnavailableException e) {
+                e.printStackTrace();
+            }
+        }
 
         public void zDispose() {
+            setEventQ.stop(true);
+            multimodeQ.stop(true);
             listeners.clear();
-            mmMap = null;
-            mmDescriptor = null;
         }
 
         public Impl_MultiModeContext() throws RemoteDeviceDidNotRespondException, RemoteMessagingException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, IllegalParameterIdException {
             mmMap = remote.getMasterContext().req_multimodeMap();
             has32 = mmMap.has32();
-            presetPD = dpc.getParameterDescriptor(IntPool.get(247));
-            volPD = dpc.getParameterDescriptor(IntPool.get(248));
-            panPD = dpc.getParameterDescriptor(IntPool.get(249));
-            submixPD = dpc.getParameterDescriptor(IntPool.get(250));
+            presetPD = deviceParameterContext.getParameterDescriptor(IntPool.get(247));
+            volPD = deviceParameterContext.getParameterDescriptor(IntPool.get(248));
+            panPD = deviceParameterContext.getParameterDescriptor(IntPool.get(249));
+            submixPD = deviceParameterContext.getParameterDescriptor(IntPool.get(250));
+            buildTransients();
         }
 
         private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
             ois.defaultReadObject();
-            listeners = new Vector();
+            buildTransients();
         }
 
-        public MultiModeMap getMultimodeMap() {
-            device.access();
+        private void buildTransients() {
+            listeners = new Vector<MultiModeListener>();
+            multimodeQ = QueueFactory.createTicketedQueue(this, "multimodeQ", 6);
+            multimodeQ.start();
+            setEventQ = QueueFactory.createTaskQueue(this, "multiModeSetParameterQ", 6, new ThreadAllower() {
+                public boolean allowThread() {
+                    return !SwingUtilities.isEventDispatchThread();
+                }
+
+                public void zDispose() {
+                }
+            }, new TaskInserter<AbstractChannelTask>() {
+
+                public void zDispose() {
+                }
+
+                public void insertTask(AbstractChannelTask task, List<AbstractChannelTask> postedTasks, String qName) throws QueueUnavailableException {
+                    int i = postedTasks.indexOf(task);
+                    if (i == -1)
+                        postedTasks.add(task);
+                    else
+                        postedTasks.set(i, task);
+                }
+            }, new TaskFetcher<AbstractChannelTask>() {
+                public List<AbstractChannelTask> fetch(List<AbstractChannelTask> eventTasks) {
+                    ArrayList<AbstractChannelTask> outEventTasks = new ArrayList<AbstractChannelTask>();
+                    outEventTasks.addAll(eventTasks);
+                    eventTasks.clear();
+                    final Set<Integer> chSet = new HashSet<Integer>();
+                    for (AbstractChannelTask t : outEventTasks)
+                        chSet.add(t.getCh());
+                    outEventTasks.add(new AbstractChannelTask(IntPool.minus_one, "fireMultiModeChannelChangedEvent") {
+                        public void run() throws Exception {
+                            for (Integer ch : chSet)
+                                fireMultiModeEvent(new MultiModeChannelChangedEvent(this, Impl_MultiModeContext.this, ch));
+                        }
+                    });
+                    return outEventTasks;
+                }
+
+                public void zDispose() {
+
+                }
+            }, DelayFactory.createDelay(75));
+            setEventQ.start();
+        }
+
+        abstract class AbstractChannelTask implements Task {
+            private Integer ch;
+            private String name;
+
+            protected AbstractChannelTask(Integer ch, String name) {
+                this.ch = ch;
+                this.name = name;
+            }
+
+            public Integer getCh() {
+                return ch;
+            }
+
+            public String getName() {
+                return name;
+            }
+
+            public void cbCancelled() {
+            }
+
+            public void cbFinished(Exception e) {
+
+            }
+
+            public boolean equals(Object obj) {
+                return this.getClass().equals(obj.getClass()) && getCh().equals(((AbstractChannelTask) obj).getCh());
+            }
+        }
+
+        abstract class AbstractSetTask extends AbstractChannelTask implements Task {
+            private Integer value;
+
+            public AbstractSetTask(Integer ch, Integer value, String name) {
+                super(ch, name);
+                this.value = value;
+            }
+
+            public Integer getValue() {
+                return value;
+            }
+        }
+
+        class SetPreset extends AbstractSetTask {
+            public SetPreset(Integer ch, Integer value) {
+                super(ch, value, "setPreset");
+            }
+
+            public void run() throws Exception {
+                checkThread();
+                getPEL().add(new Integer[]{IntPool.get(246), IntPool.get(247)}, new Integer[]{getCh(), getValue()});
+            }
+        }
+
+        class SetVolume extends AbstractSetTask {
+            public SetVolume(Integer ch, Integer value) {
+                super(ch, value, "setVolume");
+            }
+
+            public void run() throws Exception {
+
+                checkThread();
+                getPEL().add(new Integer[]{IntPool.get(246), IntPool.get(248)}, new Integer[]{getCh(), getValue()});
+            }
+        }
+
+        class SetPan extends AbstractSetTask {
+            public SetPan(Integer ch, Integer value) {
+                super(ch, value, "setPan");
+            }
+
+            public void run() throws Exception {
+                checkThread();
+                getPEL().add(new Integer[]{IntPool.get(246), IntPool.get(249)}, new Integer[]{getCh(), getValue()});
+            }
+        }
+
+        class SetSubmix extends AbstractSetTask {
+            public SetSubmix(Integer ch, Integer value) {
+                super(ch, value, "setSubmix");
+            }
+
+            public void run() throws Exception {
+                checkThread();
+                getPEL().add(new Integer[]{IntPool.get(246), IntPool.get(250)}, new Integer[]{getCh(), getValue()});
+            }
+        }
+
+        public Ticket audition(final int ch) {
+            return queues.auditionQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        AuditionManager am = E4Device.this.getAuditionManager();
+                        int note = NoteUtilities.Note.getValueForString(getDevicePreferences().ZPREF_quickAuditionNote.getValue());
+                        int gate = getDevicePreferences().ZPREF_quickAuditionGate.getValue();
+                        int vel = getDevicePreferences().ZPREF_quickAuditionVel.getValue();
+                        Ticket noteTicket = am.getNote(note, ch, vel, gate);
+                        // if (getDevicePreferences().ZPREF_allNotesOffBetweenAuditions.getValue())
+                        //   am.allNotesOff(ch);
+                        noteTicket.send(0);
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "audition");
+        }
+
+        public MultiModeMap getMultimodeMap() throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     return mmMap.getCopy();
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
         }
 
-        public MultiModeChannel getMultiModeChannel(Integer channel) throws IllegalMidiChannelException {
+        public MultiModeChannel getMultiModeChannel(Integer channel) throws IllegalMultimodeChannelException {
             return new Impl_MultiModeChannel(channel);
         }
 
-        public void setMultimodeMap(MultiModeMap mmMap) {
-            device.access();
-            try {
-                synchronized (this) {
-                    remote.getMasterContext().edit_multimodeMap(mmMap);
-                    removeChannelPresetListeners();
-                    this.mmMap = mmMap.getCopy();
-                    addChannelPresetListeners();
+        public Ticket setMultimodeMap(final MultiModeMap mmMap) {
+            return multimodeQ.getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        synchronized (this) {
+                            removeChannelPresetListeners();
+                            for (int i = 1, j = mmMap.has32() ? 32 : 16; i <= j; i++) {
+                                Integer ch = IntPool.get(i);
+                                setPreset(ch, mmMap.getPreset(ch)).post();
+                                setVolume(ch, mmMap.getVolume(ch)).post();
+                                setPan(ch, mmMap.getPan(ch)).post();
+                                setSubmix(ch, mmMap.getSubmix(ch)).post();
+                            }
+                            addChannelPresetListeners();
+
+                            /*
+                            remote.getMasterContext().edit_multimodeMap(mmMap);
+                            removeChannelPresetListeners();
+                            this.mmMap = mmMap.getCopy();
+                            addChannelPresetListeners();
+                            */
+                        }
+                    } /*catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
+                        logCommError(e);
+                    } catch (RemoteMessagingException e) {
+                        logCommError(e);
+                    } */ finally {
+                        deviceLock.unlock();
+                    }
+                    fireMultiModeEvent(new MultiModeRefreshedEvent(Impl_MultiModeContext.this, Impl_MultiModeContext.this));
                 }
-            } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
-                logCommError(e);
-            } catch (RemoteMessagingException e) {
-                logCommError(e);
+            }, "setMultimodeMap");
+        }
+
+        public Integer[] getDistinctMultimodePresetIndexes() throws DeviceException {
+            deviceLock.access();
+            HashSet<Integer> presets = new HashSet<Integer>();
+            try {
+                for (int i = 1, j = mmMap.has32() ? 32 : 16; i <= j; i++) {
+                    Integer p = this.getPreset(IntPool.get(i));
+                    if (p.intValue() >= 0)
+                        presets.add(p);
+                }
+            } catch (IllegalMultimodeChannelException e) {
+                SystemErrors.internal(e);
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
-            fireMultiModeEvent(new MultiModeRefreshedEvent(Impl_MultiModeContext.this, Impl_MultiModeContext.this));
+            return (Integer[]) presets.toArray(new Integer[presets.size()]);
         }
 
         private void removeChannelPresetListeners() {
@@ -1753,8 +1673,11 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             for (int n = 1; n <= chnls; n++) {
                 ch = IntPool.get(n);
                 try {
-                    pc.removePresetListener(this, new Integer[]{mmMap.getPreset(ch)});
-                } catch (IllegalMidiChannelException e) {
+                    Integer preset = mmMap.getPreset(ch);
+                    if (preset.intValue() < 0)
+                        continue;
+                    pc.removeContentListener(this, new Integer[]{mmMap.getPreset(ch)});
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
@@ -1772,8 +1695,11 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             for (int n = 1; n <= chnls; n++) {
                 ch = IntPool.get(n);
                 try {
-                    pc.addPresetListener(this, new Integer[]{mmMap.getPreset(ch)});
-                } catch (IllegalMidiChannelException e) {
+                    Integer preset = mmMap.getPreset(ch);
+                    if (preset.intValue() < 0)
+                        continue;
+                    pc.addContentListener(this, new Integer[]{preset});
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
@@ -1788,161 +1714,334 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         }
 
         public MultiModeDescriptor getMultiModeDescriptor() {
-            device.access();
-            try {
-                synchronized (this) {
-                    return mmDescriptor;
-                }
-            } finally {
-                device.unlock();
-            }
+            return mmDescriptor;
         }
 
         public boolean has32Channels() {
-            device.access();
-            try {
-                synchronized (this) {
-                    return has32;
-                }
-            } finally {
-                device.unlock();
-            }
+            return has32;
         }
 
-        public Integer getPreset(Integer ch) throws IllegalMidiChannelException {
-            device.access();
+        public Integer getPreset(Integer ch) throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     return mmMap.getPreset(ch);
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
         }
 
-        public Integer getVolume(Integer ch) throws IllegalMidiChannelException {
-            device.access();
+        public Integer getVolume(Integer ch) throws IllegalMultimodeChannelException, DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     return mmMap.getVolume(ch);
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
         }
 
-        public Integer getPan(Integer ch) throws IllegalMidiChannelException {
-            device.access();
+        public Integer getPan(Integer ch) throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     return mmMap.getPan(ch);
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
         }
 
-        public Integer getSubmix(Integer ch) throws IllegalMidiChannelException {
-            device.access();
+        public Integer getSubmix(Integer ch) throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     return mmMap.getSubmix(ch);
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
         }
 
-        public void setPreset(Integer ch, Integer preset) throws IllegalMidiChannelException {
+        public Ticket setPreset(final Integer ch, final Integer preset) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    task_setPreset(ch, preset);
+                }
+            }, "setPreset");
+        }
+
+        private void task_setPreset(final Integer ch, final Integer preset) throws DeviceException {
             if (!getMultiModeDescriptor().getPresetParameterDescriptor().isValidValue(preset))
                 return;
-            device.access();
+            deviceLock.access();
             try {
                 synchronized (this) {
                     Integer lastPreset = getPreset(ch);
                     mmMap.setPreset(ch, preset);
-                    try {
-                        remote.getParameterContext().edit_prmValues(new Integer[]{
-                            IntPool.get(246), ch, IntPool.get(247), preset});
-                    } catch (Exception e) {
-                        logCommError(e);
-                    }
                     PresetContext pc = getDefaultPresetContext();
-                    pc.addPresetListener(this, new Integer[]{preset});
-                    pc.removePresetListener(this, new Integer[]{lastPreset});
-                    fireMultiModeEvent(new MultiModeChannelChangedEvent(Impl_MultiModeContext.this, Impl_MultiModeContext.this, ch));
+                    pc.addContentListener(Impl_MultiModeContext.this, new Integer[]{preset});
+                    pc.removeContentListener(Impl_MultiModeContext.this, new Integer[]{lastPreset});
+                    try {
+                        setEventQ.postTask(new SetPreset(ch, preset));
+                    } catch (QueueUnavailableException e) {
+                        throw new DeviceException(e.getMessage());
+                    }
                 }
-            } catch (ZDeviceNotRunningException e) {
-                e.printStackTrace();
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
         }
 
-        public void setVolume(Integer ch, Integer volume) throws IllegalMidiChannelException {
-            device.access();
+        public Ticket setVolume(final Integer ch, final Integer volume) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    task_setVolume(ch, volume);
+                }
+            }, "setVolume");
+        }
+
+        private void task_setVolume(final Integer ch, final Integer volume) throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     mmMap.setVolume(ch, volume);
                     try {
-                        remote.getParameterContext().edit_prmValues(new Integer[]{
-                            IntPool.get(246), ch, IntPool.get(248), volume}
-                        );
-                    } catch (Exception e) {
-                        logCommError(e);
+                        setEventQ.postTask(new SetVolume(ch, volume));
+                    } catch (QueueUnavailableException e) {
+                        throw new DeviceException(e.getMessage());
                     }
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
-            fireMultiModeEvent(new MultiModeChannelChangedEvent(Impl_MultiModeContext.this, Impl_MultiModeContext.this, ch));
         }
 
-        public void setPan(Integer ch, Integer pan) throws IllegalMidiChannelException {
-            device.access();
+        public Ticket setPan(final Integer ch, final Integer pan) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    task_setPan(ch, pan);
+                }
+            }, "setPan");
+        }
+
+        private void task_setPan(final Integer ch, final Integer pan) throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
                     mmMap.setPan(ch, pan);
                     try {
-                        remote.getParameterContext().edit_prmValues(new Integer[]{
-                            IntPool.get(246), ch, IntPool.get(249), pan}
-                        );
-                    } catch (Exception e) {
-                        logCommError(e);
+                        setEventQ.postTask(new SetPan(ch, pan));
+                    } catch (QueueUnavailableException e) {
+                        throw new DeviceException(e.getMessage());
                     }
                 }
-
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
-            fireMultiModeEvent(new MultiModeChannelChangedEvent(Impl_MultiModeContext.this, Impl_MultiModeContext.this, ch));
         }
 
-        public void setSubmix(Integer ch, Integer submix) throws IllegalMidiChannelException {
-            device.access();
+        public Ticket setSubmix(final Integer ch, final Integer submix) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    task_setSubmix(ch, submix);
+                }
+            }, "setSubmix");
+        }
+
+        private void task_setSubmix(final Integer ch, final Integer submix) throws DeviceException {
+            deviceLock.access();
             try {
                 synchronized (this) {
-                    mmMap.setSubmix(ch, submix);
-                    // TODO!! for EOS Ultra execute whole map here because of submix editing bug
+                    checkThread();
+                    if (/*submix.intValue() == -2 ||*/ submix.intValue() > 7) { // RFX bus
+                        flush();
+                        AuditionManager am = getAuditionManager();
+                        if (am.isMidiChannelReachable(ch.intValue())) {
+                            mmMap.setSubmix(ch, submix);
+                            int smv = submix.intValue();
+                            if (smv == -2)
+                                smv = 127;
+                            else
+                                smv++; // adjust to 0..15
+                            am.sendCC(79, ch.intValue(), smv);
+                            fireMultiModeEvent(new MultiModeChannelChangedEvent(this, Impl_MultiModeContext.this, ch));
+                        }
+                    } else {
+                        mmMap.setSubmix(ch, submix);
+                        try {
+                            setEventQ.postTask(new SetSubmix(ch, submix));
+                        } catch (QueueUnavailableException e) {
+                            throw new DeviceException(e.getMessage());
+                        }
+                    }
+                }
+            } catch (AuditionManager.MultimodeChannelUnreachableException e) {
+                e.printStackTrace();
+            } finally {
+                deviceLock.unlock();
+            }
+        }
+
+        public Ticket offsetPreset(final Integer ch, final Integer offset) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
                     try {
-                        remote.getParameterContext().edit_prmValues(new Integer[]{
-                            IntPool.get(246), ch, IntPool.get(250), submix}
-                        );
-                    } catch (Exception e) {
-                        logCommError(e);
+                        task_setPreset(ch, presetPD.constrainValue(IntPool.get(getPreset(ch).intValue() + offset.intValue())));
+                    } finally {
+                        deviceLock.unlock();
                     }
                 }
-            } finally {
-                device.unlock();
-            }
-            fireMultiModeEvent(new MultiModeChannelChangedEvent(Impl_MultiModeContext.this, Impl_MultiModeContext.this, ch));
+            }, "offsetPreset");
         }
 
-        public void refresh() {
-            device.access();
+        public Ticket offsetVolume(final Integer ch, final Integer offset) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setVolume(ch, volPD.constrainValue(IntPool.get(getVolume(ch).intValue() + offset.intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetVolume");
+        }
+
+        public Ticket offsetPan(final Integer ch, final Integer offset) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setPan(ch, panPD.constrainValue(IntPool.get(getPan(ch).intValue() + offset.intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetPan");
+        }
+
+        public Ticket offsetSubmix(final Integer ch, final Integer offset) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setSubmix(ch, submixPD.constrainValue(IntPool.get(getSubmix(ch).intValue() + offset.intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetSubmix");
+        }
+
+        public Ticket offsetPreset(final Integer ch, final Double offsetAsFOR) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setPreset(ch, presetPD.constrainValue(IntPool.get(getPreset(ch).intValue() + ParameterModelUtilities.calcIntegerOffset(presetPD, offsetAsFOR).intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetPreset");
+        }
+
+        public Ticket offsetVolume(final Integer ch, final Double offsetAsFOR) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setVolume(ch, volPD.constrainValue(IntPool.get(getVolume(ch).intValue() + ParameterModelUtilities.calcIntegerOffset(volPD, offsetAsFOR).intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetVolume");
+        }
+
+        public Ticket offsetPan(final Integer ch, final Double offsetAsFOR) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setPan(ch, panPD.constrainValue(IntPool.get(getPan(ch).intValue() + ParameterModelUtilities.calcIntegerOffset(panPD, offsetAsFOR).intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetPan");
+        }
+
+        public Ticket offsetSubmix(final Integer ch, final Double offsetAsFOR) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_setVolume(ch, submixPD.constrainValue(IntPool.get(getSubmix(ch).intValue() + ParameterModelUtilities.calcIntegerOffset(submixPD, offsetAsFOR).intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetSubmix");
+        }
+
+        // to help with RFX detection
+        private void applyMapToSubmixPD() {
+            int chnls = mmMap.has32() ? 32 : 16;
+            for (int i = 1; i <= chnls; i++) {
+                try {
+                    submixPD.getStringForValue(mmMap.getSubmix(IntPool.get(i)));
+                } catch (Exception e) {
+                }
+            }
+        }
+
+        public void sendMidiMessage(MidiMessage m) throws RemoteUnreachableException, DeviceException {
+            deviceLock.access();
+            try {
+                remote.getMasterContext().sendMidiMessage(m);
+            } finally {
+                deviceLock.unlock();
+            }
+        }
+
+        public Ticket refresh() {
+            return multimodeQ.getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_refresh();
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "refreshMultiMode");
+        }
+
+        public void syncRefresh() throws DeviceException {
+            deviceLock.access();
+            try {
+                task_refresh();
+            } finally {
+                deviceLock.unlock();
+            }
+        }
+
+
+        public void syncToEdits() {
+            setEventQ.waitUntilEmpty();
+        }
+
+        void task_refresh() {
             try {
                 synchronized (this) {
+                    flush();
                     mmMap = remote.getMasterContext().req_multimodeMap();
+                    applyMapToSubmixPD();
                 }
                 fireMultiModeEvent(new MultiModeRefreshedEvent(this, this));
             } catch (RemoteDeviceDidNotRespondException e) {
@@ -1951,18 +2050,16 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 e.printStackTrace();
             } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
                 e.printStackTrace();
-            } finally {
-                device.unlock();
             }
         }
 
         private void fireMultiModeEvent(final MultiModeEvent ev) {
-            final Vector f_listeners = (Vector) listeners.clone();
+            final Object[] la = listeners.toArray();
             SwingUtilities.invokeLater(new Runnable() {
                 public void run() {
-                    for (int n = 0, o = f_listeners.size(); n < o; n++)
+                    for (Object o : la)
                         try {
-                            ev.fire((MultiModeListener) f_listeners.get(n));
+                            ev.fire((MultiModeListener) o);
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -1970,51 +2067,55 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             });
         }
 
-        public ZCommand[] getZCommands() {
-            return multiModeCmdProviderHelper.getCommandObjects(this);
+        public ZCommand[] getZCommands(Class markerClass) {
+            return multiModeCmdProviderHelper.getCommandObjects(markerClass, this);
+        }
+
+        public Class[] getZCommandMarkers() {
+            return multiModeCmdProviderHelper.getSupportedMarkers();
         }
 
         private void updateChannelsOnPresetChange(Integer preset) {
-            device.access();
             try {
-                int chnls;
-                if (has32)
-                    chnls = 32;
-                else
-                    chnls = 16;
-                Integer ch;
-                for (int n = 1; n <= chnls; n++) {
-                    ch = IntPool.get(n);
-                    try {
-                        if (preset.equals(mmMap.getPreset(ch)))
-                            this.fireMultiModeEvent(new MultiModeChannelChangedEvent(this, this, ch));
+                deviceLock.access();
+                try {
+                    int chnls;
+                    if (has32)
+                        chnls = 32;
+                    else
+                        chnls = 16;
+                    Integer ch;
+                    for (int n = 1; n <= chnls; n++) {
+                        ch = IntPool.get(n);
+                        try {
+                            if (preset.equals(mmMap.getPreset(ch)))
+                                this.fireMultiModeEvent(new MultiModeChannelChangedEvent(this, this, ch));
 
-                    } catch (IllegalMidiChannelException e) {
-                        e.printStackTrace();
+                        } catch (IllegalMultimodeChannelException e) {
+                            e.printStackTrace();
+                        }
                     }
+                } finally {
+                    deviceLock.unlock();
                 }
-            } finally {
-                device.unlock();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
 
-        public void presetInitialized(PresetInitializeEvent ev) {
-            updateChannelsOnPresetChange(ev.getPreset());
-        }
-
         public void presetInitializationStatusChanged(PresetInitializationStatusChangedEvent ev) {
-            updateChannelsOnPresetChange(ev.getPreset());
+            updateChannelsOnPresetChange(ev.getIndex());
         }
 
-        public void presetRefreshed(PresetRefreshEvent ev) {
-            updateChannelsOnPresetChange(ev.getPreset());
+        public void presetRefreshed(PresetInitializeEvent ev) {
+            updateChannelsOnPresetChange(ev.getIndex());
         }
 
         public void presetChanged(PresetChangeEvent ev) {
         }
 
         public void presetNameChanged(PresetNameChangeEvent ev) {
-            updateChannelsOnPresetChange(ev.getPreset());
+            updateChannelsOnPresetChange(ev.getIndex());
         }
 
         public void voiceAdded(VoiceAddEvent ev) {
@@ -2081,85 +2182,153 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         private class Impl_MultiModeChannel implements MultiModeChannel, ZCommandProvider {
             private Integer ch;
 
-            public Impl_MultiModeChannel(Integer ch) throws IllegalMidiChannelException {
+            public Impl_MultiModeChannel(Integer ch) throws IllegalMultimodeChannelException {
                 this.ch = ch;
                 int chi = ch.intValue();
-                if (has32Channels()) {
+                if (has32) {
                     if (chi > 32 || chi < 1)
-                        throw new IllegalMidiChannelException(ch, "Not a valid MultiMode channel");
+                        throw new IllegalMultimodeChannelException(ch);
                 } else if (chi > 16 || chi < 1)
-                    throw new IllegalMidiChannelException(ch, "Not a valid MultiMode channel");
+                    throw new IllegalMultimodeChannelException(ch);
             }
 
             public MultiModeDescriptor getMultiModeDescriptor() {
                 return getMultiModeDescriptor();
             }
 
+            public Ticket audition() {
+                return Impl_MultiModeContext.this.audition(ch.intValue());
+            }
+
             public Integer getChannel() {
                 return ch;
             }
 
-            public Integer getPreset() {
+            public Integer getPreset() throws ParameterException {
                 try {
                     return Impl_MultiModeContext.this.getPreset(ch);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                } catch (DeviceException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public Integer getVolume() {
+            public Integer getVolume() throws ParameterException {
                 try {
                     return Impl_MultiModeContext.this.getVolume(ch);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                } catch (DeviceException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public Integer getPan() {
+            public Integer getPan() throws ParameterException {
                 try {
                     return Impl_MultiModeContext.this.getPan(ch);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                } catch (DeviceException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public Integer getSubmix() {
+            public Integer getSubmix() throws ParameterException {
                 try {
                     return Impl_MultiModeContext.this.getSubmix(ch);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                } catch (DeviceException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public void setPreset(Integer preset) {
+            public void setPreset(Integer preset) throws ParameterException {
                 try {
-                    Impl_MultiModeContext.this.setPreset(ch, preset);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                    Impl_MultiModeContext.this.setPreset(ch, preset).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public void setVolume(Integer volume) {
+            public void setVolume(Integer volume) throws ParameterException {
                 try {
-                    Impl_MultiModeContext.this.setVolume(ch, volume);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                    Impl_MultiModeContext.this.setVolume(ch, volume).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public void setPan(Integer pan) {
+            public void setPan(Integer pan) throws ParameterException {
                 try {
-                    Impl_MultiModeContext.this.setPan(ch, pan);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                    Impl_MultiModeContext.this.setPan(ch, pan).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
-            public void setSubmix(Integer submix) {
+            public void setSubmix(Integer submix) throws ParameterException {
                 try {
-                    Impl_MultiModeContext.this.setSubmix(ch, submix);
-                } catch (IllegalMidiChannelException e) {
-                    throw new IllegalStateException("Configured midi channel no longer available");
+                    Impl_MultiModeContext.this.setSubmix(ch, submix).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetPreset(Integer offset) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetPreset(ch, offset).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetVolume(Integer offset) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetVolume(ch, offset).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetPan(Integer offset) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetPan(ch, offset).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetSubmix(Integer offset) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetSubmix(ch, offset).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetPreset(Double offsetAsFOR) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetPreset(ch, offsetAsFOR).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetVolume(Double offsetAsFOR) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetVolume(ch, offsetAsFOR).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetPan(Double offsetAsFOR) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetPan(ch, offsetAsFOR).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
+                }
+            }
+
+            public void offsetSubmix(Double offsetAsFOR) throws ParameterException {
+                try {
+                    Impl_MultiModeContext.this.offsetSubmix(ch, offsetAsFOR).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterException(e.getMessage());
                 }
             }
 
@@ -2187,21 +2356,24 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 return new Impl_MultiModeSubmixParameterModel();
             }
 
-            public ZCommand[] getZCommands() {
-                return mutliModeChannelCmdProviderHelper.getCommandObjects(this);
+            public ZCommand[] getZCommands(Class markerClass) {
+                return multiModeChannelCmdProviderHelper.getCommandObjects(markerClass, this);
             }
 
+            public Class[] getZCommandMarkers() {
+                return multiModeChannelCmdProviderHelper.getSupportedMarkers();
+            }
 
             private class Impl_MultiModePresetParameterModel extends AbstractEditableParameterModel implements IconAndTipCarrier {
-                public Impl_MultiModePresetParameterModel() throws IllegalParameterIdException {
+                public Impl_MultiModePresetParameterModel() {
                     super(presetPD);
                 }
 
                 public Icon getIcon() {
                     try {
                         return E4Device.this.getDefaultPresetContext().getReadablePreset(getPreset()).getIcon();
-                    } catch (NoSuchPresetException e) {
-                    } catch (ZDeviceNotRunningException e) {
+                    } catch (ParameterException e) {
+                    } catch (DeviceException e) {
                     }
                     return null;
                 }
@@ -2209,58 +2381,93 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 public String getToolTipText() {
                     try {
                         return E4Device.this.getDefaultPresetContext().getReadablePreset(getPreset()).getToolTipText();
-                    } catch (NoSuchPresetException e) {
-                    } catch (ZDeviceNotRunningException e) {
+                    } catch (DeviceException e) {
+                    } catch (ParameterException e) {
                     }
                     return null;
                 }
 
-                public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+                public void setValue(Integer value) throws ParameterException {
                     setPreset(value);
                 }
 
-                public Integer getValue() throws ParameterUnavailableException {
+                public void offsetValue(Integer offset) throws ParameterException {
+                    offsetPreset(offset);
+                }
+
+                public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                    offsetPreset(offsetAsFOR);
+                }
+
+                public Integer getValue() throws ParameterException {
                     return getPreset();
                 }
 
-                public String getValueString() throws ParameterUnavailableException {
+                public String getValueString() throws ParameterException {
                     Integer i = getValue();
                     if (i.intValue() == -1)
                         return "Disabled";
                     else {
                         try {
                             return PresetContextMacros.getPresetDisplayName(E4Device.this.getDefaultPresetContext(), i);
-                        } catch (ZDeviceNotRunningException e) {
+                        } catch (DeviceException e) {
+                            e.printStackTrace();
                         }
                     }
                     return "";
                 }
 
-                public String getValueUnitlessString() throws ParameterUnavailableException {
+                public String getValueUnitlessString() throws ParameterException {
                     return getValueString();
                 }
 
                 public String toString() {
                     try {
                         return getValueString();
-                    } catch (ParameterUnavailableException e) {
+                    } catch (ParameterException e) {
                     }
                     return "";
+                }
+
+                public ZCommand[] getZCommands(Class markerClass) {
+                    return EditableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
+                }
+
+                // most capable/super first
+                public Class[] getZCommandMarkers() {
+                    return EditableParameterModel.cmdProviderHelper.getSupportedMarkers();
                 }
             }
 
 
             private class Impl_MultiModeVolumeParameterModel extends AbstractEditableParameterModel {
-                public Impl_MultiModeVolumeParameterModel() throws IllegalParameterIdException {
+                public Impl_MultiModeVolumeParameterModel() {
                     super(volPD);
                 }
 
-                public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+                public void setValue(Integer value) throws ParameterException {
                     setVolume(value);
                 }
 
-                public Integer getValue() throws ParameterUnavailableException {
+                public void offsetValue(Integer offset) throws ParameterException {
+                    offsetVolume(offset);
+                }
+
+                public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                    offsetVolume(offsetAsFOR);
+                }
+
+                public Integer getValue() throws ParameterException {
                     return getVolume();
+                }
+
+                public ZCommand[] getZCommands(Class markerClass) {
+                    return EditableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
+                }
+
+                // most capable/super first
+                public Class[] getZCommandMarkers() {
+                    return EditableParameterModel.cmdProviderHelper.getSupportedMarkers();
                 }
             }
 
@@ -2269,35 +2476,59 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                     super(panPD);
                 }
 
-                public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+                public void setValue(Integer value) throws ParameterException {
                     setPan(value);
                 }
 
-                public Integer getValue() throws ParameterUnavailableException {
+                public void offsetValue(Integer offset) throws ParameterException {
+                    offsetPan(offset);
+                }
+
+                public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                    offsetPan(offsetAsFOR);
+                }
+
+                public Integer getValue() throws ParameterException {
                     return getPan();
+                }
+
+                public ZCommand[] getZCommands(Class markerClass) {
+                    return EditableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
+                }
+
+                // most capable/super first
+                public Class[] getZCommandMarkers() {
+                    return EditableParameterModel.cmdProviderHelper.getSupportedMarkers();
                 }
             }
 
             private class Impl_MultiModeSubmixParameterModel extends AbstractEditableParameterModel {
-                public Impl_MultiModeSubmixParameterModel() throws IllegalParameterIdException {
+                public Impl_MultiModeSubmixParameterModel() {
                     super(submixPD);
                 }
 
-                public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+                public void setValue(Integer value) throws ParameterException {
                     setSubmix(value);
                 }
 
-                public Integer getValue() throws ParameterUnavailableException {
+                public void offsetValue(Integer offset) throws ParameterException {
+                    offsetSubmix(offset);
+                }
+
+                public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                    offsetSubmix(offsetAsFOR);
+                }
+
+                public Integer getValue() throws ParameterException {
                     return getSubmix();
                 }
             }
-
         }
     }
 
     private class Impl_MasterContext implements MasterContext, ZCommandProvider, ZDisposable {
         private Master master = new Master();
-        private Integer[] ids;
+        private final Integer[] ids;
         transient private Vector listeners = new Vector();
 
         public void zDispose() {
@@ -2306,7 +2537,7 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
         }
 
         public Impl_MasterContext() throws RemoteDeviceDidNotRespondException, com.pcmsolutions.device.EMU.E4.RemoteUnreachableException, RemoteMessagingException {
-            Set setIds = dpc.getMasterContext().getIds();
+            Set setIds = deviceParameterContext.getMasterContext().getIds();
             ids = new Integer[setIds.size()];
             setIds.toArray(ids);
             Integer[] masterIdVals;
@@ -2333,20 +2564,15 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
 
         public List getEditableParameterModels(Integer[] ids) {
             ArrayList models = new ArrayList();
-            device.access();
-            try {
-                for (int i = 0, n = ids.length; i < n; i++) {
-                    try {
-                        final GeneralParameterDescriptor pd = dpc.getMasterContext().getParameterDescriptor(ids[i]);
-                        models.add(new Impl_MasterEditableParameterModel(pd));
-                    } catch (IllegalParameterIdException e) {
-                        e.printStackTrace();
-                    }
+            for (int i = 0, n = ids.length; i < n; i++) {
+                try {
+                    final GeneralParameterDescriptor pd = deviceParameterContext.getMasterContext().getParameterDescriptor(ids[i]);
+                    models.add(new Impl_MasterEditableParameterModel(pd));
+                } catch (IllegalParameterIdException e) {
+                    e.printStackTrace();
                 }
-                return models;
-            } finally {
-                device.unlock();
             }
+            return models;
         }
 
         private class Impl_MasterEditableParameterModel extends AbstractEditableParameterModel {
@@ -2371,30 +2597,40 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 addMasterListener(ml);
             }
 
-            public void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
+            public void setValue(Integer value) throws ParameterException {
                 try {
-                    setMasterParam(pd.getId(), value);
-                } catch (IllegalParameterIdException e) {
-                    e.printStackTrace();
-                    throw new ParameterUnavailableException();
+                    setMasterParam(pd.getId(), value).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterUnavailableException(pd.getId());
                 }
             }
 
-            public Integer getValue() throws ParameterUnavailableException {
-                Integer[] vals;
+            public void offsetValue(Integer offset) throws ParameterException {
                 try {
-                    vals = getMasterParams(new Integer[]{pd.getId()});
-                } catch (IllegalParameterIdException e) {
-                    e.printStackTrace();
-                    throw new ParameterUnavailableException();
+                    offsetMasterParam(pd.getId(), offset).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterUnavailableException(pd.getId());
                 }
+            }
+
+            public void offsetValue(Double offsetAsFOR) throws ParameterException {
+                try {
+                    offsetMasterParam(pd.getId(), offsetAsFOR).post();
+                } catch (ResourceUnavailableException e) {
+                    throw new ParameterUnavailableException(pd.getId());
+                }
+            }
+
+            public Integer getValue() throws ParameterException, IllegalParameterIdException {
+                Integer[] vals;
+                vals = getMasterParams(new Integer[]{pd.getId()});
                 return vals[0];
             }
 
             public String getToolTipText() {
                 try {
                     return getValueString();
-                } catch (ParameterUnavailableException e) {
+                } catch (ParameterException e) {
                 }
                 return super.getToolTipText();
             }
@@ -2413,53 +2649,52 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             return E4Device.this;
         }
 
-        public Integer[] getMasterParams(Integer[] ids) throws IllegalParameterIdException {
+        public Integer[] getMasterParams(Integer[] ids) throws ParameterException {
             Integer[] rv;
-            device.access();
+            try {
+                deviceLock.access();
+            } catch (DeviceException e) {
+                throw new ParameterException(e.getMessage());
+            }
             try {
                 rv = master.getValues(ids);
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
             return rv;
         }
 
-        /*boolean fxaChanged = false;
-          boolean fxbChanged = false;
-
-          for (int i = 0,j = ids.elementCount; i < j; i++)
-              if (ids[i].equals(IntPool.get(6)))
-                  fxaChanged = true;
-              else if (ids[i].equals(IntPool.get(14)))
-                  fxbChanged = true;
-
-          PDBReader reader = pdbp.getDBRead();
-          try {
-              PresetObject p = reader.getPresetWrite(this, preset);
-              try {
-                  p.setValues(ids, values);
-                  ParameterEditLoader pl = remote.getEditLoader();
-                  pl.selPreset(preset);
-                  pl.addDesktopElement(ids, values);
-                  pl.dispatch();
-
-                  Integer[] vals;
-                  if (fxaChanged) {
-                      vals = remote.getParameterContext().req_prmValues(fxaIds);
-                      p.setValues(fxaIds, ZUtilities.extractOneOfIntegerPairs(vals, false));
-                  }
-                  if (fxbChanged) {
-                      vals = remote.getParameterContext().req_prmValues(fxbIds);
-                      p.setValues(fxbIds, ZUtilities.extractOneOfIntegerPairs(vals, false));
-                  }
-
-                  228 236
-          */
-
         private Integer[] master_fxaIds = new Integer[]{IntPool.get(229), IntPool.get(230), IntPool.get(231), IntPool.get(232), IntPool.get(233), IntPool.get(234), IntPool.get(235)};
         private Integer[] master_fxbIds = new Integer[]{IntPool.get(237), IntPool.get(238), IntPool.get(239), IntPool.get(240), IntPool.get(241), IntPool.get(242), IntPool.get(243)};
 
-        public void setMasterParam(Integer id, Integer value) throws IllegalParameterIdException, ParameterValueOutOfRangeException {
+        public Ticket offsetMasterParam(final Integer id, final Integer offset) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    GeneralParameterDescriptor pd = deviceParameterContext.getParameterDescriptor(id);
+                    deviceLock.access();
+                    try {
+                        task_setMasterParam(id, pd.constrainValue(IntPool.get(getMasterParams(new Integer[]{id})[0].intValue() + offset.intValue())));
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "offsetMasterParam");
+        }
+
+        public Ticket offsetMasterParam(Integer id, double offsetAsFOR) throws IllegalParameterIdException {
+            GeneralParameterDescriptor pd = deviceParameterContext.getParameterDescriptor(id);
+            return offsetMasterParam(id, IntPool.get((int) Math.round((pd.getMaxValue() - pd.getMinValue() + 1) * offsetAsFOR)));
+        }
+
+        public Ticket setMasterParam(final Integer id, final Integer value) {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    task_setMasterParam(id, value);
+                }
+            }, "setMasterParam");
+        }
+
+        private void task_setMasterParam(final Integer id, final Integer value) throws DeviceException, ParameterValueOutOfRangeException, IllegalParameterIdException {
             boolean fxaChanged = false;
             boolean fxbChanged = false;
 
@@ -2467,20 +2702,29 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                 fxaChanged = true;
             else if (id.equals(IntPool.get(236)))
                 fxbChanged = true;
-
-            device.access();
+            deviceLock.access();
             try {
                 master.setValues(new Integer[]{id}, new Integer[]{value});
                 try {
                     remote.getParameterContext().edit_prmValues(new Integer[]{id, value});
                     if (fxaChanged) {
-                        Integer[] vals = remote.getParameterContext().req_prmValues(master_fxaIds);
-                        master.setValues(master_fxaIds, ZUtilities.extractOneOfIntegerPairs(vals, false));
+                        //Integer[] vals = remote.getParameterContext().req_prmValues(master_fxaIds);
+                        //master.setValues(master_fxaIds, ZUtilities.extractOneOfIntegerPairs(vals, false));
+                        Integer val1 = FXDefaults.getFXA_Decay(value);
+                        Integer val2 = FXDefaults.getFXA_HFDamping(value);
+                        master.putValue(IntPool.get(229), val1);
+                        master.putValue(IntPool.get(230), val2);
                         fireMasterEvent(new MasterChangedEvent(this, E4Device.this, master_fxaIds));
                     }
                     if (fxbChanged) {
-                        Integer[] vals = remote.getParameterContext().req_prmValues(master_fxbIds);
-                        master.setValues(master_fxbIds, ZUtilities.extractOneOfIntegerPairs(vals, false));
+                        //Integer[] vals = remote.getParameterContext().req_prmValues(master_fxbIds);
+                        //master.setValues(master_fxbIds, ZUtilities.extractOneOfIntegerPairs(vals, false));
+                        Integer val1 = FXDefaults.getFXB_Feedback(value);
+                        Integer val2 = FXDefaults.getFXB_LFORate(value);
+                        Integer val3 = FXDefaults.getFXB_DelayTime(value);
+                        master.putValue(IntPool.get(237), val1);
+                        master.putValue(IntPool.get(238), val2);
+                        master.putValue(IntPool.get(239), val3);
                         fireMasterEvent(new MasterChangedEvent(this, E4Device.this, master_fxbIds));
                     }
                 } catch (IllegalStateException e) {
@@ -2489,27 +2733,37 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
                     logCommError(e);
                 }
             } finally {
-                device.unlock();
+                deviceLock.unlock();
             }
             fireMasterEvent(new MasterChangedEvent(this, E4Device.this, new Integer[]{id}));
         }
 
-        public void refresh() {
-            device.access();
+        public Ticket refresh() {
+            return queues.parameterQ().getTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    deviceLock.access();
+                    try {
+                        task_refresh();
+                    } finally {
+                        deviceLock.unlock();
+                    }
+                }
+            }, "refresh(master)");
+        }
+
+        void task_refresh() {
             Integer[] masterIdVals;
             try {
                 masterIdVals = remote.getParameterContext().req_prmValues(ids);
                 master.initValues(masterIdVals);
+                fireMasterEvent(new MasterRefreshedEvent(this, E4Device.this));
             } catch (RemoteDeviceDidNotRespondException e) {
                 logCommError(e);
             } catch (RemoteMessagingException e) {
                 logCommError(e);
             } catch (com.pcmsolutions.device.EMU.E4.RemoteUnreachableException e) {
                 logCommError(e);
-            } finally {
-                device.unlock();
             }
-            fireMasterEvent(new MasterRefreshedEvent(this, E4Device.this));
         }
 
         public void addMasterListener(MasterListener ml) {
@@ -2520,8 +2774,14 @@ class E4Device extends AbstractZDevice implements DeviceContext, RemoteAssignabl
             listeners.remove(ml);
         }
 
-        public ZCommand[] getZCommands() {
-            return masterCmdProviderHelper.getCommandObjects(this);
+        public ZCommand[] getZCommands(Class markerClass) {
+            return masterCmdProviderHelper.getCommandObjects(markerClass, this);
+        }
+
+        public Class[] getZCommandMarkers() {
+            return masterCmdProviderHelper.getSupportedMarkers();
         }
     }
 }
+
+

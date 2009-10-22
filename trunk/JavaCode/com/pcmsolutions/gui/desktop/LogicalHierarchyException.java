@@ -5,5 +5,5 @@ package com.pcmsolutions.gui.desktop;
  * Date: 27-Jan-2004
  * Time: 14:10:16
  */
-public class LogicalHierarchyException extends Exception{
+public class LogicalHierarchyException extends Exception {
 }

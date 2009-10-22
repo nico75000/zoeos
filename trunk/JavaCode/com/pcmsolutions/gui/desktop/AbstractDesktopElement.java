@@ -3,7 +3,7 @@ package com.pcmsolutions.gui.desktop;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProviderListener;
 import com.pcmsolutions.gui.ComponentGenerationException;
-import com.pcmsolutions.gui.MenuBarProvider;
+import com.pcmsolutions.gui.FrameMenuBarProvider;
 import com.pcmsolutions.system.Indexable;
 import com.pcmsolutions.system.ZDisposable;
 import com.pcmsolutions.system.paths.DesktopName;
@@ -18,14 +18,13 @@ import javax.swing.*;
  */
 public abstract class AbstractDesktopElement implements DesktopElement {
     protected transient JComponent view;
-    protected boolean floatable;
     protected ActivityContext activityContext;
     protected ViewPath viewPath;
     protected DesktopNodeDescriptor nodalDescriptor;
     protected String sessionString;
+    protected String componentSessionString;
 
-    public AbstractDesktopElement(ViewPath viewPath, boolean floatable, ActivityContext closeBehaviour, DesktopNodeDescriptor nodalDescriptor) {
-        this.floatable = floatable;
+    public AbstractDesktopElement(ViewPath viewPath, ActivityContext closeBehaviour, DesktopNodeDescriptor nodalDescriptor) {
         this.activityContext = closeBehaviour;
         this.viewPath = viewPath;
         this.nodalDescriptor = nodalDescriptor;
@@ -34,11 +33,27 @@ public abstract class AbstractDesktopElement implements DesktopElement {
     // should be specific to describing what this component does - e.g  "DefaultPresetEditor:43"
     // never displayed to the user - used internally by desktop manager to provide singleton documents
     public final DesktopName getName() {
-        return (DesktopName)viewPath.getLastPathComponent();
+        return (DesktopName) viewPath.getLastPathComponent();
     }
 
     public ViewPath getViewPath() {
         return viewPath;
+    }
+
+    public String retrieveComponentSessionString() {
+        if (view instanceof SessionableComponent)
+            componentSessionString = ((SessionableComponent) view).retrieveComponentSession();
+        //else
+        //  componentSessionString = null;
+        return componentSessionString;
+    }
+
+    public void updateComponentSession(String sessStr) {
+        if (sessStr != null && componentSessionString != null && componentSessionString.equals(sessStr))
+            return;
+        componentSessionString = sessStr;
+        if (view instanceof SessionableComponent && componentSessionString != null && !componentSessionString.equals(""))
+            ((SessionableComponent) view).restoreComponentSession(componentSessionString);
     }
 
     public int compareTo(Object o) {
@@ -60,8 +75,12 @@ public abstract class AbstractDesktopElement implements DesktopElement {
     public final JComponent getComponent() throws ComponentGenerationException {
         if (view instanceof JComponent)
             return view;
-        else
-            return view = createView();
+        else {
+            view = createView();
+            if (view instanceof SessionableComponent && componentSessionString != null && !componentSessionString.equals(""))
+                ((SessionableComponent) view).restoreComponentSession(componentSessionString);
+        }
+        return view;
     }
 
     protected abstract JComponent createView() throws ComponentGenerationException;
@@ -77,11 +96,6 @@ public abstract class AbstractDesktopElement implements DesktopElement {
     // obvious
     public final ActivityContext getActivityContext() {
         return activityContext;
-    }
-
-    // obvious
-    public final boolean isFloatable() {
-        return floatable;
     }
 
     public void setSessionString(String ss) {
@@ -138,22 +152,22 @@ public abstract class AbstractDesktopElement implements DesktopElement {
         }
     }
 
-    public final boolean isMenuBarAvailable() {
+    public final boolean isFrameMenuBarAvailable() {
         try {
             JComponent c = getComponent();
-            if (c instanceof MenuBarProvider)
-                return ((MenuBarProvider) c).isMenuBarAvailable();
+            if (c instanceof FrameMenuBarProvider)
+                return ((FrameMenuBarProvider) c).isFrameMenuBarAvailable();
         } catch (ComponentGenerationException e) {
             e.printStackTrace();
         }
         return false;
     }
 
-    public final JMenuBar getMenuBar() {
+    public final JMenuBar getFrameMenuBar() {
         try {
             JComponent c = getComponent();
-            if (c instanceof MenuBarProvider)
-                return ((MenuBarProvider) c).getMenuBar();
+            if (c instanceof FrameMenuBarProvider)
+                return ((FrameMenuBarProvider) c).getFrameMenuBar();
         } catch (ComponentGenerationException e) {
             e.printStackTrace();
         }

@@ -14,63 +14,128 @@ import java.io.Serializable;
  * To change this template use Options | File Templates.
  */
 public class UIColors implements Serializable {
+    //static Color temp = applyAlpha(new Color(5,5,15), 230);//applyAlpha(Color.orange, 200);
+    static Color temp = new Color(5,5,15);//applyAlpha(Color.orange, 200);
 
-    public static int tableAlpha = 85;
+    //public static int tableAlpha = 180;    // 22/08/04: original was 90
+    public static int tableAlpha = 100;    // 22/08/04: original was 90
     public static int bubbleAlpha = 150;
-    //public static int tableAlpha = 65;
     public static int listAlpha = 100;
     public static int iconAlpha = 210;
-    public static float tableSelectionGradientFactor = (float) 0.75;
+    public static float tableSelectionGradientFactor = (float) 0.25;
     public static float tableDropTargetGradientFactor = (float) 2.0;
 
+    public static final RenderingHints iconRH = new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    public static final RenderingHints tableRH = new RenderingHints(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
     // default root colors
 
-/*    private final static Color grade1 = new Color(225, 225, 250);
-    private final static Color grade2 = new Color(150, 150, 225);
-    private final static Color grade3 = new Color(125, 100, 150);
-    private final static Color grade4 = new Color(100, 100, 150);
-  */
-    private final static Color grade1 = new Color(160, 160, 187);
-    private final static Color grade2 = new Color(210, 210, 230);
-    private final static Color grade3 = new Color(178, 178, 214);
-    private final static Color grade4 = new Color(142, 142, 178);
 
-    //private final static Color defBorder = Color.gray;
-    private final static Color defBorder = applyAlpha(grade1, 250);
-    private static Color envelopeBG = grade1;
+    private final static Color grade1 = new Color(217, 217, 229);
+    private final static Color grade2 = new Color(237, 237, 243);
+    private final static Color grade3 = new Color(225, 225, 239);
+    private final static Color grade4 = new Color(211, 211, 225);
 
-    // ENVELOPE
+    private final static Color orig_grade1 = new Color(157, 157, 189);
+
+
+    private final static Color darker_grade1 = new Color(157, 157, 189);
+    private final static Color darker_grade2 = new Color(210, 210, 225);
+    private final static Color darker_grade3 = new Color(178, 178, 214);
+    private final static Color darker_grade4 = new Color(142, 142, 178);
+
+
+    private static Color tableFirstSectionHeaderBG = darker_grade1;
+    private static Color tableSecondSectionHeaderBG = darker_grade2;
+    private static Color tableThirdSectionHeaderBG = darker_grade3;
+    private static Color tableFourthSectionHeaderBG = darker_grade4;
+    private static Color tableFifthSectionHeaderBG = new Color(182,182,182);
+
+    public static Color getTableFirstSectionHeaderBG() {
+        return tableFirstSectionHeaderBG;
+    }
+
+    public static void setTableFirstSectionHeaderBG(Color tableFirstSectionHeaderBG) {
+        UIColors.tableFirstSectionHeaderBG = tableFirstSectionHeaderBG;
+    }
+
+    public static Color getTableSecondSectionHeaderBG() {
+        return tableSecondSectionHeaderBG;
+    }
+
+    public static void setTableSecondSectionHeaderBG(Color tableSecondSectionHeaderBG) {
+        UIColors.tableSecondSectionHeaderBG = tableSecondSectionHeaderBG;
+    }
+
+    public static Color getTableThirdSectionHeaderBG() {
+        return tableThirdSectionHeaderBG;
+    }
+
+    public static void setTableThirdSectionHeaderBG(Color tableThirdSectionHeaderBG) {
+        UIColors.tableThirdSectionHeaderBG = tableThirdSectionHeaderBG;
+    }
+
+    public static Color getTableFourthSectionHeaderBG() {
+        return tableFourthSectionHeaderBG;
+    }
+
+    public static void setTableFourthSectionHeaderBG(Color tableFourthSectionHeaderBG) {
+        UIColors.tableFourthSectionHeaderBG = tableFourthSectionHeaderBG;
+    }
+
+    public static Color getTableFifthSectionHeaderBG() {
+        return tableFifthSectionHeaderBG;
+    }
+
+    public static void setTableFifthSectionHeaderBG(Color tableFifthSectionHeaderBG) {
+        UIColors.tableFifthSectionHeaderBG = tableFifthSectionHeaderBG;
+    }
     /*
-    private static Color atkColor = Color.green;
-     private static Color decColor = Color.orange;
-     private static Color rlsColor = Color.red;
-     */
-
-    private static Color atkColor = new Color(174, 190, 195);
-    private static Color decColor = new Color(168, 158, 174);
-    private static Color rlsColor = new Color(170, 120, 157);
-
-    /*
-    private static Color atkColor = grade2;
-    private static Color decColor = grade1;
-    private static Color rlsColor = grade3;
+    private final static Color darker_grade1 = new Color(157, 157, 189);
+    private final static Color darker_grade2 = new Color(210, 210, 225);
+    private final static Color darker_grade3 = new Color(178, 178, 214);
+    private final static Color darker_grade4 = new Color(142, 142, 178);
     */
+
+   /*
+    private final static Color grade1 = new Color(50, 50, 100);
+    private final static Color grade2 = new Color(30, 30, 100);
+    private final static Color grade3 = new Color(50, 50, 80);
+    private final static Color grade4 = new Color(60, 60, 90);
+    */
+    //private final static Color defBorder = applyAlpha(grade1, 250);
+
+    public static Color getFadeButtonBG() {
+        return fadeButtonBG;
+    }
+
+    public static void setFadeButtonBG(Color fadeButtonBG) {
+        UIColors.fadeButtonBG = fadeButtonBG;
+    }
+
+    private static Color fadeButtonBG = orig_grade1;
+
+    private final static Color defBorder = orig_grade1;//grade1;
+
+    private static Color envelopeBG = darker_grade1;
+    private static Color atkColor = darker_grade2;
+    private static Color decColor = darker_grade3;
+    private static Color rlsColor = darker_grade4;
 
     private static Color dropColor = UIColors.applyAlpha(Color.RED, 150);
 
     private static Color tableBG = Color.white;
+    //private static Color tableBG = new Color(30, 30, 60);
 
-    private static int tableRowHeight = 16;
-    private static int tableBorderWidth = 11;
+    private static int tableRowHeight = (Toolkit.getDefaultToolkit().getScreenSize().getHeight() > 768 ? 18 : 16);
+    private static int tableBorderWidth = 10;
+    //private static int tableBorderWidth = 0;
 
     // PRESET
-    //private static Color defaultBG = new Color(240, 240, 255);  // light milky blue
-    //private static Color defaultBG = Color.LIGHT_GRAY;
-    //private static Color defaultBG = new Color(210, 210, 210);   // STD gray
-    private static Color defaultBG = new Color(207, 207, 217);   // STD bluey gray
-    //  private static Color defaultBG = new Color(200, 244, 200); // greeny
-
-    private static Color defaultFG = Color.black;
+    private static Color defaultBG = new Color(187, 187, 202);   // STD bluey gray darker
+    //private static Color defaultBG = new Color(200, 200, 215);   // STD bluey gray darker
+    //private static Color defaultBG = new Color(30, 30, 60);   // STD bluey gray darker
+    //private static Color defaultFG = applyAlpha(Color.black, 212);   // used to be just dark gray
+    private static Color defaultFG = temp;
 
     private static Color presetPendingIcon = new Color(100, 250, 100);
     private static Color presetInitializingIcon = new Color(230, 200, 50);
@@ -81,45 +146,48 @@ public class UIColors implements Serializable {
     private static Color ultraDeviceIcon = new Color(75, 75, 125);
     private static Color classicDeviceIcon = new Color(150, 150, 175);
 
-
     private static Color endBubbleColor = applyAlpha(Color.ORANGE, 100);
     private static Color beginBubbleColor = applyAlpha(Color.RED, 150);
 
     // VOICE OVERVIEW TABLE
     private static Color tableBorder = defBorder;
 
-    // private static Color tableHeaderBG = new Color(249, 251, 5);
-    private static Color tableHeaderBG = grade2.brighter();
-    private static Color tableHeaderFG = Color.darkGray;
+    // MOST RECENT
+    //private static Color tableHeaderBG = grade2.brighter();
+    private static Color tableHeaderBG = new Color(213,212,215);//grade3;
 
-    static {
-        System.out.println(tableHeaderBG);
-    }
+    private static Color tableHeaderFG = Color.black;
 
     private static Color tableFirstSectionBG = grade1;
-    private static Color tableFirstSectionFG = Color.DARK_GRAY;
+    private static Color tableFirstSectionFG = temp;
     private static Color tableSecondSectionBG = grade2;
-    private static Color tableSecondSectionFG = Color.DARK_GRAY;
+    private static Color tableSecondSectionFG = temp;
     private static Color tableThirdSectionBG = grade3;
-    private static Color tableThirdSectionFG = Color.DARK_GRAY;
+    private static Color tableThirdSectionFG = temp;
 
     private static Color tableFourthSectionBG = grade4;
-    private static Color tableFourthSectionFG = Color.DARK_GRAY;
+    private static Color tableFourthSectionFG = temp;
 
-    // private static Color tableFifthSectionBG = Color.gray.brighter();
-    private static Color tableFifthSectionBG = Color.gray.brighter();
-    private static Color tableFifthSectionFG = Color.DARK_GRAY;
+    private static Color tableFifthSectionBG = new Color(226,226,226);
+
+    //private static Color tableFifthSectionBG = new Color(80, 70, 90);
+    private static Color tableFifthSectionFG = temp;
 
     //private static Color tableRowHeaderBG = new Color(250, 214, 138);
-    private static Color tableRowHeaderBG = new Color(214, 214, 200);
+
+    //MOST RECENT
+    // private static Color tableRowHeaderBG = new Color(214, 214, 200);
+    private static Color tableRowHeaderBG = grade3;
+
     // private static Color tableRowHeaderBG = new Color(110, 110, 135);
-    private static Color tableRowHeaderFG = Color.DARK_GRAY;
+    private static Color tableRowHeaderFG = temp;
 
     private static Color voiceOverViewTableRowHeaderSectionVoiceBG = tableRowHeaderBG;
-    private static Color voiceOverViewTableRowHeaderSectionVoiceFG = Color.DARK_GRAY;
-
-    private static Color voiceOverViewTableRowHeaderSectionZoneBG = Color.LIGHT_GRAY;
-    private static Color voiceOverViewTableRowHeaderSectionZoneFG = Color.DARK_GRAY;
+    private static Color voiceOverViewTableRowHeaderSectionVoiceFG = temp;
+                                           
+    //private static Color voiceOverViewTableRowHeaderSectionZoneBG = Color.LIGHT_GRAY;
+    private static Color voiceOverViewTableRowHeaderSectionZoneBG = grade2;
+    private static Color voiceOverViewTableRowHeaderSectionZoneFG = temp;
 
     private static Color utilityButtonBG = tableFirstSectionBG;
     private static Color refreshButtonBG = tableThirdSectionBG;
@@ -132,17 +200,46 @@ public class UIColors implements Serializable {
 
     public static void setTableRowHeight(int tableRowHeight) {
         UIColors.tableRowHeight = tableRowHeight;
+
+    }
+
+    private static int[] fadingInAlphas = new int[256];
+    private static int[] fadingOutAlphas = new int[256];
+
+    static {
+        for (int i = 0; i < 256; i++) {
+            int rand = (int) (Math.random() / 2);
+            int a = (int) (255 - i * fuzzyAlphaSkew - rand);
+            if (a < 0)
+                a = 0;
+            if (a > 255)
+                a = 255;
+            fadingInAlphas[i] = a;
+        }
+        for (int i = 0; i < 256; i++) {
+            int rand = (int) (Math.random() / 2);
+            int a = (int) (i * fuzzyAlphaSkew + rand);
+            if (a < 0)
+                a = 0;
+            if (a > 255)
+                a = 255;
+            fadingOutAlphas[i] = a;
+        }
     }
 
     public static int getFuzzyAlpha(int iteration, int max, boolean fadingIn) {
-        int rand = (int) (Math.random() * (255 / max) / 2);
-        int a = (fadingIn ? (int) (255 - iteration * (255 / max) * fuzzyAlphaSkew - rand) : (int) (iteration * (255 / max) * fuzzyAlphaSkew + rand));
-        if (a < 0)
-            a = 0;
-        if (a > 255)
-            a = 255;
-        return a;
+        /* int rand = (int) (Math.random() * (255 / max) / 2);
+         int a = (fadingIn ? (int) (255 - iteration * (255 / max) * fuzzyAlphaSkew - rand) : (int) (iteration * (255 / max) * fuzzyAlphaSkew + rand));
+         if (a < 0)
+             a = 0;
+         if (a > 255)
+             a = 255;
+         return a;
+         */
+        // return (fadingIn?255-(iteration*255)/max:(iteration*255)/max);
+        return (fadingIn ? fadingInAlphas[(iteration * 255) / max] : fadingOutAlphas[(iteration * 255) / max]);
     }
+
 
     public static Border makeFuzzyBorder(Color bdrColor, int borderWidth) {
         Border b = new LineBorder(bdrColor, 1, true);

@@ -73,7 +73,7 @@ class VoiceSections {
             s += ZUtilities.STRING_FIELD_SEPERATOR + VOICE_AUX_ENVELOPE_TITLE;
         if ((sections & VoiceSections.VOICE_ENVELOPES) != 0)
             s += ZUtilities.STRING_FIELD_SEPERATOR + VOICE_ENVELOPES_TITLE;
-         if ((sections & VoiceSections.VOICE_AMP_FILTER) != 0)
+        if ((sections & VoiceSections.VOICE_AMP_FILTER) != 0)
             s += ZUtilities.STRING_FIELD_SEPERATOR + VOICE_AMP_FILTER_TITLE;
         return s;
     }

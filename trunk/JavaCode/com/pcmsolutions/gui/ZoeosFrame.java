@@ -6,16 +6,16 @@
 
 package com.pcmsolutions.gui;
 
-import com.incors.plaf.alloy.AlloyFontTheme;
-import com.incors.plaf.alloy.AlloyLookAndFeel;
 import com.jidesoft.converter.ObjectConverterManager;
 import com.jidesoft.grid.CellEditorManager;
 import com.jidesoft.grid.CellRendererManager;
 import com.jidesoft.plaf.LookAndFeelFactory;
 import com.jidesoft.status.MemoryStatusBarItem;
+import com.jidesoft.status.ProgressStatusBarItem;
 import com.jidesoft.status.StatusBar;
 import com.jidesoft.swing.JideBoxLayout;
-import com.pcmsolutions.comms.MidiSystemFacade;
+import com.jidesoft.tipoftheday.TipOfTheDayDialog;
+import com.jidesoft.tipoftheday.TipOfTheDaySource;
 import com.pcmsolutions.device.EMU.E4.gui.GeneralTableCellRenderer;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.gui.desktop.*;
@@ -23,10 +23,7 @@ import com.pcmsolutions.gui.license.ZLicenseManagerDialog;
 import com.pcmsolutions.gui.midi.ZMidiManagerDialog;
 import com.pcmsolutions.gui.smdi.ZSmdiManagerDialog;
 import com.pcmsolutions.smdi.SMDIAgent;
-import com.pcmsolutions.system.BrowserControl;
-import com.pcmsolutions.system.ZUtilities;
-import com.pcmsolutions.system.Zoeos;
-import com.pcmsolutions.system.ZoeosPreferences;
+import com.pcmsolutions.system.*;
 
 import javax.help.CSH;
 import javax.help.HelpBroker;
@@ -36,18 +33,18 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.UndoableEditEvent;
 import javax.swing.event.UndoableEditListener;
-import javax.swing.plaf.FontUIResource;
+import javax.swing.plaf.ColorUIResource;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
-import java.util.prefs.Preferences;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 
 public class ZoeosFrame extends ZJFrame {
@@ -73,7 +70,7 @@ public class ZoeosFrame extends ZJFrame {
     private javax.swing.JMenuItem jmiDeviceManager;
     private javax.swing.JMenuItem jmiMidiManager;
     private javax.swing.JMenuItem jmiSMDIManager;
-    private javax.swing.JMenuItem jmiTaskManager;
+    // private javax.swing.JMenuItem jmiTaskManager;
 
     private javax.swing.JMenuItem jmiLicenseManager;
 
@@ -86,6 +83,8 @@ public class ZoeosFrame extends ZJFrame {
 
     private javax.swing.JMenuItem jmiExit;
     private javax.swing.JMenuBar jMainMenu;
+
+    private StatusBar statusBar;
 
     private HelpBroker hb;
 
@@ -101,24 +100,25 @@ public class ZoeosFrame extends ZJFrame {
         }
     };
 
-
     private Runnable shutdownZoeos = new Runnable() {
         public void run() {
             final JDialog sd = new ShutdownDialog();
             try {
                 SwingUtilities.invokeLater(new Runnable() {
                     public void run() {
-                        sd.show();
+                        sd.setVisible(true);
                     }
                 });
                 //ZoeosFrame.this.getDockingManager().saveLayoutDataToFile("ZoeOSLayout");
                 ZoeosFrame.this.getDockingManager().saveLayoutDataAs(ZDesktopManager.LAYOUT_LAST);
                 Zoeos.getInstance().zDispose();
-                MidiSystemFacade.getInstance().zDispose();
             } finally {
-                sd.dispose();
-                ZoeosFrame.this.dispose();
-                System.exit(0);
+                try {
+                    sd.dispose();
+                    ZoeosFrame.this.dispose();
+                } finally {
+                    System.exit(0);
+                }
             }
         }
     };
@@ -131,17 +131,18 @@ public class ZoeosFrame extends ZJFrame {
         return INSTANCE;
     }
 
-    /** Creates new form ZoeosFrame */
+    /**
+     * Creates new form ZoeosFrame
+     */
     //  private static final String PREF_uses = "zoeos" + Zoeos.versionStr + "uses ";
 
     public ZoeosFrame() {
         URL url = ZoeosFrame.class.getResource("/zoeosFrameIcon.gif");
-
         if (url != null)
             this.setIconImage(new ImageIcon(url).getImage());
         this.setTitle("ZoeOS");
         zi = Zoeos.getInstance();
-        zi.setZoeosFrame(this);
+        //zi.setZoeosFrame(this);
         //Dimension scrsize = Toolkit.getDefaultToolkit().getScreenSize();
         //setSize(scrsize.width, (scrsize.height - 25));
         //setLocation(0, 0);
@@ -151,189 +152,153 @@ public class ZoeosFrame extends ZJFrame {
         initComponents();
     }
 
+    private class Impl_ProgressSession implements ProgressSession {
+        ProgressStatusBarItem pi;
+        int maximum;
+        int status = 0;
+        boolean cancelled = false;
+        boolean done = false;
+
+        public Impl_ProgressSession(final String title, int maximum, final String cancelText) {
+            this.maximum = (maximum == 0 ? 1 : maximum);
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    pi = new ProgressStatusBarItem();
+                    statusBar.add(pi, JideBoxLayout.FLEXIBLE);
+                    pi.setProgressStatus(title);
+                    pi.setStatus("Running");
+                    pi.setCancelText(cancelText);
+                    if (!cancelText.equals(""))
+                        pi.setCancelCallback(new ProgressStatusBarItem.CancelCallback() {
+                            public void cancelPerformed() {
+                                end(true);
+                            }
+                        });
+                }
+            });
+        }
+
+        public void updateTitle(final String title) {
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    pi.setProgressStatus(title);
+                }
+            });
+        }
+
+        public void updateStatus(final int st) {
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    status = st;
+                    pi.setProgress((status * 100) / maximum);
+                }
+            });
+        }
+
+        public void end() {
+            end(false);
+        }
+
+        void end(final boolean wasCancelled) {
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    pi.setProgress(100);
+                    pi.setStatus("Done");
+                    statusBar.remove(pi);
+                    statusBar.revalidate();
+                    statusBar.repaint();
+                    synchronized (Impl_ProgressSession.this) {
+                        cancelled = wasCancelled;
+                        done = true;
+                        Impl_ProgressSession.this.notifyAll();
+                    }
+                }
+            });
+        }
+
+        public synchronized boolean isActive() {
+            return !done && !cancelled;
+        }
+
+        public void setIndeterminate(final boolean ind) {
+            SwingUtilities.invokeLater(new Runnable() {
+                public void run() {
+                    pi.setInterminate(ind);
+                }
+            });
+        }
+
+        public void updateStatus() {
+            updateStatus(++status);
+        }
+
+        public synchronized boolean isCancelled() {
+            return cancelled;
+        }
+    }
+
+    public ProgressSession getProgressSession(final String title, final int maximum, boolean allowCancel) {
+        return new Impl_ProgressSession(title, maximum, (allowCancel ? "Cancel" : ""));
+    }
+
+    public ProgressSession getProgressSession(final String title, final int maximum) {
+        return new Impl_ProgressSession(title, maximum, "");
+    }
+
     private void init() {
         try {
             deviceManager = new ZDeviceManagerDialog(this, false);
             midiManager = new ZMidiManagerDialog(this, false);
-            assertSmdiManager();
             licenseManager = new ZLicenseManagerDialog(this, false);
-            tipOfTheDay = new TipOfTheDayDialog();
+            tipOfTheDay = new TipOfTheDayDialog(this, new TipOfTheDaySource() {
+                public String getNextTip() {
+                    return TipFactory.getNextTip();
+                }
+
+                public String getPreviousTip() {
+                    return TipFactory.getPreviousTip();
+                }
+            }, new AbstractAction("Show tips on startup") {
+                public void actionPerformed(ActionEvent e) {
+                    if (e.getSource() instanceof JCheckBox) {
+                        JCheckBox checkBox = (JCheckBox) e.getSource();
+                        ZoeosPreferences.ZPREF_showTipsAtStartup.putValue(checkBox.isSelected());
+                    }
+                    // change your user preference
+                }
+            }, null);
+            tipOfTheDay.setShowTooltip(true);
+            tipOfTheDay.setResizable(false);
+            tipOfTheDay.pack();
+            tipOfTheDay.setLocation(300, 250);
+            tipOfTheDay.getShowTipCheckBox().setSelected(ZoeosPreferences.ZPREF_showTipsAtStartup.getValue());
+            ZoeosPreferences.ZPREF_showTipsAtStartup.addChangeListener(new ChangeListener() {
+                public void stateChanged(ChangeEvent e) {
+                    tipOfTheDay.getShowTipCheckBox().setSelected(ZoeosPreferences.ZPREF_showTipsAtStartup.getValue());
+                }
+            });
+            ZoeosPreferences.ZPREF_showTipsAtStartup.addChangeListener(new ChangeListener() {
+                public void stateChanged(ChangeEvent e) {
+                    tipOfTheDay.setShowTooltip(ZoeosPreferences.ZPREF_showTipsAtStartup.getValue());
+                }
+            });
+
         } catch (Exception e) {
+            e.printStackTrace();
             JOptionPane.showMessageDialog(null, "Could not initialize main ZoeOS window. Exiting.", "Fatal Error", JOptionPane.ERROR_MESSAGE);
             System.exit(-1);
         }
     }
 
-    private void initJIDE() {
-        this.getDockingManager().setUsePref(false);
-        this.getDockingManager().setProfileKey(DOCK_PROFILE_KEY);
-        this.getDockingManager().setUseFrameBounds(true);
-        this.getDockingManager().setUseFrameState(true);
-
-        getDockingManager().setUndoLimit(10);
-        getDockingManager().addUndoableEditListener(new UndoableEditListener() {
-            public void undoableEditHappened(UndoableEditEvent e) {
-                refreshUndoRedoMenuItems();
-            }
-        });
-        ObjectConverterManager.initDefaultConverter();
-        CellEditorManager.initDefaultEditor();
-        CellRendererManager.initDefaultRenderer();
-
-        GeneralTableCellRenderer gr = new GeneralTableCellRenderer() {
-            protected void setupLook(JTable table, Object value, boolean isSelected, int row, int column) {
-                super.setupLook(table, value, isSelected, row, column);
-                setForeground(UIColors.getTableFirstSectionFG());
-                setBackground(UIColors.getTableFirstSectionBG());
-            }
-        };
-        CellRendererManager.registerRenderer(Boolean.class, gr);
-        CellRendererManager.registerRenderer(Integer.class, gr);
-        CellRendererManager.registerRenderer(String.class, gr);
-        CellRendererManager.registerRenderer(Double.class, gr);
-
-        zDesktopManager = new Impl_ZDesktopManager(getDockingManager());
-
-        this.getDockingManager().getWorkspace().setLayout(new BorderLayout());
-        this.getDockingManager().getWorkspace().add(zDesktopManager.getWorkspaceViewTreeModel().getRootDocumentPane(), BorderLayout.CENTER);
-        initFromZPrefs();
-    }
-
-    private void initFromZPrefs() {
-        ChangeListener prefListener = new ChangeListener() {
-            public void stateChanged(ChangeEvent e) {
-                if (e.getSource() == ZoeosPreferences.ZPREF_sideBarRollover)
-                    getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
-                else if (e.getSource() == ZoeosPreferences.ZPREF_animationSteps)
-                    getDockingManager().setSteps(ZoeosPreferences.ZPREF_animationSteps.getValue());
-                else if (e.getSource() == ZoeosPreferences.ZPREF_animationStepDelay)
-                    getDockingManager().setStepDelay(ZoeosPreferences.ZPREF_animationStepDelay.getValue());
-                else if (e.getSource() == ZoeosPreferences.ZPREF_animationInitDelay)
-                    getDockingManager().setInitDelay(ZoeosPreferences.ZPREF_animationInitDelay.getValue());
-                else if (e.getSource() == ZoeosPreferences.ZPREF_autoHideShowContentsHidden)
-                    getDockingManager().setAuthideShowingContentHidden(ZoeosPreferences.ZPREF_autoHideShowContentsHidden.getValue());
-            }
-        };
-        ZoeosPreferences.ZPREF_sideBarRollover.addChangeListener(prefListener);
-        ZoeosPreferences.ZPREF_animationSteps.addChangeListener(prefListener);
-        ZoeosPreferences.ZPREF_animationStepDelay.addChangeListener(prefListener);
-        ZoeosPreferences.ZPREF_animationInitDelay.addChangeListener(prefListener);
-        ZoeosPreferences.ZPREF_autoHideShowContentsHidden.addChangeListener(prefListener);
-        getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
-        getDockingManager().setSteps(ZoeosPreferences.ZPREF_animationSteps.getValue());
-        getDockingManager().setStepDelay(ZoeosPreferences.ZPREF_animationStepDelay.getValue());
-        getDockingManager().setInitDelay(ZoeosPreferences.ZPREF_animationInitDelay.getValue());
-        getDockingManager().setAuthideShowingContentHidden(ZoeosPreferences.ZPREF_autoHideShowContentsHidden.getValue());
-    }
-
-    private void assertSmdiManager() {
-        if (SMDIAgent.isSmdiAvailable())
-            smdiManager = new ZSmdiManagerDialog(this, false);
-        else
-            smdiManager = null;
-    }
-
-    public void showDeviceManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                deviceManager.show();
-            }
-        });
-    }
-
-    public void hideDeviceManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                deviceManager.hide();
-            }
-        });
-    }
-
-    public void showTips() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                tipOfTheDay.show();
-            }
-        });
-    }
-
-    public void hideTips() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                tipOfTheDay.hide();
-            }
-        });
-    }
-
-    public void showMidiManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                midiManager.show();
-            }
-        });
-    }
-
-    public void hideMidiManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                midiManager.hide();
-            }
-        });
-    }
-
-    public void showLicenseManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                licenseManager.show();
-            }
-        });
-    }
-
-    public void hideLicenseManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                licenseManager.hide();
-            }
-        });
-    }
-
-    public void showSmdiManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                assertSmdiManager();
-                if (smdiManager == null)
-                    JOptionPane.showMessageDialog(ZoeosFrame.this, "SMDI not installed");
-                else
-                    smdiManager.show();
-            }
-        });
-    }
-
-    public void hideSmdiManager() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                if (smdiManager != null)
-                    smdiManager.hide();
-            }
-        });
-    }
-
-    public void shutdown() {
-        FlashMsg.globalDisable = true;
-        this.pmb.setShowable(false);
-        new Thread(shutdownZoeos).start();
-    }
-
     private void initComponents() {
-
         createMenuBar();
         createStatusBar();
 
-        final ViewInstance vi = SystemViewFactory.providePropertiesView();
+        final ViewInstance prop_vi = SystemViewFactory.providePropertiesView();
         try {
-            zDesktopManager.addDesktopElement(new AbstractDesktopElement(vi.getViewPath(), true, StaticActivityContext.FALSE, new Impl_DesktopNodeDescriptor()) {
+            zDesktopManager.addDesktopElement(new AbstractDesktopElement(prop_vi.getViewPath(), StaticActivityContext.FALSE, new Impl_DesktopNodeDescriptor()) {
                 protected JComponent createView() throws ComponentGenerationException {
-                    return vi.getView();
+                    return prop_vi.getView();
                 }
 
                 public boolean hasExpired() {
@@ -355,13 +320,249 @@ public class ZoeosFrame extends ZJFrame {
         } catch (LogicalHierarchyException e) {
             e.printStackTrace();
         }
+        /*
+        final ViewInstance piano_vi = SystemViewFactory.providePianoView();
+        try {
+            zDesktopManager.addDesktopElement(new AbstractDesktopElement(piano_vi.getViewPath(), true, StaticActivityContext.FALSE, new Impl_DesktopNodeDescriptor()) {
+                protected JComponent createView() throws ComponentGenerationException {
+                    return piano_vi.getView();
+                }
+
+                public boolean hasExpired() {
+                    return false;
+                }
+
+                public int compareTo(Object o) {
+                    return -1;
+                }
+
+                public DesktopElement getCopy() {
+                    return this;
+                }
+            });
+        } catch (ComponentGenerationException e) {
+            e.printStackTrace();
+        } catch (ChildViewNotAllowedException e) {
+            e.printStackTrace();
+        } catch (LogicalHierarchyException e) {
+            e.printStackTrace();
+        }
+        */
+    }
+
+    private void initJIDE() {
+        this.getDockingManager().setUsePref(false);
+        this.getDockingManager().setProfileKey(DOCK_PROFILE_KEY);
+        this.getDockingManager().setUseFrameBounds(true);
+        this.getDockingManager().setUseFrameState(true);
+
+        getDockingManager().setUndoLimit(10);
+        getDockingManager().addUndoableEditListener(new UndoableEditListener() {
+            public void undoableEditHappened(UndoableEditEvent e) {
+                refreshUndoRedoMenuItems();
+            }
+        });
+        ObjectConverterManager.initDefaultConverter();
+        CellEditorManager.initDefaultEditor();
+        CellRendererManager.initDefaultRenderer();
+
+        GeneralTableCellRenderer gr = new GeneralTableCellRenderer() {
+            {
+                setForeground(UIColors.getTableFirstSectionFG());
+                setBackground(UIColors.getTableFirstSectionBG());
+            }
+        };
+        CellRendererManager.registerRenderer(Boolean.class, gr);
+        CellRendererManager.registerRenderer(Integer.class, gr);
+        CellRendererManager.registerRenderer(String.class, gr);
+        CellRendererManager.registerRenderer(Double.class, gr);
+
+        zDesktopManager = new Impl_ZDesktopManager(getDockingManager());
+
+        this.getDockingManager().getWorkspace().setLayout(new BorderLayout());
+        this.getDockingManager().getWorkspace().add(zDesktopManager.getWorkspaceViewTreeModel().getRootDocumentPane(), BorderLayout.CENTER);
+        /* JTable t = new JTable(new TableModel() {
+            public int getRowCount() {
+                return 400;
+            }
+
+            public int getColumnCount() {
+                return 20;
+            }
+
+            public String getColumnName(int columnIndex) {
+                return "";
+            }
+
+            public Class getColumnClass(int columnIndex) {
+                return String.class;
+            }
+
+            public boolean isCellEditable(int rowIndex, int columnIndex) {
+                return false;
+            }
+
+            public Object getValueAt(int rowIndex, int columnIndex) {
+                return "test";
+            }
+
+            public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
+            }
+
+            public void addTableModelListener(TableModelListener l) {
+            }
+
+            public void removeTableModelListener(TableModelListener l) {
+            }
+        });
+        GeneralTableCellRenderer gtr = new GeneralTableCellRenderer() {
+            protected void setupLook(JTable table, Object value, boolean isSelected, int row, int column) {
+                super.setupLook(table, value, isSelected, row, column);
+                setForeground(UIColors.getTableFirstSectionFG());
+                setBackground(UIColors.getTableFirstSectionBG());
+            }
+        };
+        t.setDefaultRenderer(Object.class, gtr);
+        this.getDockingManager().getWorkspace().add(t);
+        */
+        initFromZPrefs();
+    }
+
+    private void initFromZPrefs() {
+        ChangeListener prefListener = new ChangeListener() {
+            public void stateChanged(ChangeEvent e) {
+                if (e.getSource() == ZoeosPreferences.ZPREF_sideBarRollover)
+                    getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
+                else if (e.getSource() == ZoeosPreferences.ZPREF_animationSteps)
+                    getDockingManager().setSteps(ZoeosPreferences.ZPREF_animationSteps.getValue());
+                else if (e.getSource() == ZoeosPreferences.ZPREF_animationStepDelay)
+                    getDockingManager().setStepDelay(ZoeosPreferences.ZPREF_animationStepDelay.getValue());
+                else if (e.getSource() == ZoeosPreferences.ZPREF_animationInitDelay)
+                    getDockingManager().setInitDelay(ZoeosPreferences.ZPREF_animationInitDelay.getValue());
+                else if (e.getSource() == com.pcmsolutions.system.ZoeosPreferences.ZPREF_autoHideShowContentsHidden)
+                    getDockingManager().setAuthideShowingContentHidden(com.pcmsolutions.system.ZoeosPreferences.ZPREF_autoHideShowContentsHidden.getValue());
+            }
+        };
+        ZoeosPreferences.addGlobalChangeListener(prefListener);
+        getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
+        getDockingManager().setSteps(com.pcmsolutions.system.ZoeosPreferences.ZPREF_animationSteps.getValue());
+        getDockingManager().setStepDelay(com.pcmsolutions.system.ZoeosPreferences.ZPREF_animationStepDelay.getValue());
+        getDockingManager().setInitDelay(com.pcmsolutions.system.ZoeosPreferences.ZPREF_animationInitDelay.getValue());
+        getDockingManager().setAuthideShowingContentHidden(com.pcmsolutions.system.ZoeosPreferences.ZPREF_autoHideShowContentsHidden.getValue());
+    }
+
+    private void assertSmdiManager() {
+        System.out.println("Asserting SMDI Manager");
+        try {
+            if (SMDIAgent.isSmdiAvailable()) {
+                if (smdiManager == null)
+                    smdiManager = new ZSmdiManagerDialog(this, false);
+            } else {
+                if (smdiManager != null)
+                    smdiManager.dispose();
+                smdiManager = null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void showDeviceManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                deviceManager.setVisible(true);
+            }
+        });
+    }
+
+    public void hideDeviceManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                deviceManager.setVisible(false);
+            }
+        });
+    }
+
+    public void showTips() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                tipOfTheDay.setVisible(true);
+            }
+        });
+    }
+
+    public void hideTips() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                tipOfTheDay.setVisible(false);
+            }
+        });
+    }
+
+    public void showMidiManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                midiManager.setVisible(true);
+            }
+        });
+    }
+
+    public void hideMidiManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                midiManager.setVisible(false);
+            }
+        });
+    }
+
+    public void showLicenseManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                licenseManager.setVisible(true);
+            }
+        });
+    }
+
+    public void hideLicenseManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                licenseManager.setVisible(false);
+            }
+        });
+    }
+
+    public void showSmdiManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                assertSmdiManager();
+                if (smdiManager == null)
+                    JOptionPane.showMessageDialog(ZoeosFrame.this, "SMDI unavailable");
+                else
+                    smdiManager.setVisible(true);
+            }
+        });
+    }
+
+    public void hideSmdiManager() {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                if (smdiManager != null)
+                    smdiManager.setVisible(false);
+            }
+        });
+    }
+
+    public void shutdown() {
+        FlashMsg.globalDisable = true;
+        new Thread(shutdownZoeos).start();
     }
 
     private void createMenuBar() {
         jMainMenu = new JMenuBar();
         addWindowListener(new java.awt.event.WindowAdapter() {
             public void windowClosing(java.awt.event.WindowEvent evt) {
-                shutdown();
+                if (JOptionPane.showConfirmDialog(ZoeosFrame.this, "Are you sure you want to exit?", "Shutdown ZoeOS", JOptionPane.YES_NO_OPTION) == 0)
+                    shutdown();
             }
         });
         createFileMenu();
@@ -372,25 +573,25 @@ public class ZoeosFrame extends ZJFrame {
     }
 
     private void createStatusBar() {
-        StatusBar statusBar = new StatusBar();
+        statusBar = new StatusBar();
 
-        /*
-        final LabelStatusBarItem label = new LabelStatusBarItem("Line");
-        label.setText("100:42");
-        label.setPreferredWidth(60);
-        label.setAlignment(JLabel.CENTER);
-        statusBar.addDesktopElement(label, JideBoxLayout.FLEXIBLE);
-        */
+/*
+final LabelStatusBarItem label = new LabelStatusBarItem("Line");
+label.setText("100:42");
+label.setPreferredWidth(60);
+label.setAlignment(JLabel.CENTER);
+statusBar.addDesktopElement(label, JideBoxLayout.FLEXIBLE);
+*/
 
-        /*
-        final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
-         ovr.setPreferredWidth(100);
-         ovr.setAlignment(JLabel.CENTER);
-         statusBar.addDesktopElement(ovr, JideBoxLayout.FLEXIBLE);
-        */
+/*
+final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
+ ovr.setPreferredWidth(100);
+ ovr.setAlignment(JLabel.CENTER);
+ statusBar.addDesktopElement(ovr, JideBoxLayout.FLEXIBLE);
+*/
 
-        //final TimeStatusBarItem time = new TimeStatusBarItem();
-        //statusBar.addDesktopElement(time, JideBoxLayout.FLEXIBLE);
+//final TimeStatusBarItem time = new TimeStatusBarItem();
+//statusBar.addDesktopElement(time, JideBoxLayout.FLEXIBLE);
 
         final MemoryStatusBarItem gc = new MemoryStatusBarItem();
         gc.setPreferredWidth(100);
@@ -444,6 +645,7 @@ public class ZoeosFrame extends ZJFrame {
             public void actionPerformed(ActionEvent e) {
                 try {
                     getDockingManager().loadLayoutDataFrom(ZDesktopManager.LAYOUT_CUSTOM_1);
+                    getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
                 } catch (Exception e1) {
                     e1.printStackTrace();
                 }
@@ -456,6 +658,7 @@ public class ZoeosFrame extends ZJFrame {
             public void actionPerformed(ActionEvent e) {
                 try {
                     getDockingManager().loadLayoutDataFrom(ZDesktopManager.LAYOUT_CUSTOM_2);
+                    getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
                 } catch (Exception e1) {
                     e1.printStackTrace();
                 }
@@ -468,6 +671,7 @@ public class ZoeosFrame extends ZJFrame {
             public void actionPerformed(ActionEvent e) {
                 try {
                     getDockingManager().loadLayoutDataFrom(ZDesktopManager.LAYOUT_CUSTOM_3);
+                    getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
                 } catch (Exception e1) {
                     e1.printStackTrace();
                 }
@@ -511,9 +715,11 @@ public class ZoeosFrame extends ZJFrame {
         item = new JMenuItem("Reset Layout");
         item.addActionListener(new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
+                // TODO!! investigate next two lines
                 getDockingManager().setUseFrameBounds(false);
                 getDockingManager().setUseFrameState(false);
                 getDockingManager().resetToDefault();
+                getDockingManager().setSidebarRollover(ZoeosPreferences.ZPREF_sideBarRollover.getValue());
             }
         });
         jmWindow.add(item);
@@ -548,6 +754,7 @@ public class ZoeosFrame extends ZJFrame {
         jmiRequestFunctionality = new JMenuItem();
         jmiReportBug = new JMenuItem();
         jmiAboutBox = new JMenuItem();
+
         jmHelp.setText("Help");
         jmHelp.setMnemonic(KeyEvent.VK_H);
         jmHelp.addActionListener(new ActionListener() {
@@ -555,8 +762,8 @@ public class ZoeosFrame extends ZJFrame {
             }
         });
 
-        // Find the HelpSet File and create the HelpSet object:
-        //String helpHS = "zoeosHelpSet.hs";
+// Find the HelpSet File and create the HelpSet object:
+//String helpHS = "zoeosHelpSet.hs";
 
         String helpHS = "zoeosHelp.hs";
         ClassLoader cl = ZoeosFrame.class.getClassLoader();
@@ -564,7 +771,7 @@ public class ZoeosFrame extends ZJFrame {
             URL hsURL = HelpSet.findHelpSet(cl, helpHS);
             hb = new HelpSet(null, hsURL).createHelpBroker();
         } catch (Exception ee) {
-            // Say what the exception really is
+// Say what the exception really is
             System.out.println("HelpSet " + ee.getMessage());
             System.out.println("HelpSet " + helpHS + " not found");
         }
@@ -582,6 +789,15 @@ public class ZoeosFrame extends ZJFrame {
             });
 
         jmHelp.add(jmiHelp);
+
+        jmiTipOfTheDay.setText("Tip of the Day");
+        jmiTipOfTheDay.setMnemonic(KeyEvent.VK_T);
+        jmiTipOfTheDay.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                tipOfTheDay.show();
+            }
+        });
+        jmHelp.add(jmiTipOfTheDay);
 
         jmiProductTour.setText("Zuonics Homepage & Product Tour");
         jmiProductTour.setMnemonic(KeyEvent.VK_B);
@@ -607,33 +823,32 @@ public class ZoeosFrame extends ZJFrame {
         jmiReportBug.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
                 BrowserControl.displayURL("mailto:bugs@zuonics.com?subject=Bug in " + Zoeos.versionStr + "&body=< PASTE DEVICE CONFIGURATION HERE >");
-                //mailto:astark1@unl.edu?subject=Comments from MailTo Syntax Page
-                //JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
+//mailto:astark1@unl.edu?subject=Comments from MailTo Syntax Page
+//JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
             }
         });
         jmHelp.add(jmiReportBug);
 
-        jmiLicenseManager.setText("Manage License Keys");
-        jmiLicenseManager.setMnemonic(KeyEvent.VK_L);
-        jmiLicenseManager.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                licenseManager.show();
-                //JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
-            }
-        });
-//        jmHelp.add(jmiLicenseManager);
-
+        if (!Zoeos.isEvaluation()) {
+            jmiLicenseManager.setText("Manage License Keys");
+            jmiLicenseManager.setMnemonic(KeyEvent.VK_L);
+            jmiLicenseManager.addActionListener(new ActionListener() {
+                public void actionPerformed(ActionEvent evt) {
+                    licenseManager.show();
+//JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
+                }
+            });
+            jmHelp.add(jmiLicenseManager);
+        }
         jmHelp.addSeparator();
 
         jmiAboutBox.setText("About");
         jmiAboutBox.setMnemonic(KeyEvent.VK_A);
         jmiAboutBox.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
-
                 JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), Zoeos.aboutMessage + "\n\nJVM version " +
                         System.getProperty("java.version") + "\n" +
-                        " by " + System.getProperty("java.vendor"), "About ZoeOS", JOptionPane.INFORMATION_MESSAGE, new ImageIcon(ZoeosFrame.class.getResource("/zoeosFrameIcon.gif"))
-                );
+                        " by " + System.getProperty("java.vendor"), "About ZoeOS", JOptionPane.INFORMATION_MESSAGE, new ImageIcon(ZoeosFrame.class.getResource("/zoeosFrameIcon.gif")));
             }
         });
         jmHelp.add(jmiAboutBox);
@@ -645,7 +860,7 @@ public class ZoeosFrame extends ZJFrame {
         jmiDeviceManager = new JMenuItem();
         jmiMidiManager = new JMenuItem();
         jmiSMDIManager = new JMenuItem();
-        jmiTaskManager = new JMenuItem();
+        // jmiTaskManager = new JMenuItem();
 
         jmManage.setText("Manage");
         jmManage.setMnemonic(KeyEvent.VK_M);
@@ -674,21 +889,23 @@ public class ZoeosFrame extends ZJFrame {
             public void actionPerformed(ActionEvent evt) {
                 assertSmdiManager();
                 if (smdiManager == null)
-                    JOptionPane.showMessageDialog(ZoeosFrame.this, "SMDI not installed");
+                    JOptionPane.showMessageDialog(ZoeosFrame.this, "SMDI unavailable");
                 else
                     smdiManager.show();
             }
         });
         jmManage.add(jmiSMDIManager);
 
-        jmiTaskManager.setText("Show Tasks");
-        jmiTaskManager.setMnemonic(KeyEvent.VK_T);
-        jmiTaskManager.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                showTasks();
-            }
-        });
-        jmManage.add(jmiTaskManager);
+        /*
+         jmiTaskManager.setText("Show Tasks");
+         jmiTaskManager.setMnemonic(KeyEvent.VK_T);
+         jmiTaskManager.addActionListener(new ActionListener() {
+             public void actionPerformed(ActionEvent evt) {
+                 showTasks();
+             }
+         });
+         jmManage.add(jmiTaskManager);
+         */
     }
 
     private void createFileMenu() {
@@ -721,77 +938,169 @@ public class ZoeosFrame extends ZJFrame {
                 // initLook();
                 com.jidesoft.utils.Lm.verifyLicense("Zuonics", "ZoeOS", "odQ6AtjgQBLkRNQQNqiFlMcc2lIq1Pe2");
 
-                JFrame.setDefaultLookAndFeelDecorated(true);
-                JDialog.setDefaultLookAndFeelDecorated(true);
-                /*
-                com.incors.plaf.alloy.AlloyLookAndFeel.setProperty("alloy.licenseCode", "a#PCM_Solutions_Ltd#1pj3nkw#a522i8");
-                com.incors.plaf.alloy.AlloyLookAndFeel.setProperty("alloy.isLookAndFeelFrameDecoration", "true");
-                AlloyLookAndFeel.setProperty("alloy.isButtonPulseEffectEnabled", "false");
+                //JFrame.setDefaultLookAndFeelDecorated(true);
+                // JDialog.setDefaultLookAndFeelDecorated(true);
+/*
+com.incors.plaf.alloy.AlloyLookAndFeel.setProperty("alloy.licenseCode", "a#PCM_Solutions_Ltd#1pj3nkw#a522i8");
+com.incors.plaf.alloy.AlloyLookAndFeel.setProperty("alloy.isLookAndFeelFrameDecoration", "true");
+AlloyLookAndFeel.setProperty("alloy.isButtonPulseEffectEnabled", "false");
 
 
-                //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.glass.GlassTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 10, 9));
-                //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.acid.AcidTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 10, 9));
-                //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.glass.GlassTheme();
-                //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 11, 11));
-                //                com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new CustomFontTheme(new String[]{"Microsoft Sans Serif", "Arial"}, 11, 11));
+//com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.glass.GlassTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 10, 9));
+//com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.acid.AcidTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 10, 9));
+//com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.glass.GlassTheme();
+//com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 11, 11));
+//                com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new CustomFontTheme(new String[]{"Microsoft Sans Serif", "Arial"}, 11, 11));
 
-                com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new AlloyFontTheme() {
-                    //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.acid.AcidTheme(new AlloyFontTheme() {
-                    public FontUIResource getControlTextFont() {
-                        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-                    }
+com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new AlloyFontTheme() {
+    //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.acid.AcidTheme(new AlloyFontTheme() {
+    public FontUIResource getControlTextFont() {
+        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
+    }
 
-                    public FontUIResource getSystemTextFont() {
-                        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-                    }
+    public FontUIResource getSystemTextFont() {
+        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
+    }
 
-                    public FontUIResource getUserTextFont() {
-                        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-                    }
+    public FontUIResource getUserTextFont() {
+        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
+    }
 
-                    public FontUIResource getMenuTextFont() {
-                        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 11);
-                    }
+    public FontUIResource getMenuTextFont() {
+        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 11);
+    }
 
-                    public FontUIResource getWindowTitleFont() {
-                        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-                    }
+    public FontUIResource getWindowTitleFont() {
+        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
+    }
 
-                    public FontUIResource getSubTextFont() {
-                        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-                    }
-                });
+    public FontUIResource getSubTextFont() {
+        return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
+    }
+});
 
-                javax.swing.LookAndFeel alloyLnF = new com.incors.plaf.alloy.AlloyLookAndFeel(theme);
-                //AlloyJideLookAndFeel ajlf = new AlloyJideLookAndFeel();
-                //ajlf.setTheme(theme, true);
-                javax.swing.UIManager.setLookAndFeel(LookAndFeelFactory.ALLOY_LNF);
-                */
+javax.swing.LookAndFeel alloyLnF = new com.incors.plaf.alloy.AlloyLookAndFeel(theme);
+//AlloyJideLookAndFeel ajlf = new AlloyJideLookAndFeel();
+//ajlf.setTheme(theme, true);
+javax.swing.UIManager.setLookAndFeel(LookAndFeelFactory.ALLOY_LNF);
+*/
+                System.setProperty("sun.awt.noerasebackground", "true");
+                //Toolkit.getDefaultToolkit().setDynamicLayout(true);
+                try {
+                    //UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                    String os = System.getProperty("os.name");
+                    com.sun.java.swing.plaf.windows.WindowsLookAndFeel lf;
 
-                LookAndFeelFactory.setDefaultLookAndFeel();
-                LookAndFeelFactory.installJideExtension();
-                Font defFont = new Font("Arial", Font.PLAIN, 11);
+                    System.out.println(UIManager.getSystemLookAndFeelClassName());
+                    if (os.contains("XP"))
+                        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                    else
+                        UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                    LookAndFeelFactory.installJideExtension();
+                    System.out.println(os);
+                } catch (ClassNotFoundException e) {
+                } catch (InstantiationException e) {
+                } catch (IllegalAccessException e) {
+                } catch (UnsupportedLookAndFeelException e) {
+                }
+                Font defFont = new Font("Arial", Font.PLAIN, 10); //(Toolkit.getDefaultToolkit().getScreenSize().getHeight() > 768?11:10));
                 // UIManager.getDefaults().put("Label.font", defFont);
 
                 //using the put keys to set the font size for the different visual components.
+                System.out.println("UI property count = " + UIManager.getDefaults().size());
+                ArrayList al = new ArrayList();
                 for (Enumeration e = UIManager.getDefaults().keys(); e.hasMoreElements();) {
                     Object o = e.nextElement();
                     if (o.toString().indexOf(".font") != -1)
                         UIManager.getDefaults().put(o,
                                 defFont);
-                    //System.out.println(e.nextElement());
-                }
-            } finally {
+                    al.add(o);
 
+                }
+                Collections.sort(al);
+               // for (Object o : al)
+                //    System.out.println(o + " : " + UIManager.getDefaults().get(o));
+
+//using the put keys to set the font size for the different visual components.
+                System.out.println("UI property count = " + UIManager.getLookAndFeelDefaults().size());
+                 al = new ArrayList();
+                for (Enumeration e = UIManager.getLookAndFeelDefaults().keys(); e.hasMoreElements();) {
+                    Object o = e.nextElement();
+                    if (o.toString().indexOf(".font") != -1)
+                        UIManager.getLookAndFeelDefaults().put(o,
+                                defFont);
+                    al.add(o);
+
+                }
+                Collections.sort(al);
+               // for (Object o : al)
+                //    System.out.println(o + " : " + UIManager.getLookAndFeelDefaults().get(o));
+
+                ColorUIResource yellowish = new ColorUIResource(UIColors.applyAlpha(Color.yellow, 200));
+                ColorUIResource redish = new ColorUIResource(UIColors.applyAlpha(Color.red, 100));
+                ColorUIResource orangeish = new ColorUIResource(UIColors.applyAlpha(Color.orange, 250));
+                ColorUIResource whiteish = new ColorUIResource(UIColors.applyAlpha(Color.white, 250));
+                Color blueish = UIColors.getDefaultBG();
+                Color grayish = new Color(75, 75, 90);
+                /*
+                //UIManager.getDefaults().put("SidePane.margin", Color.black);
+                UIManager.getDefaults().put("ComboBox.background", blueish);
+
+                UIManager.getDefaults().put("Button.background", orangeish);
+                UIManager.getDefaults().put("Button.focusedBackground", orangeish);
+                UIManager.getDefaults().put("Button.light", redish);
+                UIManager.getDefaults().put("Button.foreground", blueish);
+                UIManager.getDefaults().put("JideButton.background", orangeish);
+                UIManager.getDefaults().put("JideButton.light", redish);
+                UIManager.getDefaults().put("JideButton.foreground", blueish);
+
+                UIManager.getDefaults().put("Panel.background", blueish);
+                UIManager.getDefaults().put("ScrollPane.background", blueish);
+                UIManager.getDefaults().put("ProgressBar.background", blueish);
+                UIManager.getDefaults().put("ProgressBar.foreground", redish);
+                UIManager.getDefaults().put("ProgressBar.shadow", redish);
+                UIManager.getDefaults().put("ProgressBar.selectionForeground", redish);
+                UIManager.getDefaults().put("ProgressBar.selectionBackground", redish);
+                UIManager.getDefaults().put("ProgressBar.highlight", redish);
+                UIManager.getDefaults().put("SidePane.background", new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("SidePane.foreground", Color.DARK_GRAY);
+                UIManager.getDefaults().put("SidePane.buttonBackground", grayish);
+                UIManager.getDefaults().put("CollapsiblePane.background", redish);
+
+                UIManager.getDefaults().put("MenuBar.background", grayish);
+                UIManager.getDefaults().put("MenuBar.foreground", orangeish);
+
+                UIManager.getDefaults().put("PopupMenu.background", new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("PopupMenu.foreground", orangeish);
+
+                UIManager.getDefaults().put("Menu.background",new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("Menu.foreground", yellowish);
+                UIManager.getDefaults().put("Menu.selectionBackground", orangeish);
+
+                UIManager.getDefaults().put("MenuItem.background", new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("MenuItem.foreground", orangeish);
+                UIManager.getDefaults().put("MenuItem.selectionBackground", orangeish);
+
+                UIManager.getDefaults().put("JideButton.background", new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("Tree.background", new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("JideTabbedPane.tabAreaBackground", grayish);
+                UIManager.getDefaults().put("JideTabbedPane.selectedTabBackground", UIColors.getTableSecondSectionBG());
+                UIManager.getDefaults().put("JideTabbedPane.background", grayish);
+                UIManager.getDefaults().put("JideTabbedPane.foreground", whiteish);
+                UIManager.getDefaults().put("JideTabbedPane.unselectedTabTextForeground", yellowish);
+                UIManager.getDefaults().put("JideTabbedPane.light", blueish);
+                UIManager.getDefaults().put("DockableFrame.background", new ColorUIResource(UIColors.getDefaultBG()));
+                UIManager.getDefaults().put("ScrollBar.trackForeground", new ColorUIResource(UIColors.getDefaultBG()));
+                */
+            } finally {
             }
 
             System.out.println(Thread.currentThread());
             final ZoeosFrame zf = ZoeosFrame.getInstance();
-            zf.show();
-            if (Preferences.userNodeForPackage(TipOfTheDayDialog.class).getBoolean(TipOfTheDayDialog.PREF_showTipsAtStartup, true) == true)
+            zf.setVisible(true);
+            if (ZoeosPreferences.ZPREF_showTipsAtStartup.getValue())
                 zf.showTips();
 
-            final Preferences prefs = Preferences.userRoot().node("/com/pcmsolutions/system/zoeos");
             if (ZoeosPreferences.ZPREF_autoHuntAtStartup.getValue() == true)
                 SwingUtilities.invokeLater(new Runnable() {
                     public void run() {
@@ -800,106 +1109,25 @@ public class ZoeosFrame extends ZJFrame {
                                 try {
                                     Zoeos.getInstance().getDeviceManager().performHunt();
                                 } finally {
+                                    try {
+                                        com.exe4j.Controller.hide();
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
                                 }
                             }
                         }.start();
                     }
                 });
+            else
+                try {
+                    com.exe4j.Controller.hide();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
         } catch (OutOfMemoryError e) {
             System.out.println(e);
             System.exit(-1);
         }
     }
-
-    private static void initLook() throws ClassNotFoundException, InstantiationException, IllegalAccessException, UnsupportedLookAndFeelException {
-
-        com.jidesoft.utils.Lm.verifyLicense("Zuonics", "ZoeOS", "odQ6AtjgQBLkRNQQNqiFlMcc2lIq1Pe2");
-
-        JFrame.setDefaultLookAndFeelDecorated(true);
-        JDialog.setDefaultLookAndFeelDecorated(true);
-        com.incors.plaf.alloy.AlloyLookAndFeel.setProperty("alloy.licenseCode", "a#PCM_Solutions_Ltd#1pj3nkw#a522i8");
-        com.incors.plaf.alloy.AlloyLookAndFeel.setProperty("alloy.isLookAndFeelFrameDecoration", "true");
-        AlloyLookAndFeel.setProperty("alloy.isButtonPulseEffectEnabled", "false");
-
-
-        //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.glass.GlassTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 10, 9));
-        //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.acid.AcidTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 10, 9));
-        //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.glass.GlassTheme();
-        //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new CustomFontTheme(new String[]{"Arial", "Courier"}, 11, 11));
-        //                com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new CustomFontTheme(new String[]{"Microsoft Sans Serif", "Arial"}, 11, 11));
-
-        com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.bedouin.BedouinTheme(new AlloyFontTheme() {
-            //com.incors.plaf.alloy.AlloyTheme theme = new com.incors.plaf.alloy.themes.acid.AcidTheme(new AlloyFontTheme() {
-            public FontUIResource getControlTextFont() {
-                return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-            }
-
-            public FontUIResource getSystemTextFont() {
-                return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-            }
-
-            public FontUIResource getUserTextFont() {
-                return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-            }
-
-            public FontUIResource getMenuTextFont() {
-                return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 11);
-            }
-
-            public FontUIResource getWindowTitleFont() {
-                return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-            }
-
-            public FontUIResource getSubTextFont() {
-                return new FontUIResource("Microsoft Sans Serif", Font.PLAIN, 10);
-            }
-        });
-
-        javax.swing.LookAndFeel alloyLnF = new com.incors.plaf.alloy.AlloyLookAndFeel(theme);
-        //AlloyJideLookAndFeel ajlf = new AlloyJideLookAndFeel();
-        //ajlf.setTheme(theme, true);
-        javax.swing.UIManager.setLookAndFeel(alloyLnF);
-        //javax.swing.UIManager.setLookAndFeel(ajlf);
-
-
-        Font defFont = new Font("Arial", Font.PLAIN, 11);
-        // UIManager.getDefaults().put("Label.font", defFont);
-
-        //using the put keys to set the font size for the different visual components.
-        for (Enumeration e = UIManager.getDefaults().keys(); e.hasMoreElements();) {
-            Object o = e.nextElement();
-            if (o.toString().indexOf(".font") != -1)
-                UIManager.getDefaults().put(o,
-                        defFont);
-            //System.out.println(e.nextElement());
-        }
-
-        UIManager.getDefaults().put("Button.font",
-                defFont);
-        /* UIManager.getDefaults().put("JButton.font",
-        new Font(MmiConstants.DEFAULT_MMI_FONT, 0, fontSize));*/
-        UIManager.getDefaults().put("Label.font",
-                defFont);
-        UIManager.getDefaults().put("TextField.font",
-                defFont);
-        UIManager.getDefaults().put("TextArea.font",
-                defFont);
-        UIManager.getDefaults().put("RadioButton.font",
-                defFont);
-        UIManager.getDefaults().put("CheckBox.font",
-                defFont);
-        UIManager.getDefaults().put("TabbedPane.font",
-                defFont);
-        UIManager.getDefaults().put("TitledBorder.font",
-                defFont);
-        UIManager.getDefaults().put("Spinner.font",
-                defFont);
-        UIManager.getDefaults().put("FormattedTextField",
-                defFont);
-        UIManager.getDefaults().put("JFormattedTextField",
-                defFont);
-        UIManager.getDefaults().put("AbstractButton",
-                defFont);
-    }
-
 }

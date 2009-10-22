@@ -47,9 +47,9 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
             //Border b = UIColors.makeFuzzyBorder(bdrColor, borderWidth);
             String title = rhst.getTableTitle();
             if (title != null && !title.equals(""))
-                this.setBorder(new TitledBorder(new FuzzyLineBorder(bdrColor, UIColors.getTableBorderWidth(), true), title, TitledBorder.LEFT, TitledBorder.ABOVE_TOP));
+                this.setBorder(new TitledBorder(new FuzzyLineBorder(bdrColor, UIColors.getTableBorderWidth(), true, true), title, TitledBorder.LEFT, TitledBorder.ABOVE_TOP));
             else
-                this.setBorder(new FuzzyLineBorder(bdrColor, UIColors.getTableBorderWidth(), true));
+                this.setBorder(new FuzzyLineBorder(bdrColor, UIColors.getTableBorderWidth(), true, true));
         }
 
         rhst.getTable().addComponentListener(this);
@@ -64,7 +64,7 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
             }
 
             public Color getBackground() {
-                return UIColors.getTableFirstSectionBG();
+                return UIColors.getFadeButtonBG();
             }
         };
         hideButton.setFocusable(false);
@@ -77,6 +77,7 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
 
         JPanel hideButtonPanel = new JPanel(new BorderLayout());
         hideButtonPanel.setFocusable(false);
+        hideButtonPanel.setBorder(null);
         if (showSectionHeader) {
             SectionData[] sd = rhst.getSectionData();
             FadeLabel j;
@@ -87,7 +88,7 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
                 j = new FadeLabel(sd[i].sectionName, JLabel.CENTER);
                 //j.setFadingIn(true);
                 //j.setOpaque(true);
-                j.setBackground(sd[i].sectionBG);
+                j.setBackground(sd[i].sectionHeaderBG);
                 j.setForeground(sd[i].sectionFG);
                 d = new Dimension(sd[i].sectionWidth, (int) j.getPreferredSize().getHeight());
                 j.setPreferredSize(d);
@@ -108,13 +109,13 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
             mainBox.add(sectionBox, BorderLayout.NORTH);
         }
 
-        JButton button = new FadeButton(true, 0, 2.0F / 3) {
+        JButton button = new FadeButton(false, 0, 2.0F / 3) {
             public Color getForeground() {
                 return Color.white;
             }
 
             public Color getBackground() {
-                return UIColors.getTableFirstSectionBG();
+                return UIColors.getFadeButtonBG();
             }
         };
 
@@ -154,7 +155,6 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
         return this;
     }
 
-
     public RowHeaderedTableScrollPane getRowHeaderedTableScrollPane() {
         return rowHeaderedTableScrollPane;
     }
@@ -164,42 +164,23 @@ public class RowHeaderedAndSectionedTablePanel extends JPanel implements Compone
     }
 
     public void componentResized(ComponentEvent e) {
-        /*SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                revalidate();
-            }
-        });*/
         revalidate();
+        repaint();
     }
 
     public void componentMoved(ComponentEvent e) {
-        /*SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                revalidate();
-            }
-        });*/
-
-        revalidate();
+       // revalidate();
+      //  repaint();
     }
 
     public void componentShown(ComponentEvent e) {
-        /*SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                revalidate();
-            }
-        });*/
-
-        revalidate();
+      //  revalidate();
+      //  repaint();
     }
 
     public void componentHidden(ComponentEvent e) {
-        /*SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                revalidate();
-            }
-        });*/
-
-        revalidate();
+       // revalidate();
+      //  repaint();
     }
 
     public JButton getHideButton() {

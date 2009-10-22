@@ -2,6 +2,7 @@ package com.pcmsolutions.device.EMU.E4;
 
 
 import com.pcmsolutions.device.EMU.E4.sample.SampleModel;
+import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
 
 import java.util.ArrayList;
 
@@ -18,6 +19,8 @@ class SampleClassManager {
     public static void addSampleClass(Class sampleClass, String prefix) {
         if (!SampleModel.class.isAssignableFrom(sampleClass))
             throw new IllegalArgumentException("Invalid sample class - must implement SampleModel");
+        if (!ReadableSample.class.isAssignableFrom(sampleClass))
+            throw new IllegalArgumentException("Invalid sample class - must implement ReadableSample");
 
         profiles.add(new SampleClassProfile(sampleClass, prefix));
     }
@@ -33,7 +36,7 @@ class SampleClassManager {
             SampleModel pm = (SampleModel) candidate.newInstance();
             pm.setSample(baseClass.getSample());
             pm.setSampleContext(baseClass.getSampleContext());
-            return pm;
+            return (ReadableSample)pm;
         }
         return baseClass;
     }

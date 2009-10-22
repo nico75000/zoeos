@@ -6,6 +6,11 @@
 
 package com.pcmsolutions.device.EMU.E4.sample;
 
+import com.pcmsolutions.system.ZCommandProviderHelper;
+import com.pcmsolutions.device.EMU.E4.zcommands.E4ContextBasicEditableSampleZCommandMarker;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
+
 
 /**
  *
@@ -13,11 +18,10 @@ package com.pcmsolutions.device.EMU.E4.sample;
  */
 
 public interface ContextBasicEditableSample extends ContextReadableSample {
-    public void setSampleName(String name) throws NoSuchSampleException, SampleEmptyException;
+    final  ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ContextBasicEditableSampleZCommandMarker.class, ContextReadableSample.cmdProviderHelper);
 
-    public void lockSampleWrite() throws NoSuchSampleException, com.pcmsolutions.device.EMU.E4.preset.NoSuchContextException;
+    public void setSampleName(String name) throws SampleException;
 
-    public void eraseSample() throws NoSuchSampleException, SampleEmptyException;
-
+    public void eraseSample() throws SampleException;
 
 }

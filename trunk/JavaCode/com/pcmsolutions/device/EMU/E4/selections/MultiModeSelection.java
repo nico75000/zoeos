@@ -1,13 +1,15 @@
 package com.pcmsolutions.device.EMU.E4.selections;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
-import com.pcmsolutions.device.EMU.E4.multimode.IllegalMidiChannelException;
+import com.pcmsolutions.device.EMU.E4.multimode.IllegalMultimodeChannelException;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeContext;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeDescriptor;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeMap;
 import com.pcmsolutions.device.EMU.E4.parameter.GeneralParameterDescriptor;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
 import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 
 import java.util.ArrayList;
 
@@ -23,7 +25,7 @@ public class MultiModeSelection extends AbstractE4Selection {
     private transient MultiModeContext mmc;
     private int[] selCols;
 
-    public MultiModeSelection(DeviceContext sourceDevice, MultiModeContext mmc, int[] selCols, int[] selRows) {
+    public MultiModeSelection(DeviceContext sourceDevice, MultiModeContext mmc, int[] selCols, int[] selRows) throws DeviceException {
         super(sourceDevice);
         this.selCols = selCols;
         for (int i = 0, n = selRows.length; i < n; i++)
@@ -52,30 +54,30 @@ public class MultiModeSelection extends AbstractE4Selection {
             val = chData[i].getPreset();
             if (val != null)
                 try {
-                    mmc.setPreset(ch, val);
-                } catch (IllegalMidiChannelException e) {
+                    mmc.setPreset(ch, val).post();
+                } catch (ResourceUnavailableException e) {
                     e.printStackTrace();
                 }
 
             val = chData[i].getVolume();
             if (val != null)
                 try {
-                    mmc.setVolume(ch, val);
-                } catch (IllegalMidiChannelException e) {
+                    mmc.setVolume(ch, val).post();
+                } catch (ResourceUnavailableException e) {
                     e.printStackTrace();
                 }
             val = chData[i].getPan();
             if (val != null)
                 try {
-                    mmc.setPan(ch, val);
-                } catch (IllegalMidiChannelException e) {
+                    mmc.setPan(ch, val).post();
+                } catch (ResourceUnavailableException e) {
                     e.printStackTrace();
                 }
             val = chData[i].getSubmix();
             if (val != null)
                 try {
-                    mmc.setSubmix(ch, val);
-                } catch (IllegalMidiChannelException e) {
+                    mmc.setSubmix(ch, val).post();
+                } catch (ResourceUnavailableException e) {
                     e.printStackTrace();
                 }
         }
@@ -107,7 +109,7 @@ public class MultiModeSelection extends AbstractE4Selection {
         private final Integer[] values = new Integer[4];
         private final String[] valueStrings = new String[4];
 
-        public Impl_MultiModeChannelSelection(MultiModeContext mmc, int[] selCols, int row) {
+        public Impl_MultiModeChannelSelection(MultiModeContext mmc, int[] selCols, int row) throws DeviceException {
             channel = IntPool.get(row + 1);
             MultiModeDescriptor mmd = mmc.getMultiModeDescriptor();
             GeneralParameterDescriptor preset_pd = mmd.getPresetParameterDescriptor();
@@ -122,7 +124,7 @@ public class MultiModeSelection extends AbstractE4Selection {
                     try {
                         values[0] = m.getPreset(channel);
                         valueStrings[0] = preset_pd.getStringForValue(values[0]);
-                    } catch (IllegalMidiChannelException e) {
+                    } catch (IllegalMultimodeChannelException e) {
                         e.printStackTrace();
                     } catch (ParameterValueOutOfRangeException e) {
                         e.printStackTrace();
@@ -133,7 +135,7 @@ public class MultiModeSelection extends AbstractE4Selection {
                     try {
                         values[1] = m.getVolume(channel);
                         valueStrings[1] = vol_pd.getStringForValue(values[1]);
-                    } catch (IllegalMidiChannelException e) {
+                    } catch (IllegalMultimodeChannelException e) {
                         e.printStackTrace();
                     } catch (ParameterValueOutOfRangeException e) {
                         e.printStackTrace();
@@ -143,7 +145,7 @@ public class MultiModeSelection extends AbstractE4Selection {
                     try {
                         values[2] = m.getPan(channel);
                         valueStrings[2] = pan_pd.getStringForValue(values[2]);
-                    } catch (IllegalMidiChannelException e) {
+                    } catch (IllegalMultimodeChannelException e) {
                         e.printStackTrace();
                     } catch (ParameterValueOutOfRangeException e) {
                         e.printStackTrace();
@@ -153,7 +155,7 @@ public class MultiModeSelection extends AbstractE4Selection {
                     try {
                         values[3] = m.getSubmix(channel);
                         valueStrings[3] = submix_pd.getStringForValue(values[3]);
-                    } catch (IllegalMidiChannelException e) {
+                    } catch (IllegalMultimodeChannelException e) {
                         e.printStackTrace();
                     } catch (ParameterValueOutOfRangeException e) {
                         e.printStackTrace();

@@ -1,18 +1,20 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.envelope;
 
+import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.RatesEnvelope;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.RatesEnvelopeMouseListener;
 import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
-import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.system.IntPool;
 
 import javax.swing.*;
-import javax.swing.event.ChangeListener;
 import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.event.ActionEvent;
 
 
@@ -32,13 +34,13 @@ public class EditableAmpEnvelopePanel extends EditableVoiceEnvelopePanel {
         }
     };
 
-    public EditableAmpEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices) throws IllegalParameterIdException {
-        init(voices, ParameterModelUtilities.getEditableParameterModelGroups(voices, 70, 12));
+    public EditableAmpEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc) throws ParameterException {
+        init(voices, tsc,ParameterModelUtilities.getEditableParameterModelGroups(voices, 70, 12));
         return this;
     }
 
-    private EditableAmpEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, EditableParameterModel[] models) {
-        super.init(voices, ParameterCategories.VOICE_AMPLIFIER_ENVELOPE, models, "Amp Envelope", toggleAction);
+    private EditableAmpEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc,EditableParameterModel[] models) {
+        super.init(voices, tsc,ParameterCategories.VOICE_AMPLIFIER_ENVELOPE, models, "Amp Envelope", toggleAction);
         DevicePreferences.ZPREF_fillAmpEnvelopes.addChangeListener(cl);
         DevicePreferences.ZPREF_ampEnvelopeMode.addChangeListener(cl);
         getEnvelope().addMouseListener(new RatesEnvelopeMouseListener(getEnvelope(), DevicePreferences.ZPREF_fillAmpEnvelopes, DevicePreferences.ZPREF_ampEnvelopeMode));
@@ -46,8 +48,8 @@ public class EditableAmpEnvelopePanel extends EditableVoiceEnvelopePanel {
         return this;
     }
 
-    public EditableAmpEnvelopePanel init(ContextEditablePreset.EditableVoice voice) throws IllegalParameterIdException {
-        super.init(voice, ParameterCategories.VOICE_AMPLIFIER_ENVELOPE, IntPool.get(70), "Amp Envelope", toggleAction);
+    public EditableAmpEnvelopePanel init(ContextEditablePreset.EditableVoice voice, TableExclusiveSelectionContext tsc) throws ParameterException {
+        super.init(voice, tsc,ParameterCategories.VOICE_AMPLIFIER_ENVELOPE, IntPool.get(70), "Amp Envelope", toggleAction);
         DevicePreferences.ZPREF_fillAmpEnvelopes.addChangeListener(cl);
         DevicePreferences.ZPREF_ampEnvelopeMode.addChangeListener(cl);
         getEnvelope().addMouseListener(new RatesEnvelopeMouseListener(getEnvelope(), DevicePreferences.ZPREF_fillAmpEnvelopes, DevicePreferences.ZPREF_ampEnvelopeMode));

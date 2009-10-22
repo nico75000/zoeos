@@ -1,14 +1,13 @@
 package com.pcmsolutions.device.EMU.E4.gui.multimode;
 
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
 import com.pcmsolutions.device.EMU.E4.gui.table.RowHeaderedAndSectionedTablePanel;
 import com.pcmsolutions.device.EMU.E4.multimode.MultiModeContext;
-import com.pcmsolutions.gui.ZCommandInvocationHelper;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
-import com.pcmsolutions.system.ZUtilities;
+import com.pcmsolutions.gui.ZCommandFactory;
+import com.pcmsolutions.gui.ZJPanel;
 import com.pcmsolutions.system.ZDisposable;
-import com.pcmsolutions.system.threads.ZDBModifyThread;
 
 import javax.swing.*;
 import java.awt.*;
@@ -17,7 +16,7 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 
 
-public class MultiModeEditorPanel extends JPanel implements MouseListener , ZDisposable{
+public class MultiModeEditorPanel extends ZJPanel implements MouseListener, ZDisposable {
     private DeviceContext device;
 
     private RowHeaderedAndSectionedTablePanel mmp;
@@ -33,28 +32,27 @@ public class MultiModeEditorPanel extends JPanel implements MouseListener , ZDis
         setDropTarget(null);
     }
 
-    public MultiModeEditorPanel init(final DeviceContext device, boolean just16, Action utilityAction) throws ZDeviceNotRunningException {
+    public MultiModeEditorPanel init(final DeviceContext device, boolean just16, Action utilityAction) throws DeviceException {
         AbstractAction rmm = new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
-                new ZDBModifyThread("Refresh Multimode") {
-                    public void run() {
-                        try {
-                            device.getMultiModeContext().refresh();
-                        } catch (ZDeviceNotRunningException e1) {
-                            e1.printStackTrace();
-                        }
-                    }
-                }.start();
+                try {
+                    device.getMultiModeContext().refresh().post();
+                } catch (Exception e1) {
+                    e1.printStackTrace();
+                }
             }
         };
-        rmm.putValue("tip", "Refresh Multimode");
+        rmm.putValue("tip", "Refresh multimode");
         this.device = device;
         mmp = new RowHeaderedAndSectionedTablePanel();
-        mmp.init(new MultiModeTable(device, just16), "Show MultiMode", UIColors.getTableBorder(), rmm);
+        mmp.init(new MultiModeTable(device, just16), "Show multimode", UIColors.getTableBorder(), rmm);
         //mmp.getHideButton().setAction(null);
         if (utilityAction != null) {
             mmp.getHideButton().setAction(utilityAction);
-            mmp.getHideButton().setToolTipText(utilityAction.getValue("tip").toString());
+            mmp.getHideButton().setToolTipText(utilityAction.getValue(Action.NAME).toString());
+            //  Object o = utilityAction.getValue("tip");
+            // if (o != null)
+            //   mmp.getHideButton().setToolTipText(o.toString());
         }
 
         //this.setLayout(new GridLayout(1, 1, 0, 0));
@@ -103,11 +101,11 @@ public class MultiModeEditorPanel extends JPanel implements MouseListener , ZDis
             MultiModeContext mmc;
             try {
                 mmc = this.device.getMultiModeContext();
-            } catch (ZDeviceNotRunningException e1) {
+            } catch (Exception e1) {
                 return false;
             }
             sels = new Object[]{mmc};
-            ZCommandInvocationHelper.showPopup("Multimode >", this, sels, e);
+            ZCommandFactory.showPopup("Multimode >", this, sels, e);
             return true;
         }
         return false;

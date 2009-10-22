@@ -3,9 +3,9 @@ package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetcontext.PresetContextTransferHandler;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.LinkTableTransferHandler;
 import com.pcmsolutions.device.EMU.E4.gui.table.DragAndDropTable;
-import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
-import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
-import com.pcmsolutions.device.EMU.E4.preset.*;
+import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
+import com.pcmsolutions.device.EMU.E4.preset.PresetException;
+import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.device.EMU.E4.selections.ContextPresetSelection;
 import com.pcmsolutions.device.EMU.E4.selections.LinkParameterSelectionCollection;
 import com.pcmsolutions.device.EMU.E4.selections.LinkSelection;
@@ -31,25 +31,18 @@ public class EditableLinkTableTransferHandler extends LinkTableTransferHandler i
             if (t.isDataFlavorSupported(PresetContextTransferHandler.presetContextFlavor)) {
                 int sr = ((EditableLinkTable) comp).getSelectedRow();
                 try {
-                    ReadablePreset[] readablePresets = ((ContextPresetSelection) t.getTransferData(PresetContextTransferHandler.presetContextFlavor)).getReadablePresets();
-                    for (int i = 0,j = readablePresets.length; i < j; i++) {
+                    final ReadablePreset[] readablePresets = ((ContextPresetSelection) t.getTransferData(PresetContextTransferHandler.presetContextFlavor)).getReadablePresets();
+                    for (int i = 0, j = readablePresets.length; i < j; i++) {
+                        final int f_i = i;
                         if (sr + i >= elt.getRowCount())
                             break;
-                        try {
-                            Object link = elt.getModel().getValueAt(sr + i, 0);
-                            if (link instanceof ContextEditablePreset.EditableLink)
-                                ((ContextEditablePreset.EditableLink) link).setLinksParam(IntPool.get(23), readablePresets[i].getPresetNumber());
-                        } catch (NoSuchPresetException e) {
-                            e.printStackTrace();
-                        } catch (PresetEmptyException e) {
-                            e.printStackTrace();
-                        } catch (IllegalParameterIdException e) {
-                            e.printStackTrace();
-                        } catch (NoSuchLinkException e) {
-                            e.printStackTrace();
-                        } catch (ParameterValueOutOfRangeException e) {
-                            e.printStackTrace();
-                        }
+                        final Object link = elt.getModel().getValueAt(sr + i, 0);
+                        if (link instanceof ContextEditablePreset.EditableLink)
+                            try {
+                                ((ContextEditablePreset.EditableLink) link).setLinkParam(IntPool.get(23), readablePresets[f_i].getIndex());
+                            } catch (PresetException e) {
+                                e.printStackTrace();
+                            }
                     }
                     return true;
                 } catch (UnsupportedFlavorException e) {

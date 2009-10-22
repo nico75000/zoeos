@@ -6,34 +6,39 @@
 
 package com.pcmsolutions.device.EMU.E4.preset;
 
+import com.pcmsolutions.system.ZCommandProviderHelper;
+import com.pcmsolutions.device.EMU.E4.zcommands.E4ContextReadablePresetZCommandMarker;
+import com.pcmsolutions.device.EMU.database.NoSuchContextException;
+import com.pcmsolutions.device.EMU.database.EmptyException;
+import com.pcmsolutions.device.EMU.DeviceException;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
 
 
 /**
  *
- * @author  pmeehan
+ * @author  pmeehan       
  */
 public interface ContextReadablePreset extends ReadablePreset {
 
-    public Set getPresetIndexesInContext();
+    final ZCommandProviderHelper cmdProviderHelper = new ZCommandProviderHelper(E4ContextReadablePresetZCommandMarker.class, ReadablePreset.cmdProviderHelper);
 
-    public Map getPresetNamesInContext();
+    public SortedSet<Integer> getPresetIndexesInContext() throws PresetException;
 
-    public List findEmptyPresets(Integer reqd, Integer beginIndex, Integer maxIndex) throws NoSuchContextException;
+    public Map<Integer,String> getPresetNamesInContext() throws PresetException;
 
-    public boolean presetEmpty(Integer preset) throws NoSuchPresetException;
+    public SortedSet<Integer> findEmptyPresets(Integer reqd, Integer beginIndex, Integer maxIndex) throws PresetException;
 
-    public void copyPreset(Integer destPreset) throws NoSuchPresetException, PresetEmptyException;
+    public void copyPreset(Integer destPreset) throws  PresetException;
 
-    public void copyPreset(Integer destPreset, String name) throws NoSuchPresetException, PresetEmptyException;
+    public void copyPreset(Integer destPreset, String name) throws PresetException;
 
-    public void copyVoice(Integer srcVoice, Integer destPreset, Integer group) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException, TooManyVoicesException;
+    public void copyVoice(Integer srcVoice, Integer destPreset) throws PresetException;
 
-    public void getVoiceMultiSample(Integer srcVoice, Integer destPreset, Integer destVoice) throws NoSuchPresetException, PresetEmptyException, NoSuchVoiceException;
-
-    public void copyLink(Integer srcLink, Integer destPreset) throws NoSuchPresetException, PresetEmptyException, NoSuchLinkException, TooManyVoicesException;
+    public void copyLink(Integer srcLink, Integer destPreset) throws PresetException;
 
     public PresetContext getPresetContext();
 }

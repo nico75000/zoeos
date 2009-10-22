@@ -1,14 +1,18 @@
 package com.pcmsolutions.gui;
 
 import com.pcmsolutions.device.EMU.E4.gui.device.PropertiesPanel;
+import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
+import com.pcmsolutions.device.EMU.E4.gui.piano.MidiPiano;
 import com.pcmsolutions.gui.desktop.ViewInstance;
 import com.pcmsolutions.gui.desktop.ZDesktopManager;
+import com.pcmsolutions.gui.midisynth.MidiSynth;
 import com.pcmsolutions.system.Zoeos;
 import com.pcmsolutions.system.ZoeosPreferences;
 import com.pcmsolutions.system.paths.DesktopName;
 import com.pcmsolutions.system.paths.ViewPath;
 
 import javax.swing.*;
+import java.awt.*;
 
 /**
  * User: paulmeehan
@@ -38,4 +42,35 @@ public class SystemViewFactory {
             }
         };
     }
+    /*
+    public static ViewInstance providePianoView() {
+        final DesktopName name = new DesktopName(JPanel.class, SystemPathFactory.providePianoPath());
+        final ViewPath vp = new ViewPath(ZDesktopManager.dockPIANO, name);
+        return new ViewInstance() {
+            public JComponent getView() throws ComponentGenerationException {
+                try {
+                    JPanel piano = new MidiPiano(){
+                        public Color getBackground() {
+                            return UIColors.getDefaultBG();
+                        }
+
+                        public Color getForeground() {
+                            return UIColors.getDefaultFG();
+                        }
+                    };
+                    return piano;
+                } catch (Exception e) {
+                    throw new ComponentGenerationException(e.getMessage());
+                }
+            }
+
+            public DesktopName getDesktopName() {
+                return name;
+            }
+
+            public ViewPath getViewPath() {
+                return vp;
+            }
+        };
+    } */
 }

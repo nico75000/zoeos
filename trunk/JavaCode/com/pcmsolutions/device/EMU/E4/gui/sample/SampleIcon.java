@@ -7,21 +7,23 @@
 package com.pcmsolutions.device.EMU.E4.gui.sample;
 
 import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
+import com.pcmsolutions.system.Zoeos;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.GeneralPath;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 public class SampleIcon implements Icon {
     private int w, h;
     private Color c1, c2;
     private boolean empty;
 
-    /** Creates a new instance of SampleIcon */
+    /**
+     * Creates a new instance of SampleIcon
+     */
     public SampleIcon(int w, int h, Color c1, Color c2) {
         this(w, h, c1, c2, false);
     }
@@ -44,10 +46,9 @@ public class SampleIcon implements Icon {
 
     public void paintIcon(Component component, Graphics graphics, int x, int y) {
         Graphics2D g2d = ((Graphics2D) graphics);
-        //Shape c = new Ellipse2D.Double(x, y, w, h);
-        //Shape c = new Rectangle2D.Double(x,y, w, h);
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
         GeneralPath c = new GeneralPath();
-
         if (empty) {
             int eh = h - 2;
             int ew = w - 2;
@@ -59,15 +60,17 @@ public class SampleIcon implements Icon {
             c.closePath();
             g2d.setColor(c1);
             g2d.draw(c);
-            return;
-        }
-        c.moveTo(x, y + h);
-        c.lineTo(x + w, y + h);
-        c.lineTo(x + w / 2, y);
-        c.closePath();
+        } else {
+            c.moveTo(x, y + h);
+            c.lineTo(x + w, y + h);
+            c.lineTo(x + w / 2, y);
+            c.closePath();
 
-        GradientPaint gp = new GradientPaint(x, y, c1, w, h, c2, false);
-        g2d.setPaint(gp);
-        g2d.fill(c);
+            GradientPaint gp = new GradientPaint(x, y, c1, w, h, c2, false);
+            g2d.setPaint(gp);
+            g2d.fill(c);
+            g2d.setRenderingHints(hints);
+        }
+        g2d.setRenderingHints(hints);
     }
 }

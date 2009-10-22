@@ -3,8 +3,9 @@ package com.pcmsolutions.system;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.device.EMU.E4.preset.SampleDescriptor;
 import com.pcmsolutions.device.EMU.E4.sample.ReadableSample;
+import com.pcmsolutions.device.EMU.database.ContextLocation;
 import com.pcmsolutions.gui.HideIcon;
-import com.pcmsolutions.smdi.SMDIAgent;
+import com.pcmsolutions.system.audio.AudioUtilities;
 
 import javax.swing.*;
 import java.awt.*;
@@ -13,6 +14,7 @@ import java.awt.geom.GeneralPath;
 import java.beans.PropertyVetoException;
 import java.io.File;
 import java.io.Serializable;
+import java.text.DecimalFormat;
 import java.util.*;
 import java.util.List;
 import java.util.prefs.BackingStoreException;
@@ -33,8 +35,219 @@ public class ZUtilities {
     public static final String FILE_EXTENSION = ".";
     public static final String STRING_FIELD_SEPERATOR = "_";
 
-    public static int extractInt(char[] arr, int pos) {
-        return extractInt(arr, pos, 4);
+    private static final DecimalFormat indexFormat = new DecimalFormat("0000");
+
+    public static Color invert(Color c){
+        return new Color((c.getRed()+128)%256, (c.getGreen()+128)%256, (c.getBlue()+128)%256);
+    }
+    public static String makeCopyingString(ContextLocation src, Integer dest) {
+        return makeCopyingString(src.toString(), dest);
+    }
+
+    public static void zdispose(Object o) {
+        try {
+            if (o instanceof ZDisposable)
+                ((ZDisposable) o).zDispose();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static String getExternalName(String name) {
+        StringBuffer sb = new StringBuffer(name);
+        int i;
+        while ((i = sb.indexOf("\\")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf("/")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf(":")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf("*")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf("?")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf("\"")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf("<")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf(">")) != -1)
+            sb = sb.deleteCharAt(i);
+        while ((i = sb.indexOf("|")) != -1)
+            sb = sb.deleteCharAt(i);
+        return sb.toString();
+    }
+
+    public static String quantify(int len, String type) {
+        StringBuffer sb = new StringBuffer();
+        sb.append(len);
+        sb.append(" ");
+        sb.append(type);
+        if (len != 1)
+            sb.append("s");
+        return sb.toString();
+    }
+
+    public static String[] makeStringArray(String str, int copies) {
+        String[] sa = new String[copies];
+        Arrays.fill(sa, str);
+        return sa;
+    }
+
+    public static int constrain(int val, int low, int high) {
+        if (val < low)
+            return low;
+        if (val > high)
+            return high;
+        return val;
+    }
+
+    public static boolean inRange(int val, int low, int high) {
+        return val >= low && val <= high;
+    }
+
+    public static boolean inRange(Integer val, Integer low, Integer high) {
+        return inRange(val.intValue(), low.intValue(), high.intValue());
+    }
+
+    public static String getCommonPrefix(String[] strs) {
+        if (strs.length == 0)
+            return "";
+        int min = getShortestLength(strs);
+        if (min < 1)
+            return "";
+        StringBuffer common = new StringBuffer();
+        char c;
+        for (int i = 0; i < min; i++) {
+            c = strs[0].charAt(i);
+            for (int j = 1; j < strs.length; j++)
+                if (strs[j].charAt(i) != c)
+                    return common.toString();
+            common.append(c);
+        }
+        return common.toString();
+    }
+
+    public static <T> Map<T,T> createIdentityMap(T[] objs) {
+        HashMap<T,T> m = new HashMap<T,T>();
+        for (int i = 0; i < objs.length; i++)
+            m.put(objs[i], objs[i]);
+        return m;
+    }
+
+    public static void assertSameLength(Object[] arr1, Object[] arr2) {
+        if (arr1.length != arr2.length)
+            throw new IllegalArgumentException("both arrays must be same length");
+    }
+
+    public static String extractTaggedField(String s, String tagIdentifier) {
+        if (s != null && tagIdentifier != null) {
+            String tag = makeTag(tagIdentifier);
+            int i = s.indexOf(tag);
+            if (i != -1) {
+                int i2 = s.indexOf("<", i + 1);
+                if (i2 == -1)
+                    return s.substring(i + tag.length());
+                else
+                    return s.substring(i + tag.length(), i2);
+            }
+        }
+        return null;
+    };
+    public static String makeTag(String tagIdentifier) {
+        StringBuffer sb = new StringBuffer("<");
+        sb.append(tagIdentifier);
+        sb.append(">");
+        return sb.toString();
+    }
+
+    public static String makeTaggedField(String tagIdentifier, String field) {
+        StringBuffer sb = new StringBuffer(makeTag(tagIdentifier));
+        sb.append(field);
+        return sb.toString();
+    }
+
+    public static String makeCopyingString(String name, Integer dest) {
+        StringBuffer s = new StringBuffer();
+        s.append("Copying ");
+        s.append(name);
+        s.append(" to ");
+        s.append(indexFormat.format(dest));
+        return s.toString();
+    }
+
+    /* public static int extractUnsignedInt(char[] arr, int pos) {
+         return extractUnsignedInt(arr, pos, 4);
+     }
+     */
+
+    public static String tokenizeIntegers(Integer[] presets) {
+        StringBuffer s = new StringBuffer();
+        for (int i = 0; i < presets.length; i++) {
+            if (i != 0)
+                s.append(",");
+            s.append(presets[i]);
+        }
+        return s.toString();
+    }
+
+    public static Integer[] detokenizeIntegers(String sess) {
+        ArrayList<Integer> indexes = new ArrayList<Integer>();
+        StringTokenizer tok = new StringTokenizer(sess, ",");
+        try {
+            while (tok.hasMoreTokens()) {
+                indexes.add(IntPool.get(Integer.parseInt(tok.nextToken())));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return indexes.toArray(new Integer[indexes.size()]);
+    }
+
+    public static double[] parseDoubles(String[] valueStrings) {
+        try {
+            double[] numericValueStrings = new double[valueStrings.length];
+            for (int i = 0; i < valueStrings.length; i++)
+                numericValueStrings[i] = Double.parseDouble(valueStrings[i]);
+            return numericValueStrings;
+        } catch (Exception e) {
+        }
+        return null;
+    }
+
+    // assumes doubles are ordered
+    // rounds down
+    // return array index of nearest
+    public static int getNearestDoubleIndex(double[] doubles, double val) {
+        if (val <= doubles[0])
+            return 0;
+        if (val >= doubles[doubles.length - 1])
+            return doubles.length - 1;
+        double lastVal = doubles[0];
+        for (int i = 1; i < doubles.length; i++)
+            if (val >= lastVal && val < doubles[i]) {
+                double lowDiff = val - lastVal;
+                double highDiff = doubles[i] - val;
+                if (highDiff < lowDiff)
+                    return i;
+                else
+                    return i - 1;
+            } else
+                lastVal = doubles[i];
+        return 0;
+    }
+
+    public static java.util.List intersection(java.util.List l1, java.util.List l2) {
+        ArrayList l3 = new ArrayList();
+        for (int i = 0, j = l1.size(); i < j; i++) {
+            Object o = l1.get(i);
+            if (l2.contains(o))
+                l3.add(o);
+        }
+        return l3;
+    }
+
+    public static String formatIndex(Integer index) {
+        return indexFormat.format(index);
     }
 
     public static Object[] getRealObjects(Object[] objs) {
@@ -47,23 +260,35 @@ public class ZUtilities {
         return outObjs;
     }
 
-    public static int extractInt(char[] arr, int pos, int bytes) {
+    // unsigned byte
+    private static int ubyte(byte b) {
+        int i = b;
+        if (i < 0)
+            i += 256;
+        return i;
+    }
+
+    public static int extractUnsignedInt(byte[] arr, int pos) {
+        return extractUnsignedInt(arr, pos, 4);
+    }
+
+    public static int extractUnsignedInt(byte[] arr, int pos, int bytes) {
         if (bytes < 1 || bytes > 4)
             throw new IllegalArgumentException("illegal number of bytes specified for int");
-        if (pos + 4 > arr.length)
+        if (pos + bytes > arr.length)
             throw new IllegalArgumentException("array too small to extract an int at specified position");
         int v = 0;
         if (bytes > 3)
-            v += arr[pos++] << 24;
+            v += ubyte(arr[pos++]) << 24;
         if (bytes > 2)
-            v += arr[pos++] << 16;
+            v += ubyte(arr[pos++]) << 16;
         if (bytes > 1)
-            v += arr[pos++] << 8;
-        v += arr[pos];
+            v += ubyte(arr[pos++]) << 8;
+        v += ubyte(arr[pos]);
         return v;
     }
 
-    public static void applyBytes(char[] arr, int v, int msbi, int bc) {
+    public static void applyBytesAsChar(char[] arr, int v, int msbi, int bc) {
         if (msbi + bc > arr.length)
             throw new IllegalArgumentException("array too small to apply bytes at specified position");
 
@@ -75,6 +300,27 @@ public class ZUtilities {
             arr[msbi + bc - 3] = (char) ((v & 0x00FF0000) >> 16);
         if (bc > 3)
             arr[msbi + bc - 4] = (char) ((v & 0xFF000000) >> 24);
+    }
+
+    public static void applyBytes(byte[] arr, int v, int msbi, int bc) {
+        if (msbi + bc > arr.length)
+            throw new IllegalArgumentException("array too small to apply bytes at specified position");
+
+        if (bc > 0)
+            arr[msbi + bc - 1] = (byte) (v & 0x000000FF);
+        if (bc > 1)
+            arr[msbi + bc - 2] = (byte) ((v & 0x0000FF00) >> 8);
+        if (bc > 2)
+            arr[msbi + bc - 3] = (byte) ((v & 0x00FF0000) >> 16);
+        if (bc > 3)
+            arr[msbi + bc - 4] = (byte) ((v & 0xFF000000) >> 24);
+    }
+
+    public static Integer[] joinIntegerArrays(Integer[] arr1, Integer[] arr2) {
+        Integer[] arr3 = new Integer[arr1.length + arr2.length];
+        System.arraycopy(arr1, 0, arr3, 0, arr1.length);
+        System.arraycopy(arr2, 0, arr3, arr1.length, arr2.length);
+        return arr3;
     }
 
     public static Object[] appendArray(Object[] arr1, Object obj2, boolean end) {
@@ -93,19 +339,101 @@ public class ZUtilities {
         return arr3;
     }
 
-    public static void applyByteArray(char[] arr, byte[] barr, int pos) {
+    public static char[] extractChars(byte[] arr, int pos, int len) {
+        if (pos + len > arr.length)
+            throw new IllegalArgumentException("invalid segment of byte array specified");
+        char[] chars = new char[len];
+        for (int i = 0; i < len; i++)
+            chars[i] = (char) arr[pos + i];
+        return chars;
+    }
+
+    public static void applyToCharArray(char[] arr, byte[] barr, int pos) {
         if (pos + barr.length > arr.length)
             throw new IllegalArgumentException("array too small to apply bytes at specified position");
         for (int i = pos, j = barr.length + pos, b = 0; i < j; i++)
             arr[i] = (char) barr[b++];
     }
 
-    public static byte[] extractByteArray(char[] arr, int pos, int len) {
+    public static byte[] applyToByteArray(char[] arr, int pos, int len) {
         if (pos + len > arr.length)
             throw new IllegalArgumentException("array too small to extract bytes from specified position");
         byte[] outArr = new byte[len];
         for (int i = pos, j = pos + len, b = 0; i < j; i++)
             outArr[b++] = (byte) arr[i];
+        return outArr;
+    }
+
+    public static byte[] applyToByteArray(int[] arr, int pos, int len) {
+        if (pos + len > arr.length)
+            throw new IllegalArgumentException("array too small to extract bytes from specified position");
+        byte[] outArr = new byte[len];
+        for (int i = pos, j = pos + len, b = 0; i < j; i++)
+            outArr[b++] = (byte) arr[i];
+        return outArr;
+    }
+
+    public static byte[] castToByteArray(int[] arr, int pos, int len) {
+        if (pos + len > arr.length)
+            throw new IllegalArgumentException("array too small to extract bytes from specified position");
+        byte[] outArr = new byte[len * 4];
+        for (int i = pos, j = pos + len, b = 0; i < j; i++, b += 4) {
+            outArr[b + 0] = (byte) ((arr[i] & 0xFF000000) >> 24);
+            outArr[b + 1] = (byte) ((arr[i] & 0xFF0000) >> 16);
+            outArr[b + 2] = (byte) ((arr[i] & 0xFF00) >> 8);
+            outArr[b + 3] = (byte) ((arr[i] & 0xFF));
+        }
+        return outArr;
+    }
+
+    public static char[] castToCharArray(int[] arr, int pos, int len) {
+        if (pos + len > arr.length)
+            throw new IllegalArgumentException("array too small to extract bytes from specified position");
+        char[] outArr = new char[len * 2];
+        for (int i = pos, j = pos + len, b = 0; i < j; i++, b += 2) {
+            outArr[b + 0] = (char) ((arr[i] & 0xFFFF0000) >> 16);
+            outArr[b + 1] = (char) ((arr[i] & 0xFFFF));
+        }
+        return outArr;
+    }
+
+    public static int[] castToIntArray(char[] arr, int pos, int len, boolean bigEndian) {
+        if (pos + len > arr.length || arr.length % 2 != 0)
+            throw new IllegalArgumentException("array too small to extract bytes from specified position or array length no aligned correctly");
+        int[] outArr = new int[len / 2];
+        int i2;
+        for (int i = 0; i < outArr.length; i++) {
+            if (bigEndian)
+                i2 = ((int) arr[i * 2]) >> 16 + ((int) arr[i * 2 + 1]);
+            else
+                i2 = (int) arr[i * 2] + (((int) arr[i * 2 + 1]) >> 16);
+
+            outArr[i] = i2;
+        }
+        return outArr;
+    }
+
+    public static int[] castToIntArray(byte[] arr, boolean bigEndian) {
+        if (arr.length % 4 != 0)
+            throw new IllegalArgumentException("array length must be divisible by 4");
+        int[] outArr = new int[arr.length / 4];
+        int i2;
+        int off;
+        for (int i = 0; i < outArr.length; i++) {
+            off = i * 2;
+            if (bigEndian) {
+                i2 = ((int) arr[off]) << 24;
+                i2 += ((int) arr[off + 1]) << 16;
+                i2 += ((int) arr[off] + 2) << 8;
+                i2 += ((int) arr[off] + 3);
+            } else {
+                i2 = ((int) arr[off]);
+                i2 += ((int) arr[off + 1]) << 8;
+                i2 += ((int) arr[off] + 2) << 16;
+                i2 += ((int) arr[off] + 3) << 24;
+            }
+            outArr[i] = i2;
+        }
         return outArr;
     }
 
@@ -122,7 +450,7 @@ public class ZUtilities {
     }
 
     public static short hiword(int b) {
-        return (short) (b & 0xFFFF0000);
+        return (short) (((b & 0xFFFF0000) >>> 16));
     }
 
     public static boolean isMapContentsSerializable(Map m) {
@@ -141,6 +469,10 @@ public class ZUtilities {
                 files[i] = new File(path, files[i].getPath());
     }
 
+    public static File prefixPath(File file, String path) {
+        return new File(path, file.getPath());
+    }
+
     public static boolean filesExist(File[] files) {
         return (howManyFilesExist(files) == files.length);
     }
@@ -151,6 +483,14 @@ public class ZUtilities {
             if (files[i].exists())
                 ec++;
         return ec;
+    }
+
+    public static File[] filesThatExist(File[] files) {
+        ArrayList exist = new ArrayList();
+        for (int i = 0; i < files.length; i++)
+            if (files[i].exists())
+                exist.add(files[i]);
+        return (File[]) exist.toArray(new File[exist.size()]);
     }
 
     public static int getIndexForString(Object[] objs, String s) {
@@ -165,7 +505,7 @@ public class ZUtilities {
         File f;
         for (Iterator i = files.iterator(); i.hasNext();) {
             f = (File) i.next();
-            if (ZUtilities.getExtension(f.getName()).toLowerCase().equals(SMDIAgent.WAV_EXTENSION.toLowerCase()))
+            if (ZUtilities.getExtension(f.getName()).toLowerCase().equals(AudioUtilities.WAV_EXTENSION.toLowerCase()))
                 wavFiles.add(f);
         }
         return wavFiles;
@@ -254,14 +594,14 @@ public class ZUtilities {
     public static Integer[] extractIndexes(ReadablePreset[] presets) {
         Integer[] indexes = new Integer[presets.length];
         for (int i = 0; i < presets.length; i++)
-            indexes[i] = presets[i].getPresetNumber();
+            indexes[i] = presets[i].getIndex();
         return indexes;
     }
 
     public static Integer[] extractIndexes(ReadableSample[] samples) {
         Integer[] indexes = new Integer[samples.length];
         for (int i = 0; i < samples.length; i++)
-            indexes[i] = samples[i].getSampleNumber();
+            indexes[i] = samples[i].getIndex();
         return indexes;
     }
 
@@ -486,13 +826,18 @@ public class ZUtilities {
 
     public static String makeSampleSummary(SampleDescriptor sampleDescriptor) {
         if (sampleDescriptor != null) {
-            TipFieldFormatter tff = new TipFieldFormatter();
-            tff.add(sampleDescriptor.getFormattedSampleRateInKhz());
-            tff.add(sampleDescriptor.getChannelDescription());
-            tff.add(sampleDescriptor.getLengthInSampleFrames() + " samples ");
-            tff.add(sampleDescriptor.getFormattedDurationInSeconds());
-            tff.add(sampleDescriptor.getFormattedSize());
-            return tff.toString();
+            StringBuffer s = new StringBuffer("<html><sp>");
+            s.append(sampleDescriptor.getFormattedSampleRateInKhz());
+            s.append("<br><sp>");
+            s.append(sampleDescriptor.getChannelDescription());
+            s.append("<br><sp>");
+            s.append(sampleDescriptor.getLengthInSampleFrames() + " samples");
+            s.append("<br><sp>");
+            s.append(sampleDescriptor.getFormattedDurationInSeconds());
+            s.append("<br><sp>");
+            s.append(sampleDescriptor.getFormattedSize());
+            s.append("</html>");
+            return s.toString();
         } else
             return null;
     }
@@ -543,7 +888,11 @@ public class ZUtilities {
         for (Iterator i = c.iterator(); i.hasNext();) {
             o = i.next();
             if (o instanceof ZDisposable)
-                ((ZDisposable) o).zDispose();
+                try {
+                    ((ZDisposable) o).zDispose();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
         }
     }
 
@@ -646,6 +995,12 @@ public class ZUtilities {
         }
     }
 
+    public static List expandList(List l, Object o, int count) {
+        for (int i = 0; i < count; i++)
+            l.add(o);
+        return l;
+    }
+
     public static String makeMinimumLengthString(String s, int len) {
         return makeMinimumLengthString(s, len, ' ', true);
     }
@@ -697,5 +1052,13 @@ public class ZUtilities {
     public static String removeFirstPattern(String s, Pattern p) {
         Matcher m = p.matcher(s.subSequence(0, s.length()));
         return m.replaceFirst("");
+    }
+
+     public static int getShortestLength(String[] strs){
+        int min = Integer.MAX_VALUE;
+        for ( String s: strs)
+            if ( s.length() < min)
+                min = s.length();
+        return (min != Integer.MAX_VALUE?min:0);
     }
 }

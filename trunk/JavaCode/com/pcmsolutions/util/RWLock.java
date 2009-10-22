@@ -13,27 +13,24 @@ import java.util.Enumeration;
 import java.util.Vector;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
-public class RWLock implements Serializable{
-    //private static ArrayList nodePool = new ArrayList();
+public class RWLock implements Serializable {
 
     transient Vector waiters;
 
-    /** Creates a new instance of RWLock */
+    /**
+     * Creates a new instance of RWLock
+     */
     public RWLock() {
         waiters = new Vector();
     }
 
-    /*private RWNode getNode(Thread t, int state){
-        if ( nodePool.size() > 0)
-
-    } */
- private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException{
-       ois.defaultReadObject();
+    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        ois.defaultReadObject();
         waiters = new Vector();
     }
+
     public synchronized boolean isWriteLocked() {
         if (waiters.size() > 0 && ((RWNode) waiters.get(0)).state == RWNode.WRITER)
             return true;
@@ -98,7 +95,7 @@ public class RWLock implements Serializable{
         return false;
     }
 
-    public synchronized void write() throws IllegalArgumentException {
+    public synchronized void write() throws IllegalArgumentException {       
         //if ( SwingUtilities.isEventDispatchThread())
         //  JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "EDT in RWLock configure!");
         RWNode node;
@@ -128,7 +125,7 @@ public class RWLock implements Serializable{
         Thread me = Thread.currentThread();
         int index = getIndex(me);
         if (index > firstWriter() || index == -1)
-            throw new IllegalArgumentException(this.getClass().toString() + ":unlock-> lock not held!");
+            throw new IllegalArgumentException(this.getClass().toString() + ":releaseContent-> lock not held!");
         node = (RWNode) waiters.elementAt(index);
         node.nAcquires--;
         if (node.nAcquires == 0) {

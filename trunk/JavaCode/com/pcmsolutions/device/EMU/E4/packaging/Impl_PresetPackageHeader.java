@@ -9,7 +9,7 @@ import java.io.Serializable;
  * Time: 00:58:19
  * To change this template use Options | File Templates.
  */
-class Impl_PresetPackageHeader extends Impl_PackageHeader implements PresetPackage.Header, Serializable{
+class Impl_PresetPackageHeader extends Impl_PackageHeader implements PresetPackage.Header, Serializable {
     static final long serialVersionUID = 1;
 
     protected boolean includingMasterSettings;
@@ -34,8 +34,8 @@ class Impl_PresetPackageHeader extends Impl_PackageHeader implements PresetPacka
     }
 
     public void setIncludingSamples(boolean includingSamples) {
-         this.includingSamples = includingSamples;
-     }
+        this.includingSamples = includingSamples;
+    }
 
     public void setIncludingMultimodeSettings(boolean includingMultimodeSettings) {
         this.includingMultimodeSettings = includingMultimodeSettings;

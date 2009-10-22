@@ -6,10 +6,10 @@
 
 package com.pcmsolutions.device.EMU.E4;
 
-import com.pcmsolutions.device.EMU.E4.Remotable.DeviceConfig;
-import com.pcmsolutions.device.EMU.E4.Remotable.DeviceExConfig;
-import com.pcmsolutions.device.EMU.E4.Remotable.PresetMemory;
-import com.pcmsolutions.device.EMU.E4.Remotable.SampleMemory;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.DeviceConfig;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.DeviceExConfig;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.PresetMemory;
+import com.pcmsolutions.device.EMU.E4.remote.Remotable.SampleMemory;
 import com.pcmsolutions.device.EMU.E4.desktop.ViewManager;
 import com.pcmsolutions.device.EMU.E4.gui.TitleProvider;
 import com.pcmsolutions.device.EMU.E4.master.MasterContext;
@@ -17,19 +17,20 @@ import com.pcmsolutions.device.EMU.E4.multimode.MultiModeContext;
 import com.pcmsolutions.device.EMU.E4.parameter.DeviceParameterContext;
 import com.pcmsolutions.device.EMU.E4.preset.PresetContext;
 import com.pcmsolutions.device.EMU.E4.sample.SampleContext;
+import com.pcmsolutions.device.EMU.DeviceException;
 import com.pcmsolutions.gui.IconAndTipCarrier;
 import com.pcmsolutions.smdi.SmdiTarget;
 import com.pcmsolutions.system.ScsiIdProvider;
 import com.pcmsolutions.system.ZCommandProvider;
-import com.pcmsolutions.system.ZDeviceNotRunningException;
 import com.pcmsolutions.system.ZExternalDevice;
+import com.pcmsolutions.system.tasking.Ticket;
+import com.pcmsolutions.system.tasking.PostableTicket;
 
 import javax.swing.table.TableModel;
 import java.io.File;
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
 public interface DeviceContext extends ZExternalDevice, TitleProvider, ZCommandProvider, ScsiIdProvider, IconAndTipCarrier {
 
@@ -40,49 +41,40 @@ public interface DeviceContext extends ZExternalDevice, TitleProvider, ZCommandP
 
     public File getDeviceLocalDir();
 
-    // EVENTS
-    public void addDeviceListener(DeviceListener dl);
-
-    public void removeDeviceListener(DeviceListener dl);
-
     // DESKTOP
     public ViewManager getViewManager();
 
-    // SYNCHRONIZATION
-    public void lockConfigure() throws IllegalArgumentException;
-
-    public void lockAccess();
-
-    public void unlock() throws IllegalArgumentException;
+    // QUEUES
+    public DeviceQueues getQueues();
 
     // CONTEXTS
-    public PresetContext getDefaultPresetContext() throws ZDeviceNotRunningException;
+    public PresetContext getDefaultPresetContext() throws DeviceException;
 
-    public DeviceParameterContext getDeviceParameterContext();
+    public MultiModeContext getMultiModeContext() throws  DeviceException;
 
-    public MultiModeContext getMultiModeContext() throws ZDeviceNotRunningException;
+    public SampleContext getDefaultSampleContext() throws DeviceException;
 
-    public SampleContext getDefaultSampleContext() throws ZDeviceNotRunningException;
+    public MasterContext getMasterContext() throws DeviceException;
 
-    public MasterContext getMasterContext() throws ZDeviceNotRunningException;
+    public SampleMemory getSampleMemory() throws RemoteUnreachableException, DeviceException;
 
-    public SampleMemory getSampleMemory() throws RemoteUnreachableException, ZDeviceNotRunningException;
+    public PresetMemory getPresetMemory() throws DeviceException;
 
-    public PresetMemory getPresetMemory() throws RemoteUnreachableException, ZDeviceNotRunningException;
-
-    public void sampleMemoryDefrag(boolean pause) throws ZDeviceNotRunningException, RemoteUnreachableException;
+    public PostableTicket sampleMemoryDefrag(boolean pause) throws DeviceException;
 
     public TableModel getDeviceConfigTableModel();
 
-    public void refreshDeviceConfiguration(boolean showProgress);
+    public Ticket refreshDeviceConfiguration(boolean showProgress) ;
 
     public String makeDeviceProgressTitle(String str);
 
-    public DeviceParameterContext getDpc();
+    public DeviceParameterContext getDeviceParameterContext() throws DeviceException;
 
-    public void logCommError(Object error);
+    // UTILITY
+    public PostableTicket reinitializePresetFlash();
 
-    public void logInternalError(Object error);
+    // UTILITY
+    public PostableTicket saveDeviceState();
 
     // SMDI
 
@@ -94,28 +86,27 @@ public interface DeviceContext extends ZExternalDevice, TitleProvider, ZCommandP
 
     public Object getSmdiCouplingObject();
 
-    public boolean isSmdiCoupled();
+    public boolean isSmdiCoupled() throws DeviceException;
 
-    public SmdiTarget getSmdiTarget() throws NotSMDICoupledException;
-
-    public void setSmdiTarget(SmdiTarget target);
+    // AUDITION
+    AuditionManager getAuditionManager() throws DeviceException;
 
     // BANK
-    public void eraseBank() throws ZDeviceNotRunningException;
+    public PostableTicket eraseBank() ;
 
-    public void refreshBank(boolean refreshObjects) throws ZDeviceNotRunningException;
+    public PostableTicket refreshBank(boolean refreshObjects) ;
+
+    public PostableTicket cancelAuditions();
 
     // CONFIGURATION
-    public DeviceConfig getDeviceConfig() throws ZDeviceNotRunningException;
+    public DeviceConfig getDeviceConfig() throws DeviceException;
 
-    public DeviceExConfig getDeviceExConfig() throws ZDeviceNotRunningException;
-
-    public boolean isUltra();
+    public DeviceExConfig getDeviceExConfig() throws DeviceException;
 
     public double getDeviceVersion();
 
     public int getNumberOfInstalledSampleRoms();
-
+    
     // CONSTANTS
     String UNTITLED_PRESET = "Untitled Preset";
     String EMPTY_PRESET = "Empty Preset";

@@ -3,6 +3,7 @@ package com.pcmsolutions.device.EMU.E4.parameter;
 import com.pcmsolutions.system.ZCommand;
 import com.pcmsolutions.system.ZCommandProvider;
 import com.pcmsolutions.system.ZDisposable;
+import com.pcmsolutions.device.EMU.DeviceException;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -24,12 +25,12 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
     protected boolean showUnits = true;
     protected boolean tipShowingOwner = false;
 
-     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
         ois.defaultReadObject();
         makeTransients();
     }
 
-    private void makeTransients(){
+    private void makeTransients() {
         changeListeners = new Vector();
     }
 
@@ -37,6 +38,7 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
         this.pd = pd;
         makeTransients();
     }
+
 
     public boolean isTipShowingOwner() {
         return tipShowingOwner;
@@ -47,9 +49,7 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
     }
 
     public void zDispose() {
-        pd = null;
         changeListeners.clear();
-        changeListeners = null;
     }
 
     public boolean equals(Object obj) {
@@ -60,7 +60,7 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
         return false;
     }
 
-    public abstract Integer getValue() throws ParameterUnavailableException;
+    public abstract Integer getValue() throws ParameterException;
 
     public String toString() {
         try {
@@ -68,28 +68,22 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
                 return pd.getStringForValue(getValue());
             else
                 return pd.getUnitlessStringForValue(getValue());
-        } catch (ParameterValueOutOfRangeException e) {
-        } catch (ParameterUnavailableException e) {
+        } catch (ParameterException e) {
         }
         return "";
     }
 
-    public String getValueString() throws ParameterUnavailableException {
+    public String getValueString() throws ParameterException {
         try {
             return pd.getStringForValue(getValue());
         } catch (ParameterValueOutOfRangeException e) {
             e.printStackTrace();
-            throw new ParameterUnavailableException();
+            throw new ParameterUnavailableException(pd.getId());
         }
     }
 
-    public String getValueUnitlessString() throws ParameterUnavailableException {
-        try {
-            return pd.getUnitlessStringForValue(getValue());
-        } catch (ParameterValueOutOfRangeException e) {
-            e.printStackTrace();
-            throw new ParameterUnavailableException();
-        }
+    public String getValueUnitlessString() throws ParameterException {
+            return pd.getUnitlessStringForValue(getValue());        
     }
 
     public GeneralParameterDescriptor getParameterDescriptor() {
@@ -112,8 +106,12 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
         return showUnits;
     }
 
-    public ZCommand[] getZCommands() {
-        return cmdProviderHelper.getCommandObjects(this);
+    public ZCommand[] getZCommands(Class markerClass) {
+        return ReadableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
+    }
+
+    public Class[] getZCommandMarkers() {
+        return ReadableParameterModel.cmdProviderHelper.getSupportedMarkers();
     }
 
     protected void fireChanged() {
@@ -136,7 +134,11 @@ public abstract class AbstractReadableParameterModel implements ReadableParamete
     public String getToolTipText() {
         if (!tipShowingOwner)
             try {
-                return pd.getTipForValue(getValue());
+                String s=  pd.getTipForValue(getValue());
+                if (s == null)
+                    return toString();
+                else
+                    return s;
             } catch (ParameterValueOutOfRangeException e) {
                 // e.printStackTrace();
             } catch (ParameterUnavailableException e) {

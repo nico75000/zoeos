@@ -7,8 +7,8 @@ package com.pcmsolutions.aspi;
  * Time: 21:07:08
  * To change this template use Options | File Templates.
  */
-public interface Result {
+interface Result {
     public int getReturnValue();
 
-    public ASPIMsg.SRB getReturnedStruct() throws ASPIMsg.ASPIWrapperException;
+    public ASPIMsg.SRB getReturnedStruct();
 }

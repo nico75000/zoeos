@@ -1,5 +1,11 @@
 package com.pcmsolutions.gui.audio;
 
+import org.tritonus.zuonics.sampled.aiff.AiffAudioFileReaderEx;
+import org.tritonus.zuonics.sampled.wave.WaveAudioFileReaderEx;
+import org.tritonus.zuonics.sampled.wave.WaveAudioFileReaderEx;
+import org.tritonus.zuonics.sampled.aiff.AiffAudioFileReaderEx;
+import com.pcmsolutions.gui.FlashMsg;
+import com.pcmsolutions.gui.ZoeosFrame;
 import com.pcmsolutions.system.ZUtilities;
 import com.pcmsolutions.system.Zoeos;
 import com.pcmsolutions.system.audio.AudioUtilities;
@@ -12,7 +18,6 @@ import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.io.File;
-import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.prefs.Preferences;
 
@@ -61,10 +66,10 @@ public class SampleAuditionPanel extends JPanel {
       private JCheckBox playWholeAudition = new JCheckBox(new AbstractAction("Play whole File") {
           public void actionPerformed(ActionEvent e) {
               if (playWholeAudition.isSelected()) {
-                  ZPREF_playWholeAudition.putValue(true);
+                  ZPREF_playWholeAudition.setValue(true);
                   auditionLength.setEnabled(false);
               } else {
-                  ZPREF_playWholeAudition.putValue(false);
+                  ZPREF_playWholeAudition.setValue(false);
                   auditionLength.setEnabled(true);
               }
           }
@@ -87,7 +92,12 @@ public class SampleAuditionPanel extends JPanel {
 
     private JButton playButton = new JButton(new AbstractAction("Play", new ImageIcon("media/Play16.gif")) {
         public void actionPerformed(ActionEvent e) {
-            playClip();
+            try {
+                playClip();
+            } catch (Exception e1) {
+                e1.printStackTrace();
+                new FlashMsg(ZoeosFrame.getInstance(),  SampleAuditionPanel.this , 750, 400, FlashMsg.colorWarning, "Audition not supported for file");
+            }
         }
     });
     private JButton stopButton = new JButton(new AbstractAction("Stop", new ImageIcon("media/Stop16.gif")) {
@@ -109,6 +119,7 @@ public class SampleAuditionPanel extends JPanel {
 
     private Box optionBox = new Box(BoxLayout.Y_AXIS);
     private Box auditionBox = new Box(BoxLayout.Y_AXIS);
+    private Component msgParent;
 
     {
         //auditionBox.addDesktopElement(new JScrollPane(filenameField));
@@ -125,12 +136,17 @@ public class SampleAuditionPanel extends JPanel {
     }
 
     public SampleAuditionPanel(String title) {
+        this(title, null);
+    }
+
+    public SampleAuditionPanel(String title, Component msgComponent) {
         if (title != null)
             this.setBorder(new TitledBorder(title));
         this.setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
         this.add(auditionBox);
         //this.addDesktopElement(optionBox);
         updateFile();
+        this.msgParent = msgComponent;
     }
 
     public File getCurrentFile() {
@@ -224,7 +240,7 @@ public class SampleAuditionPanel extends JPanel {
             buf.append(ZUtilities.makeExactLengthString("Channels:", DESC_FIELD_LEN) + chnls);
         buf.append(Zoeos.lineSeperator);
 
-        buf.append(ZUtilities.makeExactLengthString("Encoding:", DESC_FIELD_LEN) + fmt.getEncoding() + "(" + (fmt.isBigEndian() ? "big-endian" : "little-endian") + ")");
+        buf.append(ZUtilities.makeExactLengthString("Encoding:", DESC_FIELD_LEN) + fmt.getEncoding() /*+ "(" + (fmt.isBigEndian() ? "big-endian" : "little-endian") + ")"*/);
         buf.append(Zoeos.lineSeperator);
         return new String(buf);
     }
@@ -239,28 +255,30 @@ public class SampleAuditionPanel extends JPanel {
                 int len = f.getByteLength();
                 if (len > AudioUtilities.maxClipLen)
                     return;
-                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(currentFile);
+                AudioInputStream audioInputStream;
+                // TODO!! return this to AudioSystem
+                if (f.getType() == AudioFileFormat.Type.WAVE)
+                    audioInputStream = new WaveAudioFileReaderEx().getAudioInputStream(currentFile);
+                else if (f.getType() == AudioFileFormat.Type.AIFF)
+                    audioInputStream = new AiffAudioFileReaderEx().getAudioInputStream(currentFile);
+                else
+                    audioInputStream = AudioSystem.getAudioInputStream(currentFile);
                 AudioFormat format = audioInputStream.getFormat();
                 DataLine.Info info = new DataLine.Info(Clip.class, format, len);
                 currentClip = (Clip) AudioSystem.getLine(info);
                 currentClip.open(audioInputStream);
                 newClip();
                 return;
-            } catch (UnsupportedAudioFileException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (LineUnavailableException e) {
-                e.printStackTrace();
             } catch (Exception e) {
                 e.printStackTrace();
+                new FlashMsg(ZoeosFrame.getInstance(), (msgParent == null ? this : msgParent), 750, 400, FlashMsg.colorWarning, "Audition not supported for file");
             }
-        } else{
+        } else {
             infoText.setText("");
             //infoText.setText("No File selected");
             playButton.setEnabled(false);
             stopButton.setEnabled(false);
-         }
+        }
     }
 
     public void stopClip() {
@@ -288,7 +306,7 @@ public class SampleAuditionPanel extends JPanel {
     private void playClip() {
         if (currentClip != null && !currentClip.isRunning()) {
             currentClip.setFramePosition(0);
-            currentClip.setLoopPoints(0, currentClip.getFrameLength());
+            currentClip.setLoopPoints(0, -1/*currentClip.getFrameLength()*/);
             if (loopAudition.isSelected()) {
                 currentClip.loop(Clip.LOOP_CONTINUOUSLY);
             } else {

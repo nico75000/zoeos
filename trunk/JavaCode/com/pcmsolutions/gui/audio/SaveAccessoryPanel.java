@@ -68,6 +68,7 @@ public class SaveAccessoryPanel extends JPanel {
     });
 
     private ButtonGroup obg = new ButtonGroup();
+
     {
         obg.add(alwaysOverwrite);
         obg.add(askOverwrite);
@@ -95,6 +96,7 @@ public class SaveAccessoryPanel extends JPanel {
     });
 
     private ButtonGroup ibg = new ButtonGroup();
+
     {
         ibg.add(prefixIndex);
         ibg.add(postfixIndex);

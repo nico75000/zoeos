@@ -2,7 +2,7 @@ package com.pcmsolutions.device.EMU.E4.parameter;
 
 import com.pcmsolutions.system.ZCommand;
 import com.pcmsolutions.system.ZCommandProvider;
-import com.pcmsolutions.system.ZUtilities;
+import com.pcmsolutions.device.EMU.DeviceException;
 
 /**
  * Created by IntelliJ IDEA.
@@ -26,39 +26,33 @@ public abstract class AbstractEditableParameterModel extends AbstractReadablePar
         return false;
     }
 
-    public abstract void setValue(Integer value) throws ParameterUnavailableException, ParameterValueOutOfRangeException;
+    public abstract void setValue(Integer value) throws ParameterException;
 
-    public void setValueString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        setValue(pd.getValueForString(value));
+    public abstract void offsetValue(Integer offset) throws ParameterException;
+
+    public abstract void offsetValue(Double offsetAsFOR) throws ParameterException; 
+
+    public void setValueString(String value) throws ParameterException {
+            setValue(pd.getValueForString(value));
     }
 
-    public void setValueUnitlessString(String value) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        setValue(pd.getValueForUnitlessString(value));
+    public void setValueUnitlessString(String value) throws ParameterException {
+            setValue(pd.getValueForUnitlessString(value));
     }
 
-    public void defaultValue() throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        setValue(pd.getDefaultValue());
-    }
-
-    public void setValue(EditChainValueProvider ecvp, EditableParameterModel[] modelChain) throws ParameterUnavailableException, ParameterValueOutOfRangeException {
-        for (int i = 0; i < modelChain.length; i++)
-            modelChain[i].setValue(ecvp.getValue(modelChain[i], null));
-    }
-
-    public boolean isEditChainableWith(Object o) {
-        if (o != null && o.getClass().equals(this.getClass()))
-            return true;
-        else if (o instanceof EditableParameterModelGroup && ((EditableParameterModelGroup) o).getWrappedObjects()[0].getClass().equals(this.getClass()))
-            return true;
-
-        return false;
+    public void defaultValue() throws ParameterException {
+            setValue(pd.getDefaultValue());
     }
 
     public boolean isExpired() {
         return expired;
     }
 
-    public ZCommand[] getZCommands() {
-        return ZUtilities.concatZCommands(super.getZCommands(), EditableParameterModel.cmdProviderHelper.getCommandObjects(this));
+    public ZCommand[] getZCommands(Class markerClass) {
+        return EditableParameterModel.cmdProviderHelper.getCommandObjects(markerClass, this);
+    }
+
+    public Class[] getZCommandMarkers() {
+        return EditableParameterModel.cmdProviderHelper.getSupportedMarkers();
     }
 }

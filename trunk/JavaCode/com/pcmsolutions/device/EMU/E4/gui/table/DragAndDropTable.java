@@ -191,7 +191,7 @@ abstract public class DragAndDropTable extends EditingTable implements DropTarge
         return false;
     }
 
-    public void zDispose(){
+    public void zDispose() {
         super.zDispose();
         setDropTarget(null);
         dropChecker = null;

@@ -18,7 +18,7 @@ public class ZDeviceException extends Exception {
      */
     public ZDeviceException(ZExternalDevice d, String msg) {
         super(msg);
-        this.device = device;
+        this.device = d;
     }
 
     public ZExternalDevice getDevice() {

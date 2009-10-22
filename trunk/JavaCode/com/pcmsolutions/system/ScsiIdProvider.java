@@ -1,5 +1,8 @@
 package com.pcmsolutions.system;
 
+import com.pcmsolutions.device.EMU.DeviceException;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
+
 /**
  * Created by IntelliJ IDEA.
  * User: pmeehan
@@ -8,5 +11,5 @@ package com.pcmsolutions.system;
  * To change this template use Options | File Templates.
  */
 public interface ScsiIdProvider {
-    public int getScsiId() throws ZDeviceNotRunningException;
+    public int getScsiId() throws  DeviceException, ParameterException;
 }

@@ -1,5 +1,5 @@
 /*
- * NoSuchPresetException.java
+ * DeviceException.java
  *
  * Created on January 4, 2003, 5:05 PM
  */
@@ -7,42 +7,24 @@
 package com.pcmsolutions.device.EMU.E4.preset;
 
 import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.device.EMU.database.ContextException;
+
 
 /**
- *
- * @author  pmeehan
+ * @author pmeehan
  */
-public class PresetException extends Exception {
-    protected Integer preset = IntPool.get(Integer.MIN_VALUE);
-    protected String name = "=Unknown=";
-
-
-    public PresetException(Integer preset) {
+public class PresetException extends ContextException {
+    Integer preset = IntPool.minus_one;
+    public PresetException(Integer preset, String message) {
+        super(message);
         this.preset = preset;
     }
 
-    public PresetException(Integer preset, String name) {
-        this.preset = preset;
-        this.name = name;
-    }
-
-    public PresetException(Integer preset, String name, String msg) {
-        super(msg);
-        this.preset = preset;
-        this.name = name;
+    public PresetException(String message) {
+        super(message);
     }
 
     public Integer getPreset() {
         return preset;
     }
-
-
-    public String getName() {
-        return name;
-    }
-
-    public AggRemoteName getAggName() {
-        return new AggRemoteName(preset, name);
-    }
-
 }

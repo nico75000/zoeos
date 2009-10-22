@@ -48,6 +48,9 @@ public class PropertiesIcon implements Icon {
     public void paintIcon(Component component, Graphics graphics, int x, int y) {
         Graphics2D g2d = ((Graphics2D) graphics);
 
+        RenderingHints hints = g2d.getRenderingHints();
+        g2d.setRenderingHints(UIColors.iconRH);
+
         Rectangle2D rect1 = new Rectangle2D.Double(x, y + h / 8, w / 2, (h * 3) / 8);
         Rectangle2D rect2 = new Rectangle2D.Double(x, y + (h * 5) / 8, w / 2, (h * 3) / 8);
         Line2D line1 = new Line2D.Double(rect1.getCenterX(), rect1.getCenterY(), x + w * 0.8, rect1.getCenterY());
@@ -58,6 +61,6 @@ public class PropertiesIcon implements Icon {
         g2d.fill(rect2);
         g2d.draw(line1);
         g2d.draw(line2);
-
+        g2d.setRenderingHints(hints);
     }
 }

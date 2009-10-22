@@ -16,7 +16,7 @@ public class Impl_ZEnumPref extends Impl_ZStringPref implements ZEnumPref {
         this.legalValues = (String[]) values.clone();
     }
 
-    public Impl_ZEnumPref(Preferences prefs, String key, String[] values,String def) {
+    public Impl_ZEnumPref(Preferences prefs, String key, String[] values, String def) {
         super(prefs, key, def);
         this.legalValues = (String[]) values.clone();
     }

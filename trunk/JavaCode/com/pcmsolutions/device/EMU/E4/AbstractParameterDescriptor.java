@@ -3,9 +3,11 @@ package com.pcmsolutions.device.EMU.E4;
 import com.pcmsolutions.device.EMU.E4.parameter.GeneralParameterDescriptor;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterValueOutOfRangeException;
 import com.pcmsolutions.system.IntPool;
+import com.pcmsolutions.system.ZUtilities;
 
 import javax.swing.*;
-import java.awt.*;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,49 +16,32 @@ import java.util.Map;
  * Time: 23:49:00
  */
 abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor {
-    protected Integer id;
+    protected int id;
     protected MinMaxDefault mmd;
     protected int hpos;
-    protected String presentationString;
-    protected String refName;
-    protected String units;
-    protected Map imageForValueMap;
-    protected boolean hasImagesForValues;
-    protected String category;
-    protected String collaboration;
-    protected boolean useSpinner;
 
     public AbstractParameterDescriptor() {
     }
 
     public void init(Integer id, MinMaxDefault mmd, int loc) {
-        this.id = id;                                   // guaranteed non-null
+        this.id = id.intValue();                        // guaranteed non-null
         this.mmd = mmd;                                 // guaranteed non-null
         this.hpos = loc;
-        presentationString = (String) ParameterTables.id2ps.get(id);    // guaranteed non-null
-        refName = (String) ParameterTables.id2rs.get(id);               // guaranteed non-null
-        units = (String) ParameterTables.id2us.get(id);                 // possibly null
-        imageForValueMap = (Map) ParameterTables.id2v2i.get(id);        // possibly null
-        category = (String) ParameterTables.id2cs.get(id);              // possibly null
-        collaboration = (String) ParameterTables.id2co.get(id);         // possibly null
-        this.useSpinner = ((Boolean) ParameterTables.id2useSpinner.get(id)).booleanValue();// guaranteed non-null
     }
-
-    abstract protected void makeMaps();
 
     public boolean equals(Object obj) {
         if (obj instanceof GeneralParameterDescriptor) {
             GeneralParameterDescriptor pd = (GeneralParameterDescriptor) obj;
-            if (pd.getId().equals(id) && pd.getMMD().equals(mmd))
+            if (pd.getId().equals(getId()) && pd.getMMD().equals(mmd))
                 return true;
         } else if (obj instanceof Integer)
-            return obj.equals(id);
+            return obj.equals(getId());
         return false;
     }
 
     public String toString() {
         //return category + "    " +  presentationString;
-        return refName;
+        return ParameterTables.id2rs[id];
     }
 
     public Integer getNextValue(Integer v) {
@@ -80,37 +65,47 @@ abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor
         return value;
     }
 
+    protected final int normv(Integer val) {
+        return val.intValue() - mmd.getMin().intValue();
+    }
+
+    public String getTipForValue(Integer value) throws ParameterValueOutOfRangeException {
+        assertValue(value);
+        return getValueTips()[normv(value)];
+    }
+
+    public List<String> getStringList() {
+        if (getUnits() == null)
+            return getUnitlessStringList();
+
+        String[] valueStrings = getValueStrings();
+        String[] outValueStrings = new String[valueStrings.length];
+
+        for (int i = 0, j = valueStrings.length; i < j; i++)
+            outValueStrings[i] = valueStrings[i] + getUnits();
+
+        return Arrays.asList(outValueStrings);
+    }
+
+    public List<String> getUnitlessStringList() {
+        return Arrays.asList((String[]) getValueStrings().clone());
+    }
+
+    protected String[] getValueStrings() {
+        return ParameterTables.id2valueStrings[id];  // guaranteed non-null
+    }
+
+    protected String[] getValueTips() {
+        return ParameterTables.id2tipStrings[id];    // guaranteed non-null
+    }
+
+    protected Map<String, Integer> getString2ValueMap() {
+        return ParameterTables.id2string2Value.get(id);
+    }
+
     protected int assertValue(final Integer value) throws ParameterValueOutOfRangeException {
-/*            if (!isValidValue(value))
-                if (id.intValue() == 250) {      // multimode submix
-                    final Integer id = mmd.getID();
-                    final Integer min = (value.intValue() < mmd.getMin().intValue() ? value : mmd.getMin());
-                    final Integer max = (value.intValue() > mmd.getMax().intValue() ? value : mmd.getMax());
-                    final Integer def = mmd.getDefault();
-                    mmd = new MinMaxDefault() {
-                        public Integer getID() {
-                            return id;
-                        }
-
-                        public Integer getMin() {
-                            return min;
-                        }
-
-                        public Integer getMax() {
-                            return max;
-                        }
-
-                        public Integer getDefault() {
-                            return def;
-                        }
-                    };
-                    makeMaps();
-                } else
-                    throw new ParameterValueOutOfRangeException();
-  */
         if (!isValidValue(value))
-            throw new ParameterValueOutOfRangeException();
-
+            throw new ParameterValueOutOfRangeException(IntPool.get(id));
         return value.intValue();
     }
 
@@ -119,15 +114,11 @@ abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor
     }
 
     public String getPresentationString() {
-        return presentationString;
+        return ParameterTables.id2ps[id];
     }
 
     public String getCategory() {
-        return category;
-    }
-
-    public String getCollaboration() {
-        return collaboration;
+        return ParameterTables.id2cs[id];
     }
 
     public MinMaxDefault getMMD() {
@@ -135,7 +126,7 @@ abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor
     }
 
     public Integer getId() {
-        return id;
+        return IntPool.get(id);
     }
 
     public Integer getMaxValue() {
@@ -147,39 +138,57 @@ abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor
     }
 
     public String getReferenceString() {
-        return refName;
+        return ParameterTables.id2rs[id];
     }
-
-    protected abstract Map getStringForValueMap();
-
-    protected abstract Map getValueForStringMap();
 
     public String getStringForValue(Integer value) throws ParameterValueOutOfRangeException {
         assertValue(value);
-        if (units != null)
-            return (String) getStringForValueMap().get(value) + units;
-        return (String) getStringForValueMap().get(value);
+        if (getUnits() != null)
+            return getValueStrings()[normv(value)] + getUnits();
+        return getValueStrings()[normv(value)];
     }
 
     // returns units appended to string value
     public String getUnitlessStringForValue(Integer value) throws ParameterValueOutOfRangeException {
         assertValue(value);
-        return (String) getStringForValueMap().get(value);
+        return getValueStrings()[normv(value)];
     }
 
     public Integer getValueForString(String valueString) throws ParameterValueOutOfRangeException {
-        return (Integer) getValueForStringMap().get(stripUnits(valueString));
+        return getValueForUnitlessString((stripUnits(valueString)));
     }
 
     public Integer getValueForUnitlessString(String valueUnitlessString) throws ParameterValueOutOfRangeException {
-        return (Integer) getValueForStringMap().get(valueUnitlessString);
+        Integer v = getString2ValueMap().get(valueUnitlessString);
+        if (v == null) {
+            if (isNumeric()) {
+                double val;
+                try {
+                    val = Double.parseDouble(valueUnitlessString);
+                    return IntPool.get(mmd.getMin().intValue() + ZUtilities.getNearestDoubleIndex(getNumericValueStrings(), val));
+                } catch (NumberFormatException e1) {
+                }
+            }
+            throw new ParameterValueOutOfRangeException(IntPool.get(id));
+        } else
+            return v;
     }
 
-    private String stripUnits(String valueString) {
-        if (units != null)
-            return valueString.substring(0, valueString.indexOf(units));
+    boolean isNumeric() {
+        return ParameterTables.id2valueStringNumerics[id] != null;
+    }
 
-        return valueString;
+    double[] getNumericValueStrings() {
+        return ParameterTables.id2valueStringNumerics[id];
+    }
+
+    protected final String stripUnits(String valueString) {
+        if (getUnits() != null) {
+            int index = valueString.trim().toLowerCase().indexOf(getUnits().trim().toLowerCase());
+            if (index != -1)
+                return valueString.substring(0, index).trim();
+        }
+        return valueString.trim();
     }
 
     public int getHierarchicalPosition() {
@@ -187,21 +196,11 @@ abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor
     }
 
     public String getUnits() {
-        return units;
-    }
-
-    public boolean hasImagesForValues() {
-        if (imageForValueMap != null && imageForValueMap.size() > 0)
-            return true;
-        return false;
-    }
-
-    public Map getImageForValueMap() {
-        return imageForValueMap;
+        return ParameterTables.id2us[id];
     }
 
     public boolean shouldUseSpinner() {
-        return useSpinner;
+        return ParameterTables.id2useSpinner[id];
     }
 
     public boolean isValidValue(Integer value) {
@@ -213,19 +212,11 @@ abstract class AbstractParameterDescriptor implements GeneralParameterDescriptor
         return false;
     }
 
-    public Image getImageForValue(Integer value) throws ParameterValueOutOfRangeException {
-        assertValue(value);
-        if (imageForValueMap != null)
-            return (Image) imageForValueMap.get(value);
-        else
-            return null;
-    }
-
     public Icon getIcon() {
         return null;
     }
 
     public String getToolTipText() {
-        return category + " " + presentationString;
+        return ParameterTables.id2cs[id] + " " + ParameterTables.id2ps[id];
     }
 }

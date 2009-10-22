@@ -6,19 +6,21 @@
 
 package com.pcmsolutions.gui;
 
-import com.pcmsolutions.device.EMU.E4.gui.colors.UIColors;
-
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.GeneralPath;
-import java.awt.geom.Rectangle2D;
 
 /**
  *
  * @author  pmeehan
  */
 public class EmptyIcon implements Icon {
-    private static EmptyIcon INSTANCE = new EmptyIcon();
+    private static EmptyIcon INSTANCE = new EmptyIcon(0,0);
+    int w,h;
+
+    public EmptyIcon(int w, int h) {
+        this.w = w;
+        this.h = h;
+    }
 
     public static EmptyIcon getInstance() {
         return INSTANCE;
@@ -28,10 +30,10 @@ public class EmptyIcon implements Icon {
     }
 
     public int getIconWidth() {
-        return 0;
+        return w;
     }
 
     public int getIconHeight() {
-        return 0;
+        return h;
     }
 }

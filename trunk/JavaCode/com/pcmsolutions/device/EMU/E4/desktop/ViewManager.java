@@ -1,10 +1,13 @@
 package com.pcmsolutions.device.EMU.E4.desktop;
 
 import com.pcmsolutions.device.EMU.E4.DeviceContext;
+import com.pcmsolutions.device.EMU.E4.ViewMessaging;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
 import com.pcmsolutions.device.EMU.E4.preset.ReadablePreset;
 import com.pcmsolutions.gui.desktop.DesktopBranch;
 import com.pcmsolutions.gui.desktop.DesktopElement;
+import com.pcmsolutions.system.threads.Impl_ZThread;
+import com.pcmsolutions.system.tasking.Ticket;
 
 /**
  * User: paulmeehan
@@ -12,7 +15,11 @@ import com.pcmsolutions.gui.desktop.DesktopElement;
  * Time: 18:29:34
  */
 public interface ViewManager {
-    public void takeSnapshot(String title);
+    interface PresetMatcher{
+        boolean isMatch(ReadablePreset p);
+    }
+
+    public Ticket takeSnapshot(String title);
 
     public DesktopBranch[] getSnapshots();
 
@@ -26,33 +33,55 @@ public interface ViewManager {
 
     public void removeViewManagerListener(Listener l);
 
-    public Thread openDeviceViews();
+    public Ticket openDeviceViews();
 
-    public Thread clearDeviceWorkspace();
+    public Ticket restoreDesktopElements();
 
-    public Thread activateDevicePalettes();
+    public Ticket addPresetsToPresetContextFilter(Integer[] presets);
 
-    public Thread closeDeviceViews();
+    public Ticket selectOpenPresetsInPresetContext();
 
-    public Thread modifyBranch(DesktopBranch branch, boolean activate, int clipIndex);
+    public Ticket addSamplesToSampleContextFilter(Integer[] samples);
 
-    public void openVoice(ContextEditablePreset.EditableVoice voice, boolean activate);
+    public Ticket brodcastCloseIfEmpty();
 
-    public void openVoices(ContextEditablePreset.EditableVoice[] voices, boolean activate);
+    public Ticket clearDeviceWorkspace();
 
-    public void openTabbedVoice(ContextEditablePreset.EditableVoice voice, boolean groupEnvelopes, boolean activate);
+    public Ticket closeEmptyPresets();
 
-    public void openTabbedVoices(ContextEditablePreset.EditableVoice[] voices, boolean groupEnvelopes, boolean activate);
+    public Ticket closeEmptyVoices();
 
-    public void openVoice(ReadablePreset.ReadableVoice voice, boolean activate);
+    public Ticket closeFlashPresets();
 
-    public void openTabbedVoice(ReadablePreset.ReadableVoice voice, boolean groupEnvelopes, boolean activate);
+    public Ticket closeUserPresets();
 
-    public void openPreset(ReadablePreset p);
+    public Ticket activateDevicePalettes();
 
-    public void openPreset(ContextEditablePreset p);
+    public Ticket closeDeviceViews();
 
-    public void openDesktopElements(DesktopElement[] elements);
+    public Ticket modifyBranch(DesktopBranch branch, boolean activate, int clipIndex);
+
+    public Ticket openVoice(ContextEditablePreset.EditableVoice voice, boolean activate);
+
+    public Ticket openVoices(ContextEditablePreset.EditableVoice[] voices, boolean activate);
+
+    public Ticket openTabbedVoice(ContextEditablePreset.EditableVoice voice, boolean groupEnvelopes, boolean activate);
+
+    public Ticket openTabbedVoices(ContextEditablePreset.EditableVoice[] voices, boolean groupEnvelopes, boolean activate);
+
+    public Ticket openVoice(ReadablePreset.ReadableVoice voice, boolean activate);
+
+    public Ticket openTabbedVoice(ReadablePreset.ReadableVoice voice, boolean groupEnvelopes, boolean activate);
+
+    public Ticket openPreset(ReadablePreset p, boolean activate);
+
+    public Ticket openPreset(ContextEditablePreset p, boolean activate);
+
+    public Ticket openDesktopElements(DesktopElement[] elements);
+
+    public boolean hasWorkspaceElements() throws Exception;
+    
+    public Ticket closePreset(final ReadablePreset p);
 
     public interface Listener {
         public void viewManagerStateChanged(DeviceContext device);

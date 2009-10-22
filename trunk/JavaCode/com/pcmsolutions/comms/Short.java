@@ -5,9 +5,10 @@ import javax.sound.midi.MidiMessage;
 
 public class Short extends FinalMidiMessage {
 
-    public Short(){
+    public Short() {
         super();
     }
+
     public Short(MidiMessage msg, MidiDevice.Info source) {
         super(msg, source);
     }

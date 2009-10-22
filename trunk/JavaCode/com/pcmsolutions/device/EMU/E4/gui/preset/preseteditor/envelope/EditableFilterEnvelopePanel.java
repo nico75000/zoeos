@@ -1,17 +1,19 @@
 package com.pcmsolutions.device.EMU.E4.gui.preset.preseteditor.envelope;
 
+import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 import com.pcmsolutions.device.EMU.E4.gui.ParameterModelUtilities;
+import com.pcmsolutions.device.EMU.E4.gui.TableExclusiveSelectionContext;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.RatesEnvelope;
 import com.pcmsolutions.device.EMU.E4.gui.preset.presetviewer.envelope.RatesEnvelopeMouseListener;
 import com.pcmsolutions.device.EMU.E4.parameter.EditableParameterModel;
 import com.pcmsolutions.device.EMU.E4.parameter.IllegalParameterIdException;
 import com.pcmsolutions.device.EMU.E4.parameter.ParameterCategories;
+import com.pcmsolutions.device.EMU.E4.parameter.ParameterException;
 import com.pcmsolutions.device.EMU.E4.preset.ContextEditablePreset;
-import com.pcmsolutions.device.EMU.E4.DevicePreferences;
 
 import javax.swing.*;
-import javax.swing.event.ChangeListener;
 import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.event.ActionEvent;
 
 
@@ -31,17 +33,18 @@ public class EditableFilterEnvelopePanel extends EditableVoiceEnvelopePanel {
         }
     };
 
-    public EditableFilterEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices) throws IllegalParameterIdException {
-        init(voices, ParameterModelUtilities.getEditableParameterModelGroups(voices, 93, 12));
+    public EditableFilterEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc) throws ParameterException {
+        init(voices, tsc,ParameterModelUtilities.getEditableParameterModelGroups(voices, 93, 12));
         return this;
     }
 
-    private EditableFilterEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, EditableParameterModel[] models) {
-        super.init(voices, ParameterCategories.VOICE_FILTER_ENVELOPE, models, "Filter Envelope", toggleAction);
+    private EditableFilterEnvelopePanel init(ContextEditablePreset.EditableVoice[] voices, TableExclusiveSelectionContext tsc, EditableParameterModel[] models) {
+        super.init(voices, tsc,ParameterCategories.VOICE_FILTER_ENVELOPE, models, "Filter Envelope", toggleAction);
         getEnvModel().setMinLevel(-100);
         DevicePreferences.ZPREF_fillFilterEnvelopes.addChangeListener(cl);
         DevicePreferences.ZPREF_filterEnvelopeMode.addChangeListener(cl);
         getEnvelope().addMouseListener(new RatesEnvelopeMouseListener(getEnvelope(), DevicePreferences.ZPREF_fillFilterEnvelopes, DevicePreferences.ZPREF_filterEnvelopeMode));
+        updateEnvelope();
         return this;
     }
 

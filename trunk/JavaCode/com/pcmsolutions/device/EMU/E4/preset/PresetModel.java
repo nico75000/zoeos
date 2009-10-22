@@ -17,8 +17,4 @@ public interface PresetModel {
     public PresetContext getPresetContext();
 
     public Integer getPreset();
-
-    public void setPresetEditingMediator(DesktopEditingMediator pem);
-
-    public DesktopEditingMediator getPresetEditingMediator();
 }
