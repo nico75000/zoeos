@@ -1,4 +1,5 @@
 package com.pcmsolutions.aspi;
+import com.sun.jna.Callback;
 
 // import com.excelsior.xFunction.Callback;
 
@@ -9,7 +10,7 @@ package com.pcmsolutions.aspi;
  * Time: 16:37:32
  * To change this template use Options | File Templates.
  */
-public class ASPICallback extends Callback{
+public class ASPICallback /* extends Callback*/ {
     private int hits = 0;
 
     public ASPICallback() {
@@ -32,7 +33,7 @@ public class ASPICallback extends Callback{
         //System.out.println("calling back! on " + this.toString());
         synchronized (this) {
             hits++;
-            notifyAll();
+//            notifyAll();
           //  System.out.println("calledback! on " + this.toString());
         }
     }

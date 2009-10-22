@@ -4,7 +4,7 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
 import com.sun.jna.Structure;
-import com.sun.jna.Pointer;
+//import com.sun.jna.Pointer;
 
 //import com.excelsior.xFunction.*;
 import com.pcmsolutions.system.ZUtilities;
@@ -94,23 +94,28 @@ public class ASPIMsg {
             int GetASPI32SupportInfo();
         }
 
-        public Result execute()  {
+        public Result execute() throws ASPIWrapperException {
 /*           final Pointer p = Pointer.createPointerTo(this).cast("int*");
             final int rv = ((Integer) aspiSend.invoke(p)).intValue();
             final SRB f_srb = (SRB) p.cast(this.getClass().getName() + "*").deref();*/
 
-            final int rv = AspiLibrary.INSTANCE.SendASPI32Command(this);
-            final SRB f_srb = (SRB) this;
-                    
-            return new Result() {
-                public int getReturnValue() {
-                    return rv;
-                }
+            try {
+                final int rv = AspiLibrary.INSTANCE.SendASPI32Command(this);
+                final SRB f_srb = (SRB) this;
 
-                public SRB getReturnedStruct() {
-                    return f_srb;
-                }
-            };
+                return new Result() {
+                    public int getReturnValue() {
+                        return rv;
+                    }
+
+                    public SRB getReturnedStruct() {
+                        return f_srb;
+                    }
+                };
+            }
+            catch (Exception e) {
+                 throw new ASPIWrapperException(e.getMessage());
+            }
         }
     }
 
@@ -204,7 +209,7 @@ public class ASPIMsg {
 
         SRB_GDEVBlock() {
         }
-
+        @Override
         void init(char haid, char target, char lun) {
             super.init(ASPI.SC_GET_DEV_TYPE, haid);
             srb_target = target;
@@ -251,7 +256,7 @@ public class ASPIMsg {
         private char srb_lun = 0;
         private short srb_rsvd1 = 0;
         private int srb_buflen;
-        private Pointer srb_bufpointer;
+        private char[] srb_bufpointer;
         private char srb_senselen = ASPI.SENSE_LEN + 2;
         private char srb_cdblen;
 
@@ -266,8 +271,9 @@ public class ASPIMsg {
         private char[] cdbbyte;
         private char[] sensearea = new char[ASPI.SENSE_LEN + 2];
 
+        @Override
         protected void finalize() {
-            srb_postproc.free();
+//            srb_postproc.free();
         }
 
         SRB_ExecSCSICmd() {
@@ -287,11 +293,13 @@ public class ASPIMsg {
             super.init(ASPI.SC_EXEC_SCSI_CMD, haid, (char) (flags | ASPI.SRB_POSTING));
             srb_target = target;
             srb_lun = lun;
-            try {
+            
+/*            try {
                 srb_bufpointer = (Pointer) Argument.create("char*", buf);
             } catch (Exception e) {
                 e.printStackTrace();
-            }
+            }*/
+            
             srb_buflen = buf.length;
             if (cdb.length > CDB_LEN)
                 throw new IllegalArgumentException("illegal command descriptor block length");
@@ -304,22 +312,25 @@ public class ASPIMsg {
         public char[] getBuffer() throws ASPIWrapperException {
             try {
                 //System.out.println(srb_bufpointer.deref().getClass().getName());
-                return (char[])srb_bufpointer.createArray(srb_buflen);
-            } catch (NullDereferenceException e) {
-                throw new ASPIWrapperException(e.getMessage());
-            } catch (IllegalDimensionException e) {
+                return srb_bufpointer;
+            } catch (Exception e) {
                 throw new ASPIWrapperException(e.getMessage());
             }
         }
 
-        public Result execute() throws ASPIUnavailableException, ASPIWrapperException {
+        @Override
+        public Result execute() throws ASPIWrapperException {
+            
             srb_postproc.reset();
-            Pointer p;
+//            Pointer p;
             int rv;
+            
             try {
-                p = new Argument(this).createPointer();
+//                p = new Argument(this).createPointer();
                 synchronized (srb_postproc) {
-                    rv = ((Integer) aspiSend.invoke(p.cast("int*"))).intValue();
+  //                  rv = ((Integer) aspiSend.invoke(p.cast("int*"))).intValue();
+                 rv = AspiLibrary.INSTANCE.SendASPI32Command(this);
+
                     while (srb_postproc.getHits() == 0) {
                         try {
                             // System.out.println("waiting on " + srb_postproc.toString());
@@ -330,20 +341,22 @@ public class ASPIMsg {
                         }
                     }
                 }
-                final SRB f_srb = (SRB) p.deref();
+                
+                final SRB f_srb = this;
                 final int f_rv = rv;
+
                 return new Result() {
                     public int getReturnValue() {
                         return f_rv;
                     }
 
-                    public SRB getReturnedStruct() throws ASPIWrapperException {
+                    public SRB getReturnedStruct() {
                         return f_srb;
                     }
                 };
 
             } catch (Exception e) {
-                e.printStackTrace();
+                throw new ASPIWrapperException(e.getMessage());
             }
         }
     }
@@ -365,15 +378,15 @@ public class ASPIMsg {
     */
     public static class SRB_Abort extends SRB {
         // WRITE
-        private Pointer srb_toabort;
-
+        private SRB_Abort srb_toabort;
+        
         SRB_Abort() {
 
         }
 
-        void init(char haid, SRB toAbort) throws IllegalStructureException {
+        void init(char haid, SRB toAbort) {
             super.init(ASPI.SC_ABORT_SRB, haid);
-            srb_toabort = Pointer.createPointerTo(toAbort);
+            srb_toabort = this;
         }
     }
 //***************************************************************************
@@ -432,14 +445,17 @@ public class ASPIMsg {
             srb_lun = lun;
         }
 
-        public Result execute() throws ASPIUnavailableException, ASPIWrapperException {
+        @Override
+        public Result execute() throws ASPIWrapperException{
             srb_postproc.reset();
-            Pointer p;
+    //        Pointer p;
             int rv;
             try {
-                p = new Argument(this).createPointer();
+  //              p = new Argument(this).createPointer();
                 synchronized (srb_postproc) {
-                    rv = ((Integer) aspiSend.invoke(p.cast("int*"))).intValue();
+//                    rv = ((Integer) aspiSend.invoke(p.cast("int*"))).intValue();
+                    rv = AspiLibrary.INSTANCE.SendASPI32Command(this);
+                    
                     while (srb_postproc.getHits() == 0) {
                         try {
                             // System.out.println("waiting on " + srb_postproc.toString());
@@ -450,20 +466,21 @@ public class ASPIMsg {
                         }
                     }
                 }
-                final SRB f_srb = (SRB) p.deref();
+                final SRB f_srb = (SRB) this;
                 final int f_rv = rv;
+                
                 return new Result() {
                     public int getReturnValue() {
                         return f_rv;
                     }
 
-                    public SRB getReturnedStruct() throws ASPIWrapperException {
+                    public SRB getReturnedStruct() {
                         return f_srb;
                     }
                 };
 
             } catch (Exception e) {
-                e.printStackTrace();
+                throw new ASPIWrapperException(e.getMessage());
             }
         }
     }
@@ -518,7 +535,8 @@ public class ASPIMsg {
         int rv;
         int adapters = 0;
         try {
-            rv = ((Integer) aspiGetSupportInfo.invoke()).intValue();
+//            rv = ((Integer) aspiGetSupportInfo.invoke()).intValue();
+            rv = SRB.AspiLibrary.INSTANCE.GetASPI32SupportInfo();
             adapters = ZUtilities.lobyte(ZUtilities.loword(rv));
         } catch (Exception e) {
             e.printStackTrace();
@@ -534,11 +552,10 @@ public class ASPIMsg {
             try {
                 res = inq.execute();
                 r_inq = (ASPIMsg.SRB_HAInquiry) res.getReturnedStruct();
-            } catch (ASPIUnavailableException e) {
-                e.printStackTrace();
-            } catch (ASPIWrapperException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
+            
             for (int d = 0; d < 8; d++) {
                 info = new SRB_GDEVBlock();
                 info.init((char) a, (char) d, (char) 0);
@@ -549,9 +566,7 @@ public class ASPIMsg {
                         System.out.println((int) info.srb_devicetype);
                     } else
                         System.out.println("error: " + res.getReturnValue());
-                } catch (ASPIUnavailableException e) {
-                    e.printStackTrace();
-                } catch (ASPIWrapperException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
