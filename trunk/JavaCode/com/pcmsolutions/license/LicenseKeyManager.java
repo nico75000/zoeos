@@ -17,7 +17,7 @@ public class LicenseKeyManager {
 
     private static String FIELD_SEPERATOR = "-";
     private static final Vector keys = new Vector();
-    private final static String zuonicsPassword ="6H7D CD92 KL92 HAPH 10GN XKG9 57D5 KDPW 5S58 8GJE SP2G KS58 GKSI RJFU W2KG GH67";
+    private final static String zuonicsPassword = "6H7D CD92 KL92 HAPH 10GN XKG9 57D5 KDPW 5S58 8GJE SP2G KS58 GKSI RJFU W2KG GH67";
 
     public static final String zoeosProduct = "ZoeOS";
     public static final String fullType = "Full";
@@ -178,6 +178,8 @@ public class LicenseKeyManager {
     public static LicenseKey parseKey(String key) throws InvalidLicenseKeyException {
         final String f_key = key.trim();
         StringTokenizer st = new StringTokenizer(f_key, FIELD_SEPERATOR);
+        int tc = st.countTokens();
+        int tc_name = tc - 9;
         try {
             final String product = st.nextToken();
             final String type = st.nextToken();
@@ -197,10 +199,12 @@ public class LicenseKeyManager {
             final String highMinorVersionStr = st.nextToken();
             final double highMinorVersion = Double.parseDouble("0." + highMinorVersionStr);
 
-            final String regName = st.nextToken();
+            // have to do this in case licensee has a hyphenated name
+            String regName = "";
+            for (int i = 0; i < tc_name; i++)
+                regName += (i == 0 ? st.nextToken() : FIELD_SEPERATOR + st.nextToken());
 
             final String randomHexStr = st.nextToken();
-
             final String md5Str = st.nextToken();
 
             String subKey = f_key.substring(0, f_key.indexOf(md5Str) - 1);
@@ -219,6 +223,7 @@ public class LicenseKeyManager {
             if (!testKey.equals(f_key))
                 throw new InvalidLicenseKeyException("doesn't hash");
 
+            final String f_regName = regName;
             return new LicenseKey() {
 
                 public String getProduct() {
@@ -234,7 +239,7 @@ public class LicenseKeyManager {
                 }
 
                 public String getRegName() {
-                    return regName;
+                    return f_regName;
                 }
 
                 public double getlowVersion() {
