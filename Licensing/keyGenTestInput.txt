@@ -1,3 +1,0 @@
-REG_NAME=Larry Laster
-EMAIL=paulmeehan@eircom.net
-LANGUAGE_ID=12

@@ -1,1 +1,0 @@
-jar cmf0 mainClass.MF zoeos.jar zoeos-def.config com
