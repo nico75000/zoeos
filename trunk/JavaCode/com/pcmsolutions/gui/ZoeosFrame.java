@@ -936,7 +936,7 @@ final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
 
             try {
                 // initLook();
-                com.jidesoft.utils.Lm.verifyLicense("Zuonics", "ZoeOS", "odQ6AtjgQBLkRNQQNqiFlMcc2lIq1Pe2");
+                com.jidesoft.utils.Lm.verifyLicense("Gareth Pidgeon", "ZoeOS", "hbWjU7JFKe4Sw0tM774Zm:KRKueaiaK1");
 
                 //JFrame.setDefaultLookAndFeelDecorated(true);
                 // JDialog.setDefaultLookAndFeelDecorated(true);
