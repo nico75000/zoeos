@@ -1,0 +1,148 @@
+<?xml version='1.0' encoding='ISO-8859-1'?>
+<!DOCTYPE toc PUBLIC "-//Sun Microsystems Inc.//DTD JavaHelp TOC Version 2.0//EN"
+                     "http://java.sun.com/products/javahelp/toc_2_0.dtd">
+
+<toc version="2.0">
+	<tocitem text="ZoeOS Help">
+		<tocitem text="Getting Started">
+			<tocitem text="Introduction" target="GS-Intro" />
+			<tocitem text="Setting up" target="GS-Midi-SMDI" />
+			<tocitem text="Workspace overview" target="GS-WorkspaceOverview" />
+			<tocitem text="Data flow and representation" target="GS-Flow" />
+			<tocitem text="Command Structure" target="GS-CmdStruct" />
+			<tocitem text="ZCommand invocation" target="GS-CmdInv" />
+			<tocitem text="Opening presets and voices" target="GS-OpeningEditors" />
+			<tocitem text="How to edit parameters" target="GS_ParameterEditing" />
+			<tocitem text="Managing the workspace" target="BETA" />
+			<tocitem text="Using the docking framework" target="BETA" />
+			<tocitem text="Changing the preset user table" target="BETA" />
+			<tocitem text="Auditioning" target="BETA" />
+			<tocitem text="Packaging presets and samples" target="BETA" />
+			<tocitem text="Drag and drop" target="BETA" />
+		</tocitem>
+		<tocitem text="Command Reference">
+			<tocitem text="Device">
+				<tocitem text="Erase bank" target="BETA" />
+				<tocitem text="Refresh bank" target="BETA" />
+				<tocitem text="Rename device" target="BETA" />
+				<tocitem text="Show configuration" target="BETA" />
+				<tocitem text="Take workspace snapshot" target="BETA" />
+				<tocitem text="Management">
+					<tocitem text="Clear workspace" />
+					<tocitem text="Clear user presets" />
+					<tocitem text="Clear flash presets" />
+					<tocitem text="Clear empty presets" />
+					<tocitem text="Clear voices" />
+					<tocitem text="Broadcast clear empty editors" />
+					<tocitem text="Re-initialize preset flash" />
+					<tocitem text="All notes off" />
+					<tocitem text="Configure preset user table" />
+				</tocitem>
+			</tocitem>
+			<tocitem text="Preset">
+				<tocitem text="Refresh" target="BETA" />
+				<tocitem text="Open" target="BETA" />
+				<tocitem text="Close" target="BETA" />
+				<tocitem text="Audition" target="BETA" />
+				<tocitem text="Erase" target="BETA" />
+				<tocitem text="Erase samples" target="BETA" />
+				<tocitem text="Rename" target="BETA" />
+				<tocitem text="New" target="BETA" />
+				<tocitem text="Add voice" target="BETA" />
+				<tocitem text="Add link" target="BETA" />
+				<tocitem text="Match original keys" target="BETA" />
+				<tocitem text="AutoMap" target="BETA" />
+				<tocitem text="Add">
+					<tocitem text="Voices" target="BETA" />
+					<tocitem text="Links" target="BETA" />
+				</tocitem>
+				<tocitem text="Copy">
+					<tocitem text="Copy" target="BETA" />
+					<tocitem text="Copy range" target="BETA" />
+					<tocitem text="Copy block" target="BETA" />
+					<tocitem text="Copy deep" target="BETA" />
+				</tocitem>
+				<tocitem text="Packaging">
+					<tocitem text="Create new" target="BETA" />
+					<tocitem text="Load" target="BETA" />
+				</tocitem>
+				<tocitem text="Send to multimode" target="BETA" />
+				<tocitem text="Sort">
+					<tocitem text="Voices" target="BETA" />
+					<tocitem text="Links" target="BETA" />
+					<tocitem text="Zones" target="BETA" />
+				</tocitem>
+				<tocitem text="Special naming">
+					<tocitem text="Prefix" target="BETA" />
+					<tocitem text="Postfix" target="BETA" />
+					<tocitem text="Numerical prefix" target="BETA" />
+					<tocitem text="Numerical postfix" target="BETA" />
+					<tocitem text="To uppercase" target="BETA" />
+					<tocitem text="To lowercase" target="BETA" />
+					<tocitem text="Remove whitespace" target="BETA" />
+					<tocitem text="Rename all" target="BETA" />
+				</tocitem>
+				<tocitem text="Utility">
+					<tocitem text="Purge zones" target="BETA" />
+					<tocitem text="Purge links" target="BETA" />
+					<tocitem text="Offset linked user preset indexes" target="BETA" />
+					<tocitem text="Offset linked flash preset indexes" target="BETA" />
+					<tocitem text="Offset user sample indexes" target="BETA" />
+					<tocitem text="Offset ROM sample indexes" target="BETA" />
+					<tocitem text="Assert remote" target="BETA" />
+				</tocitem>
+			</tocitem>
+			<tocitem text="Voice">
+				<tocitem text="OpenV" target="BETA" />
+				<tocitem text="OpenC" target="BETA" />
+				<tocitem text="OpenG" target="BETA" />
+				<tocitem text="Copy" target="BETA" />
+				<tocitem text="Delete" target="BETA" />
+				<tocitem text="Add zone" target="BETA" />
+				<tocitem text="Expand" target="BETA" />
+				<tocitem text="Combine" target="BETA" />
+				<tocitem text="Split" target="BETA" />
+				<tocitem text="Match original key" target="BETA" />
+				<tocitem text="AutoMapG" target="BETA" />
+				<tocitem text="AutoMapV" target="BETA" />
+				<tocitem text="Add zones" target="BETA" />
+			</tocitem>
+			<tocitem text="Link">
+				<tocitem text="Delete" target="BETA" />
+				<tocitem text="Copy" target="BETA" />
+			</tocitem>
+			<tocitem text="Zone">
+				<tocitem text="Delete" target="BETA" />
+				<tocitem text="Match original keys" target="BETA" />
+			</tocitem>
+			<tocitem text="Sample">
+				<tocitem text="Refresh" target="BETA" />
+				<tocitem text="Audition" target="BETA" />
+				<tocitem text="Erase" target="BETA" />
+				<tocitem text="Rename" target="BETA" />
+				<tocitem text="Save" target="BETA" />
+				<tocitem text="Load" target="BETA" />
+				<tocitem text="Copy">
+					<tocitem text="Copy" target="BETA" />
+					<tocitem text="Copy range" target="BETA" />
+					<tocitem text="Copy block" target="BETA" />
+				</tocitem>
+				<tocitem text="Packaging">
+					<tocitem text="Create new" target="BETA" />
+					<tocitem text="Load" target="BETA" />
+				</tocitem>
+				<tocitem text="Special naming">
+					<tocitem text="Prefix" target="BETA" />
+					<tocitem text="Postfix" target="BETA" />
+					<tocitem text="Numerical prefix" target="BETA" />
+					<tocitem text="Numerical postfix" target="BETA" />
+					<tocitem text="To uppercase" target="BETA" />
+					<tocitem text="To lowercase" target="BETA" />
+					<tocitem text="Remove whitespace" target="BETA" />
+					<tocitem text="Rename all" target="BETA" />
+				</tocitem>
+			</tocitem>
+		</tocitem>
+	</tocitem>
+	<tocitem text="Tips, Tricks &amp; Knowledge" target="BETA" />
+</toc>
