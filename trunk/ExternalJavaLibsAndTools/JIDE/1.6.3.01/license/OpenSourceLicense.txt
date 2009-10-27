@@ -31,7 +31,7 @@ Your Project or Product Name: ZoeOS
 Generated License key: DJoqM6VZ5apzIiGYUqwaFfnAXmREFrm1
 
 To use it, copy and paste following line to the beginning of your application's main method.
-com.jidesoft.utils.Lm.verifyLicense("Gareth Pidgeon", "ZoeOS", "DJoqM6VZ5apzIiGYUqwaFfnAXmREFrm1");
+com.jidesoft.utils.Lm.verifyLicense("Gareth Pidgeon", "ZoeOS", "DJoqM6VZ5apzIiGYUqwaFfnAXmREFrm1"); "hbWjU7JFKe4Sw0tM774Zm:KRKueaiaK1" for early versions
 
 The license key will allow you to use JIDE Docking Framework, JIDE Components, JIDE Grids, JIDE Dialogs, and JIDE Action Framework in your application.
 
