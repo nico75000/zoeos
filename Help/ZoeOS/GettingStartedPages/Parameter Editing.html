@@ -1,0 +1,74 @@
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="../zoeosHelp.css" title="ZoeosHelp Styles" />
+</head>
+<body>
+
+<h1 id="parameter_editing" class="default">Parameter Editing</h1>
+<p>
+There are six ways to edit parameters
+	<ul>
+		<li>
+			Mouse wheeling freely over cells on tables without a selection.
+		</li>
+		<li>
+			Mouse wheeling over selected cells on a table to change the parameters in the selected cells
+		</li>
+		<li>
+			Double-clicking a table cell to yield a cell editor. Depending on the type of parameter, the cell editor 
+			will be either a spinner control or a drop-down (combo) control. Values in such controls can be changed manually by typing values,
+			spinning the mouse wheel or using the keyboard arrow keys. Combo controls require an Enter key press to set the value and possibly an Escape key press
+			to exit the editor (mouse clicking on another cell will also terminate the combo editor)..
+		</li>
+		<li>
+                    Keyboard:
+					<ul>
+                        <li>
+                        CTRL-UP_ARROW increments selected parameters
+                        </li>
+                        <li>
+                        CTRL-DOWN_ARROW decrements selected parameters
+                        </li>
+                        <li>
+                        CTRL-LEFT_ARROW decrements selected parameters by 5% of range
+                        </li>
+                        <li>
+                        CTRL-RIGHT_ARROW increments selected parameters by 5% of range
+                        </li>
+                        <li>
+                        CTRL-SHIFT-UP_ARROW maximizes selected parameters
+                        </li>
+                        <li>
+                        CTRL-SHIFT-DOWN_ARROW minimizes selected parameters
+                        </li>
+                        <li>
+                        CTRL-SHIFT-LEFT_ARROW defaults selected parameters
+                        </li>
+                        <li>
+                        CTRL-SHIFT-RIGHT_ARROW repeats value of first parameter throughout a set of selected parameters
+                        </li>
+                    </ul>
+
+		</li>
+		<li>
+			Drag and drop of values across tables
+		</li>
+		<li>
+			Making a parameter table selection and performing parameter ZCommands
+		</li>
+	</ul>
+
+	<p> Mouse wheeling over cells on tables without a selection is a very fast way to make changes to individual parameter - simply move the mouse 
+		over the cell and spin the wheel. If you wish to make ongoing adjustments to a group of parameters, select them on the table 
+		and start mouse wheeling (or use the parameter ZCommands on the selection).
+	<p>
+		Spinner controls are the best way to make changes to a parameter through a large value range - you can hold the mouse down on
+		either the up or down arrow in the control and the value will change repeatedly - this would be better than having to spin the 
+		mouse wheel through large value ranges.
+	<p>
+		The parameter ZCommands are an excellent way to make large changes. For example,
+		if you wish to default the values of a whole column, regradless of current values, select them with the mouse and choose the default parameter ZCommand from the toolbar.
+		<p>
+		<b>Tip</b>: You can double-click the column label at the top of a table to select all the cells in that column.
+</body>
+</html>
