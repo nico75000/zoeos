@@ -1017,7 +1017,7 @@ javax.swing.UIManager.setLookAndFeel(LookAndFeelFactory.ALLOY_LNF);
                     al.add(o);
 
                 }
-                Collections.sort(al);
+//                Collections.sort(al);
                // for (Object o : al)
                 //    System.out.println(o + " : " + UIManager.getDefaults().get(o));
 
@@ -1032,7 +1032,7 @@ javax.swing.UIManager.setLookAndFeel(LookAndFeelFactory.ALLOY_LNF);
                     al.add(o);
 
                 }
-                Collections.sort(al);
+  //              Collections.sort(al);
                // for (Object o : al)
                 //    System.out.println(o + " : " + UIManager.getLookAndFeelDefaults().get(o));
 
