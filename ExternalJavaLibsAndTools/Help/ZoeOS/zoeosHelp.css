@@ -1,0 +1,84 @@
+body {
+	background-color: rgb(207,207, 217);
+	color: rgb(48,48,48);
+	font-size: 12;
+	font-family: arial;
+	padding-left: 10px;
+	padding-right: 10px;
+    }
+
+h1.default {
+	/*background: #3c57a9;*/	    
+	background: #8080a0;	    
+	color: rgb(240,240,240);
+	font-family: arial;
+	font-style: italic;
+	font-size: 24;
+	padding-left: 10px;
+	padding-right: 10px;
+	margin-left: 10px;
+	margin-right: 10px;
+    }
+
+ul{
+	/*background-color: rgb(217,217, 227);
+	color: rgb(48,48,48);*/
+	margin-left: 55px;
+	margin-right: 10px;
+}
+
+ol{
+	/*background-color: rgb(217,217, 227);
+	color: rgb(48,48,48);*/
+	margin-left: 55px;
+	margin-right: 10px;
+}
+
+
+p{
+	margin-left: 55px;
+	margin-right: 10px;
+}
+
+table{
+	background-color: rgb(217,217, 227);
+	color: rgb(48,48,48);
+	font-size: 12;
+	font-family: arial;
+	margin-left: 55px;
+	margin-right: 10px;
+}
+
+h2.default{
+	background: #4c67a9;	    
+	color: rgb(240,240,240);
+	font-size: 16;
+	font-family: arial;
+	padding-left: 20px;
+	padding-right: 20px;
+	margin-left: 25px;
+	margin-right: 10px;
+}
+h3.default{
+	background: #6c87c9;	    
+	color: rgb(240,240,240);
+	font-size: 14;
+	font-family: arial;
+	padding-left: 10px;
+	padding-right: 10px;
+	margin-left: 35px;
+	margin-right: 10px;
+
+}
+h4.default{
+	/*background: #6c87c9;*/
+	/*color: rgb(240,240,240);*/
+	color: rgb(48,48,48);
+	font-size: 14;
+	font-family: arial;
+	font-style: bold;
+	padding-left: 10px;
+	padding-right: 10px;
+	margin-left: 45px;
+	margin-right: 10px;
+}
