@@ -808,7 +808,7 @@ final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
             }
         });
         jmHelp.add(jmiProductTour);
-        jmHelp.addSeparator();
+//        jmHelp.addSeparator();
 
         jmiRequestFunctionality.setText("Enhancement request");
         jmiRequestFunctionality.setMnemonic(KeyEvent.VK_R);
@@ -832,18 +832,17 @@ final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
         });
         jmHelp.add(jmiReportBug);
 
-        if (!Zoeos.isEvaluation()) {
+/*        if (!Zoeos.isEvaluation()) {
             jmiLicenseManager.setText("Manage License Keys");
             jmiLicenseManager.setMnemonic(KeyEvent.VK_L);
             jmiLicenseManager.addActionListener(new ActionListener() {
                 public void actionPerformed(ActionEvent evt) {
                     licenseManager.show();
-//JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
                 }
             });
             jmHelp.add(jmiLicenseManager);
         }
-        jmHelp.addSeparator();
+        jmHelp.addSeparator();*/
 
         jmiAboutBox.setText("About");
         jmiAboutBox.setMnemonic(KeyEvent.VK_A);
