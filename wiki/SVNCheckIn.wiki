@@ -1,5 +1,5 @@
-#summary One-sentence summary of this page.
 #labels SVN,refactor
+Refactoring 1.2
 
 = Introduction =
 
