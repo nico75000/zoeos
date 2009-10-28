@@ -1,6 +1,7 @@
 # Makefile of SMDI.DLL for MS VC++
 
 VCPPBASEDIR="C:\Program Files\Microsoft Visual Studio 9.0\VC"
+SDK="C:\Program Files\Microsoft SDKs\Windows\v6.0A\Include"
 
 OBJS=
 LIBS=wnaspi32.vcpp.lib
@@ -13,13 +14,16 @@ SMDI_SRC=aspi.win32.c wnaspi32.c smdi.c
 
 # The compiler
 INCDIR=$(VCPPBASEDIR)\include
-CC=$(VCPPBASEDIR)\bin\cl.exe
-CFLAGS=/nologo /I$(INCDIR) /Zp1 /O1
+#CC=$(VCPPBASEDIR)\bin\cl.exe
+CC=cl.exe
+CFLAGS=/nologo /I$(INCDIR) /I$(SDK) /Zp1 /O1
 
 # The linker
-LNK=$(VCPPBASEDIR)\bin\link.exe
+#LNK=$(VCPPBASEDIR)\bin\link.exe
+LNK=link.exe
 LIBPATH=$(VCPPBASEDIR)\lib
-LFLAGS=/nologo /dll /libpath:$(LIBPATH)
+UUIDPATH="C:\Program Files\Microsoft SDKs\Windows\v6.0A\Lib"
+LFLAGS=/nologo /dll /libpath:$(LIBPATH) /libpath:$(UUIDPATH)
 
 # --
 
@@ -38,5 +42,4 @@ clean:
 	del $(ASPI_WIN32_OBJ)
 	del $(BINDIR)\smdi.exp
 	del $(BINDIR)\smdi.lib
-	del *.lib
 
