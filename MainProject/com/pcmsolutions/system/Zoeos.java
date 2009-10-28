@@ -154,7 +154,8 @@ public class Zoeos implements ZDisposable, TitleProvider {
     private static void makeVersionStr() {
         versionStr = "ZoeOS" + "  v" + version + (isEvaluation() ? "e " : "") + (isBeta ? " BETA " + betaVersion : "") + (isUnlicensed() ? "(Unlicensed)" : "");
         aboutMessage = versionStr + lineSeperator +
-                "(c) Zuonics Ltd and Paul Meehan" + lineSeperator + "2004";
+                "(c) 2009 Open source version by Zuonics Ltd and Paul Meehan" + lineSeperator +
+                "with help from Gareth Pidgeon";
     }
 
     private static String homeDir;
