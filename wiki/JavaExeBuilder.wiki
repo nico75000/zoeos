@@ -3,7 +3,7 @@
 
 = Introduction =
 
-Open source Jave exe builder.
+Suggested Java exe builder.
 
 
 = Details =
