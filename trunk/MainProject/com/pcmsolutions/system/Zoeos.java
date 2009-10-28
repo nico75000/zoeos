@@ -56,18 +56,18 @@ public class Zoeos implements ZDisposable, TitleProvider {
     private static volatile boolean isEvaluation = false;
 
     private static synchronized void setUnlicensed(boolean isUnlicensed) {
-        if (isUnlicensed) {
-            if (unlicensedThread == null) {
-                unlicensedThread = new UnlicensedThread();
-                unlicensedThread.start();
-            }
-        } else {
+        //if (isUnlicensed) {
+//            if (unlicensedThread == null) {
+//                unlicensedThread = new UnlicensedThread();
+//                unlicensedThread.start();
+//            }
+//        } else {
             if (unlicensedThread != null) {
                 unlicensedThread.kill();
                 unlicensedThread = null;
             }
-        }
-        Zoeos.isUnlicensed = isUnlicensed;
+  //      }
+        Zoeos.isUnlicensed = true;
         makeVersionStr();
     }
 
@@ -152,9 +152,9 @@ public class Zoeos implements ZDisposable, TitleProvider {
     }
 
     private static void makeVersionStr() {
-        versionStr = "ZoeOS" + "  v" + version + (isEvaluation() ? "e " : "") + (isBeta ? " BETA " + betaVersion : "") + (isUnlicensed() ? "(Unlicensed)" : "");
+        versionStr = "ZoeOS" + " 2009" + "  v" + version + (isEvaluation() ? "e " : "");
         aboutMessage = versionStr + lineSeperator +
-                "(c) 2009 Open source version by Zuonics Ltd and Paul Meehan" + lineSeperator +
+                "(c) Open source version by Zuonics Ltd and Paul Meehan" + lineSeperator +
                 "with help from Gareth Pidgeon";
     }
 
