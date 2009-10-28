@@ -804,6 +804,7 @@ final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
         jmiProductTour.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
                 BrowserControl.displayURL("http://www.zuonics.com");
+                BrowserControl.displayURL("http://code.google.com/p/zoeos/");
             }
         });
         jmHelp.add(jmiProductTour);
@@ -814,6 +815,7 @@ final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
         jmiRequestFunctionality.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
                 BrowserControl.displayURL("mailto:request@zuonics.com?subject=Enhancement request for " + Zoeos.versionStr);
+                BrowserControl.displayURL("mailto:zoeoscommon@googlemail.com?subject=Enhancement request for " + Zoeos.versionStr);
             }
         });
         jmHelp.add(jmiRequestFunctionality);
@@ -823,6 +825,7 @@ final OvrInsStatusBarItem ovr = new OvrInsStatusBarItem();
         jmiReportBug.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
                 BrowserControl.displayURL("mailto:bugs@zuonics.com?subject=Bug in " + Zoeos.versionStr + "&body=< PASTE DEVICE CONFIGURATION HERE >");
+                BrowserControl.displayURL("mailto:zoeoscommon@googlemail.com?subject=Bug in " + Zoeos.versionStr + "&body=< PASTE DEVICE CONFIGURATION HERE >");
 //mailto:astark1@unl.edu?subject=Comments from MailTo Syntax Page
 //JOptionPane.showMessageDialog(ZoeosFrame.getInstance(), "Not available in demo");
             }
