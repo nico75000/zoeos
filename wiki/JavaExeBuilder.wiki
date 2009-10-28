@@ -1,9 +1,9 @@
-#summary One-sentence summary of this page.
 #labels Java,exe
+Suggested Java exe builder.
 
 = Introduction =
 
-Suggested Java exe builder.
+This is my suggestion for an open source Java exe builder.
 
 
 = Details =
