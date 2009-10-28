@@ -1,7 +1,7 @@
 #change this for you local system
 VCPPBASEDIR="C:\Program Files\Microsoft Visual Studio 9.0\VC"
-JNI_WIN32="C:\Program Files\Java\jdk1.6.0_13\include\win32"
-JNI="C:\Program Files\Java\jdk1.6.0_13\include"
+JNI_WIN32="C:\Program Files\Java\jdk1.6.0_16\include\win32"
+JNI="C:\Program Files\Java\jdk1.6.0_16\include"
 
 # dont need to change this path
 SMDI="../OpenSMDI/"
@@ -13,13 +13,16 @@ PCMSMDI_OBJ=$(BINDIR)\pcmsmdi.obj
 
 # The compiler
 INCDIR=$(VCPPBASEDIR)\include
-CC=$(VCPPBASEDIR)\bin\cl.exe
+#CC=$(VCPPBASEDIR)\bin\cl.exe
+CC=cl.exe
 CFLAGS=/nologo /I$(INCDIR) /I$(JNI) /I$(JNI_WIN32) /I$(SMDI) /Zp1 /O1
 
 # The linker
-LNK=$(VCPPBASEDIR)\bin\link.exe
+#LNK=$(VCPPBASEDIR)\bin\link.exe
+LNK=link.exe
 LIBPATH=$(VCPPBASEDIR)\lib
-LFLAGS=/nologo /dll /libpath:$(LIBPATH)
+UUIDPATH="C:\Program Files\Microsoft SDKs\Windows\v6.0A\Lib"
+LFLAGS=/nologo /dll /libpath:$(LIBPATH) /libpath:$(UUIDPATH)
 
 # --
 
