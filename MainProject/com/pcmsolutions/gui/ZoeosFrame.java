@@ -1110,7 +1110,7 @@ javax.swing.UIManager.setLookAndFeel(LookAndFeelFactory.ALLOY_LNF);
                                     Zoeos.getInstance().getDeviceManager().performHunt();
                                 } finally {
                                     try {
-                                        com.exe4j.Controller.hide();
+//                                        com.exe4j.Controller.hide();
                                     } catch (Exception e) {
                                         e.printStackTrace();
                                     }
@@ -1121,7 +1121,7 @@ javax.swing.UIManager.setLookAndFeel(LookAndFeelFactory.ALLOY_LNF);
                 });
             else
                 try {
-                    com.exe4j.Controller.hide();
+//                    com.exe4j.Controller.hide();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
