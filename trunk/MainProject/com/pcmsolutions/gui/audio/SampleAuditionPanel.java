@@ -8,6 +8,10 @@ import com.pcmsolutions.gui.FlashMsg;
 import com.pcmsolutions.gui.ZoeosFrame;
 import com.pcmsolutions.system.ZUtilities;
 import com.pcmsolutions.system.Zoeos;
+import com.pcmsolutions.system.tasking.ManageableTicketedQ;
+import com.pcmsolutions.system.tasking.QueueFactory;
+import com.pcmsolutions.system.tasking.TicketRunnable;
+import com.pcmsolutions.system.tasking.ResourceUnavailableException;
 import com.pcmsolutions.system.audio.AudioUtilities;
 import com.pcmsolutions.system.preferences.Impl_ZBoolPref;
 import com.pcmsolutions.system.preferences.ZBoolPref;
@@ -76,6 +80,10 @@ public class SampleAuditionPanel extends JPanel {
       });
       */
     private JCheckBox loopAudition = new JCheckBox(new AbstractAction("Repeat") {
+        {
+            setToolTipText("Loop continuously when auditioning audio files");
+        }
+
         public void actionPerformed(ActionEvent e) {
             if (loopAudition.isSelected()) {
                 ZPREF_loopAudition.putValue(true);
@@ -153,10 +161,23 @@ public class SampleAuditionPanel extends JPanel {
         return currentFile;
     }
 
-    public void setCurrentFile(File currentFile) {
-        disposeCurrent();
-        this.currentFile = currentFile;
-        updateFile();
+    final static ManageableTicketedQ auditionPanelQ = QueueFactory.createTicketedQueue(SampleAuditionPanel.class.getClass(), "auditionPanelQ", 6);
+
+    static {
+        auditionPanelQ.start();
+    }
+    public void setCurrentFile(final File currentFile) {
+        try {
+            auditionPanelQ.getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    disposeCurrent();
+                    SampleAuditionPanel.this.currentFile = currentFile;
+                    updateFile();
+                }
+            }, "setCurrentFile", false).post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
     }
 
 
@@ -282,8 +303,16 @@ public class SampleAuditionPanel extends JPanel {
     }
 
     public void stopClip() {
-        if (currentClip != null)
-            currentClip.stop();
+        try {
+            auditionPanelQ.getPostableTicket(new TicketRunnable() {
+                public void run() throws Exception {
+                    if (currentClip != null)
+                        currentClip.stop();
+                }
+            }, "setCurrentFile", false).post();
+        } catch (ResourceUnavailableException e) {
+            e.printStackTrace();
+        }
     }
 
     public void disposeCurrent() {
@@ -320,7 +349,7 @@ public class SampleAuditionPanel extends JPanel {
             JFrame f = new JFrame();
             f.getContentPane().add(new SampleAuditionPanel("Test Panel"));
             f.pack();
-            f.show();
+            f.setVisible(true);
             f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         } catch (Exception e) {
             e.printStackTrace();

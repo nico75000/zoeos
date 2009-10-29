@@ -219,7 +219,7 @@ public class RemoteSampleSynchronizer implements Serializable, ManageableContent
 
                 public void assertSample(ProgressCallback prog) throws IsolatedSampleUnavailableException {
                     try {
-                        if (sdd.getIndex().intValue() >= DeviceContext.BASE_ROM_SAMPLE)
+                        if (sdd.getIndex().intValue() <  DeviceContext.BASE_ROM_SAMPLE)
                             throw new IsolatedSampleUnavailableException("rom sample");
                         if (localFile == null && (localFile = sdd.getFile()) == null)
                             throw new IsolatedSampleUnavailableException("filename not specified");
