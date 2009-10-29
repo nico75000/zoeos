@@ -120,7 +120,7 @@ public class SaveContextSamplesZMTC extends AbstractContextEditableSampleZMTComm
                                     try {
                                         IsolatedSample is = samples[i].getIsolated(sdd);
                                         //sf = samples[i].retrieveCustomLocalCopy(sdd, progs[i]);
-                                        if (is.getLocalFile().exists() && overwriteMode != SaveAccessoryPanel.MODE_ALWAYS_OVERWRITE) {
+                                        if (is.getLocalFile()!=null && is.getLocalFile().exists() && overwriteMode != SaveAccessoryPanel.MODE_ALWAYS_OVERWRITE) {
                                             if (overwriteMode == SaveAccessoryPanel.MODE_ASK_OVERWRITE) {
                                                 //int r = UserMessaging.askYesNoYesAll("File for " + "\"" + name + "\"" + " already exists, overwrite?", "File Already Exists");
                                                 int r = UserMessaging.askYesNoYesAllNoAll("File \"" + sdd.getFile().getName() + "\" already exists, overwrite?", "File already exists");
