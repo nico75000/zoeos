@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WarSetup-Project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" projectRunAfterInstall="true" mainTargetApp="ID_605b2616_28aa_4dd5_9fe0_6703b59109d4" nextUniqueId="1130" projectName="ZoeOs" projectUuid="10660bc4-7d1b-4ebd-9a40-df60924282c8" projectUpgradeUuid="15a5c4f5-57df-43de-8f57-2b534f6d278a" projectVersion="1.4.2" projectOrganization="ZoeOs Project" projectFromWindowsVersion="Windows XP" projectMustBeAdministratorToInstall="false" project64BitTarget="false" projectTargetDirectory="C:\Program Files" projectTargetName="Setup" projectType="0" projectUserInterface="WixUI_Mondo">
+  <LicencePaths>
+    <string>C:\Program Files\Jgaa's Internet\War Setup\Licenses</string>
+  </LicencePaths>
+  <Virgin>true</Virgin>
+  <projectFeatures featureId="ID2A518139482667468BFB5D9A03CA70A9" featureName="ZoeOs" featureDescription="The complete package" configurableDirectory="APPLICATIONFOLDER" configurableDirectoryDefaultPath="[ProjectName]" enableInDefaultInstall="true" enableInMinimalInstall="true" excludeFromBuild="false">
+    <childFeatures featureId="PROGRAM" featureName="Program" featureDescription="The Main Executable" enableInDefaultInstall="true" enableInMinimalInstall="true" excludeFromBuild="false">
+      <defaultInstallMode>3</defaultInstallMode>
+    </childFeatures>
+    <childFeatures featureId="DOCUMENTATION" featureName="Documentation" featureDescription="The documentation" enableInDefaultInstall="true" enableInMinimalInstall="true" excludeFromBuild="false">
+      <defaultInstallMode>3</defaultInstallMode>
+    </childFeatures>
+    <components componentId="ID1001" componentGuid="4d720cc6-eb04-48ad-bd4e-10408ad339f3">
+      <componentFiles fileId="ID_605b2616_28aa_4dd5_9fe0_6703b59109d4" srcName="ZoeOs.exe" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist" dstName="ZoeOs.exe" dstPath="" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="ZoeOs" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1000" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1003" componentGuid="19a1820c-9e86-4982-a073-403d624eff94">
+      <componentFiles fileId="ID_56cc09c2_6710_4d6a_984d_bccc8e23482e" srcName="JavaProject33.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist" dstName="JavaProject33.jar" dstPath="" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="JavaProject33" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1002" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1005" componentGuid="ffe25298-f6b5-4aac-9085-bd5df77bfee6">
+      <componentFiles fileId="ID_2c549b13_3e66_4334_8ac4_1b86c9fd13d2" srcName="README.TXT" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist" dstName="README.TXT" dstPath="" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="README" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1004" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1007" componentGuid="68d36924-cc21-435d-8a7e-1388e656076a">
+      <componentFiles fileId="ID_a18c76a6_bf20_454e_aed6_3dd545a67650" srcName="xFunction.dll" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist" dstName="xFunction.dll" dstPath="" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="xFunction" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1006" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1009" componentGuid="55699677-83f7-4e76-823a-c961ad01ef94">
+      <componentFiles fileId="ID_077f4334_a49b_4799_95f8_13662ff12ba5" srcName="ZoeosHelp.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="ZoeosHelp.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="ZoeosHelp" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1008" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1011" componentGuid="a5ad853f-e279-4546-98f5-393872206752">
+      <componentFiles fileId="ID_23c63e7a_a25c_452a_b3ed_ae74af87f9c9" srcName="forms_rt.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="forms_rt.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="forms_rt" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1010" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1013" componentGuid="1f0ad206-7d29-4e7b-99d9-c3080acfdd42">
+      <componentFiles fileId="ID_998f0fa9_79e4_43fc_aa1e_5f9784393fff" srcName="jh.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jh.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jh" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1012" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1015" componentGuid="d863bbff-c232-4303-b576-c58b2b7ddbe1">
+      <componentFiles fileId="ID_2d39ce7b_a490_406b_a260_6bc39ca8924a" srcName="jide-action.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jide-action.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jide-action" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1014" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1017" componentGuid="9b79fbc1-19f4-4760-8637-0966e84bc9ee">
+      <componentFiles fileId="ID_822dd753_d128_4f92_9b55_3704419d66f9" srcName="jide-common.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jide-common.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jide-common" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1016" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1019" componentGuid="cc2a5170-66e4-4b47-a0a7-35de0cb37cda">
+      <componentFiles fileId="ID_ccba850b_aa1c_41e2_a7a8_e88f053cba53" srcName="jide-components.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jide-components.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jide-components" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1018" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1021" componentGuid="ce87b52f-67e3-49b1-be31-04cb1df2f7ad">
+      <componentFiles fileId="ID_80a0ea80_e582_4afe_8859_272989bd78d9" srcName="jide-dialogs.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jide-dialogs.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jide-dialogs" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1020" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1023" componentGuid="ece5c2eb-293b-4d29-9803-62aee7a07064">
+      <componentFiles fileId="ID_96009afc_cecf_44bd_98a9_6f70ced4489e" srcName="jide-dock.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jide-dock.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jide-dock" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1022" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1025" componentGuid="5f68de30-dc61-41b4-8bf6-f719509003cf">
+      <componentFiles fileId="ID_a91ef81c_6d44_4279_afb6_ca15179c0d85" srcName="jide-grids.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="jide-grids.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="jide-grids" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1024" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1027" componentGuid="6c328038-89c0-44d4-8667-91fbb016e6f3">
+      <componentFiles fileId="ID_ee63c6be_0d25_4edd_adb0_206d3e45b7f8" srcName="ostermillerutils_1_02_21.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="ostermillerutils_1_02_21.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="ostermillerutils_1_02_21" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1026" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1029" componentGuid="3293a775-6787-4231-a622-0ea7265af2ba">
+      <componentFiles fileId="ID_b04909dc_fb6c_4b6d_83df_c4c0513c5608" srcName="tritonus_aos.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="tritonus_aos.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="tritonus_aos" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1028" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1031" componentGuid="b4e81cd4-2f4f-4e8d-a203-a6b5ba086806">
+      <componentFiles fileId="ID_1ce9e094_0d64_4f8c_847a_9cfc4d0f7689" srcName="tritonus_mp3.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="tritonus_mp3.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="tritonus_mp3" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1030" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1033" componentGuid="7f272856-8e1b-42a3-918b-e041928e338f">
+      <componentFiles fileId="ID_9fd03613_9346_4c3d_90b0_38c1a9790a00" srcName="tritonus_remaining.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="tritonus_remaining.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="tritonus_remaining" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1032" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1035" componentGuid="602e0906-eabe-4a0d-b700-ffa1bfb6182c">
+      <componentFiles fileId="ID_a86b8f35_eed6_4388_84bd_cb9c7082168b" srcName="tritonus_share.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="tritonus_share.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="tritonus_share" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1034" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <components componentId="ID1039" componentGuid="5ec0e849-3721-4698-a998-9b29f0973093">
+      <componentFiles fileId="ID_5d515d15_091a_4074_9a7d_4389d4270686" srcName="xFunction.jar" srcDirectory=".\My Documents\NetBeansProjects\JavaProject33\dist\lib" dstName="xFunction.jar" dstPath=".\lib" isTrueTypeFont="false" isComModule="false" typelibGuid="" menuName="xFunction" shortcutInProgramFilesMenu="false" shortcutOnDesktop="false" shortcutInQuickLaunch="false" shortcutInStartupFolder="false" shortcutWorkingDirectory="" shortcutCommandArguments="" shortcutDescription="">
+        <service StartWhenInstalled="true" Remove="both" id="ID1038" isService="false" userAccount="" userPassword="" cmdLineArguments="" errorControl="normal" interactive="false" loadOrderGroup="" serviceName="" startMode="auto" vital="true" />
+      </componentFiles>
+      <addToCreateFolder>false</addToCreateFolder>
+    </components>
+    <defaultInstallMode>3</defaultInstallMode>
+  </projectFeatures>
+  <projectInstallForCurrentOrAllUsers>0</projectInstallForCurrentOrAllUsers>
+  <License>
+    <System>true</System>
+    <Name>GNU General Public License (GPL) 3.0</Name>
+  </License>
+  <projectProperties LicencePath="" TopBanner="" BigBanner="" ExclamationIcon="" InfoIcon="" NewIcon="" UpIcon="" VS2003Integration="VS2003_INTEGRATION" VS2005Integration="VS2005_INTEGRATION" UseRelativePaths="true" LaunchAppText="" UseWixUI_ErrorProgressText="true" UseWixUI="true" CreateUninstallShortcut="false" Codepage="1252" ProductLanguage="1033" AlwaysMajorUpgrade="true" SupressValidation="false" Compress="true" BuildTarget="true" PublisherUrl="" SupportContact="" SupportUrl="" SupportPhone="" ReadMeFile="" UpdateUrl="" Comments="" Icon="" EmbedCab="true" MaxCabSize="0" CabCompressionLevel="mszip" InstallerVersion="300">
+    <UiCultures Name="en-US" Enabled="true" />
+    <UiCultures Name="de-de" Enabled="false" />
+    <UiCultures Name="es-es" Enabled="false" />
+    <UiCultures Name="nl-nl" Enabled="false" />
+  </projectProperties>
+</WarSetup-Project>
