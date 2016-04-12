@@ -1,0 +1,10 @@
+Created gnu make file
+
+# Introduction #
+
+All native libraries (libraries written in C and compiled) now build on Linux/OsX.
+
+
+# Details #
+
+OpenSMDI has always been able to build on linux but the JNI wrapper pcmsmdi was only available for Windows. I have created a linux make file and added some macros in SMDIAgent.c to enable compilation on linux/macos. I also updated the readme file with very basic instructions.

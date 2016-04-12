@@ -1,0 +1,22 @@
+# Introduction #
+
+Added the included "Install Output" product included with the source, to the downloads section. This is to establish where the project it currently theoretically at.
+
+Also added a stripped down version of the Source, so as to actually have the source as a downloadable file.
+
+
+# Details #
+
+Included and uploaded the two windows exec.s from the source package. These are versions 1.2 and 1.25. These are assumed to be the height of current development of the software. These are however _untested_ and provided without warranty of any kind.
+For all intents and purposes these should probably be considered deprecated as well.
+
+neweosdev 2.Zip
+This is a stripped down download of the File provided by Zuonics. The following folders and contents have been stripped from this archive.
+  * website
+  * InstallOutput (contents of which can be found in other downloads)
+  * Newsletters
+  * PressRelease
+
+Apart from this the archive is the same.
+
+Files can be found in the **download** section.
